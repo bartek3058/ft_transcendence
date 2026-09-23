@@ -5,4 +5,19 @@
 ## Description
 
 ### Goal
-The purpose of this project is to create a web application that streamlines team collaboration around projects and tasks — from creation and assignment to deadline tracking and progress monitoring. Real-time updates, notifications, and analytics work together to keep teams aligned and informed.
+The purpose of this project is to create a web application that streamlines team collaboration around projects and tasks - from creation and assignment to deadline tracking and progress monitoring. Real-time updates, notifications, and analytics work together to keep teams aligned and informed.
+
+### Owerview
+
+# Instruction
+
+
+# Information about team
+
+| Member | Role | Main Responsibilities |
+|--------|------|-----------------------|
+| tszymans| Product Owner |             |
+| pjedrycz| Project Manager |           |
+| brogalsk| Tech Lead |                 |
+| astefans| Developer |                 |
+| pmamala | Developer |                 |
