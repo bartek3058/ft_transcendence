@@ -5,9 +5,9 @@
 ## Description
 
 ### Goal
-The purpose of this project is to create a web application that streamlines team collaboration around projects and tasks - from creation and assignment to deadline tracking and progress monitoring. Real-time updates, notifications, and analytics work together to keep teams aligned and informed.
+The purpose of this project is to create a chess application including multiuser/multiplayer mode, tournament options, scoring system and AI integration.
 
-### Owerview
+### Overview
 
 # Instruction
 
