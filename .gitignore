@@ -1,0 +1,27 @@
+# ==============================================================================
+# TRANSCENDENCE .GITIGNORE
+# ==============================================================================
+# 1. Environment & Secrets
+.env
+.env.*.local
+!.env.example
+secrets/
+*.key
+*.pem
+*.crt
+# 2. Node.js & TypeScript
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+*.log
+# 3. VS Code
+.vscode/
+*.code-workspace
+# 4. Database & Persistent Data
+pgdata/
+uploads/*
+!uploads/.gitkeep
+# 5. OS System Files
+.DS_Store
+Thumbs.db
