@@ -29,6 +29,9 @@ services:
       - NODE_ENV=development
       - DATABASE_URL=${DATABASE_URL}
       - MIGRATION_DATABASE_URL=${MIGRATION_DATABASE_URL}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
