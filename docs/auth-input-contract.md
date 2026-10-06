@@ -1,6 +1,6 @@
 # Registration/login input and API contract
 
-Status: implementation specification, 2026-10-04. DTOs, backend validation/JSON limits and password hashing are implemented in [stage 1](auth-stage-one.md). Endpoints, sessions, CSRF, throttling, proxy limits and frontend validation remain planned. Applies to NestJS/Express, React and the [database handoff](auth-database-handoff.md).
+Status updated 2026-10-06. [Stage 1](auth-stage-one.md) implements DTOs, backend validation and password hashing. [Stage 2](auth-stage-two.md) adds endpoints, session orchestration, CSRF checks, throttling and proxy limits. The real database adapter, frontend validation and Docker/HTTPS verification remain pending. Applies to NestJS/Express, React and the [database handoff](auth-database-handoff.md).
 
 ## 1. Normalize only what the product defines
 

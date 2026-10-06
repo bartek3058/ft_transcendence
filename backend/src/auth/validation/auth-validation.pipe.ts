@@ -1,6 +1,7 @@
 import { ArgumentMetadata, BadRequestException, Injectable, ValidationPipe } from '@nestjs/common';
 import { LoginDto } from '../dto/login.dto';
 import { RegisterDto } from '../dto/register.dto';
+import { LogoutDto } from '../dto/logout.dto';
 
 function invalidInput(fields: { field: string; code: string }[] = []) {
   return new BadRequestException({ error: {
@@ -28,12 +29,12 @@ export class AuthValidationPipe extends ValidationPipe {
 
   override async transform(value: unknown, metadata: ArgumentMetadata) {
     if (metadata.type === 'body'
-      && (metadata.metatype === LoginDto || metadata.metatype === RegisterDto)) {
+      && [LoginDto, RegisterDto, LogoutDto].includes(metadata.metatype)) {
       if (value === null || typeof value !== 'object' || Array.isArray(value)) {
         throw invalidInput();
       }
       const allowed = metadata.metatype === RegisterDto
-        ? ['email', 'username', 'password'] : ['email', 'password'];
+        ? ['email', 'username', 'password'] : metadata.metatype === LogoutDto ? [] : ['email', 'password'];
       // Inspect raw keys before class-transformer can discard prototype-related
       // keys, and reject nested values before recursively transforming them.
       const fields = Object.entries(value).flatMap(([key, item]) => {
@@ -41,6 +42,7 @@ export class AuthValidationPipe extends ValidationPipe {
         return typeof item === 'string' ? [] : [{ field: key, code: 'INVALID_FIELD' }];
       });
       if (fields.length) throw invalidInput(fields);
+      if (metadata.metatype === LogoutDto) return new LogoutDto();
     }
     return super.transform(value, metadata);
   }

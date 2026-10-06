@@ -1,5 +1,7 @@
 # Database handoff: registration and login
 
+**Integration update, 2026-10-06:** [Stage 2](auth-stage-two.md) supplies account/session HTTP orchestration and an [AuthRepository interface](../backend/src/auth/auth.repository.ts). Alongside the schema/shared PrismaService below, implement its adapter and replace the explicit unavailable provider in AuthModule. No production in-memory account/session storage exists. The database work remains yours; auth owns SessionService and its bounded hourly cleanup scheduler.
+
 Status: implementation contract, 2026-10-04. No database implementation is delivered by this document; independent auth validation/password foundations now exist in [stage 1](auth-stage-one.md). Stack: existing NestJS/Express + TypeScript backend, PostgreSQL, Prisma, React/Vite frontend and Nginx HTTPS proxy. This supersedes the earlier Fastify/Caddy proposal for this repository.
 
 Scope: the database foundation needed by registration, login, authenticated-user lookup and logout. The local subject v21.1, III.2–III.3 (printed pp. 8–9), requires a database with clear relations, secure email/password authentication, concurrent correctness, validation on both sides, HTTPS externally and ignored local secrets. Our additional design decisions are identified below; the subject does not prescribe PostgreSQL, Prisma or sessions.

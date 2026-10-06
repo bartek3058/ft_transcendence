@@ -8,6 +8,9 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=development
+      - APP_ORIGIN=${APP_ORIGIN:-https://localhost}
+      - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-604800}
+      - TRUSTED_PROXY_IP=${TRUSTED_PROXY_IP:-}
 
   frontend:
     build:

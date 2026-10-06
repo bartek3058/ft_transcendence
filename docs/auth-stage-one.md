@@ -1,5 +1,7 @@
 # Authentication stage 1: input and password handling
 
+Historical stage report. [Stage 2](auth-stage-two.md) now adds HTTP routes, cookie-session orchestration, origin checks and rate limits. Real database integration remains pending.
+
 Implemented 2026-10-04. This stage is database-independent and introduces no registration/login HTTP endpoints. It prepares the building blocks for the next stage: persisted accounts and sessions.
 
 ## Read the code in this order

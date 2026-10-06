@@ -2,10 +2,15 @@ import { BadRequestException, HttpException, PayloadTooLargeException, Unsupport
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, Request, Response, NextFunction } from 'express';
 import { AuthValidationPipe } from './auth/validation/auth-validation.pipe';
+import { AUTH_CONFIG, AuthConfig } from './auth/auth.config';
 
 // Factory must use { bodyParser: false } so this is the only JSON parser.
 export function configureApp(app: NestExpressApplication): void {
   app.setGlobalPrefix('api');
+  const config = app.get<AuthConfig>(AUTH_CONFIG);
+  // Never trust arbitrary forwarded headers. Blank configuration is fail-safe:
+  // all clients behind Nginx share its IP limit until its exact IP is configured.
+  app.set('trust proxy', config.trustedProxyIp ? [config.trustedProxyIp] : false);
   app.use('/api/auth', (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store');
     if (['POST', 'PUT', 'PATCH'].includes(req.method) && !req.is('application/json')) {

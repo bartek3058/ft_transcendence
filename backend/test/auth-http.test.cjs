@@ -5,7 +5,8 @@ const { NestFactory } = require('@nestjs/core');
 const { Module, Controller, Post, Body } = require('@nestjs/common');
 const { configureApp } = require('../dist/configure-app');
 const { RegisterDto } = require('../dist/auth/dto/register.dto');
-const { AppModule } = require('../dist/app.module');
+const { HealthModule } = require('../dist/health/health.module');
+const { AUTH_CONFIG, loadAuthConfig } = require('../dist/auth/auth.config');
 
 // Test-only route: exercises the real Express parser and global validation pipe.
 // It is never registered in the production application.
@@ -17,7 +18,8 @@ Post('register')(InputProbe.prototype, 'register', Object.getOwnPropertyDescript
 Body()(InputProbe.prototype, 'register', 0);
 Reflect.defineMetadata('design:paramtypes', [RegisterDto], InputProbe.prototype, 'register');
 class TestModule {}
-Module({ imports: [AppModule], controllers: [InputProbe] })(TestModule);
+Module({ imports: [HealthModule], controllers: [InputProbe],
+  providers: [{ provide: AUTH_CONFIG, useValue: loadAuthConfig({}) }] })(TestModule);
 let app;
 let base;
 before(async () => {
