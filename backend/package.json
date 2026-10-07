@@ -14,7 +14,8 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "prisma:generate": "prisma generate",
-    "prisma:migrate:deploy": "prisma migrate deploy"
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "test:db": "ts-node test/database-security-and-schema.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
