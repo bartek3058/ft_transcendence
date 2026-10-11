@@ -4,9 +4,14 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 
 async function main() {
+  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  if (!adminPassword) {
+    console.log('[Seed] ADMIN_PASSWORD not set or empty. Skipping admin user creation.');
+    return;
+  }
+
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@transcendence.local').trim().toLowerCase();
   const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin_Password123!';
 
   console.log(`[Seed] Checking for existing admin: ${adminEmail} (${adminUsername})...`);
 

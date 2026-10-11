@@ -18,6 +18,30 @@ services:
       timeout: 5s
       retries: 5
 
+  migration:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "Generating Prisma client..."
+        npx prisma generate
+        echo "Applying migrations with owner role..."
+        npx prisma migrate deploy
+        echo "Running database seed..."
+        npx prisma db seed
+    environment:
+      - DATABASE_URL=${MIGRATION_DATABASE_URL}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
@@ -28,13 +52,11 @@ services:
       - PORT=3000
       - NODE_ENV=development
       - DATABASE_URL=${DATABASE_URL}
-      - MIGRATION_DATABASE_URL=${MIGRATION_DATABASE_URL}
-      - ADMIN_EMAIL=${ADMIN_EMAIL}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
 
   frontend:
     build:

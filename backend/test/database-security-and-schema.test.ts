@@ -372,19 +372,93 @@ describe('PostgreSQL Database & Security Verification', () => {
     });
 
     it('should block DDL (CREATE/DROP TABLE) execution under runtime application credentials (Least Privilege)', async () => {
-      // Attempt to execute raw DDL query
-      try {
-        await prisma.$executeRawUnsafe('CREATE TABLE evil_table (id INT);');
-        // If it succeeded, check if the app user is properly restricted
-        await prisma.$executeRawUnsafe('DROP TABLE evil_table;');
-        // Note: In development if running under owner, this test documents role expectations
-      } catch (error: any) {
-        // Expected error code 42501 (permission denied) when running as APP_DB_USER
-        assert.ok(
-          error.message.includes('permission denied') || error.message.includes('42501'),
-          'Runtime user must not have CREATE TABLE permission',
-        );
+      await assert.rejects(
+        async () => {
+          await prisma.$executeRawUnsafe('CREATE TABLE evil_table (id INT);');
+        },
+        /permission denied|42501/i,
+        'Runtime user must not have CREATE TABLE permission (42501)',
+      );
+    });
+
+    it('should safely handle concurrent duplicate-account registration without corruption', async () => {
+      const email = `concurrent_${Date.now()}@transcendence.local`;
+      const username = `conc_${Date.now().toString().slice(-8)}`;
+      const passwordHash = '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$dummyhash';
+
+      // Execute two concurrent user creates with exact same email and username
+      const results = await Promise.allSettled([
+        prisma.user.create({ data: { email, username, passwordHash } }),
+        prisma.user.create({ data: { email, username, passwordHash } }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r) => r.status === 'rejected');
+
+      assert.equal(fulfilled.length, 1, 'Exactly one concurrent registration must succeed');
+      assert.equal(rejected.length, 1, 'Conflicting concurrent registration must be rejected');
+
+      // Verify rejection was due to unique constraint
+      const error = (rejected[0] as PromiseRejectedResult).reason;
+      assert.ok(
+        error.message.includes('Unique constraint failed') || error.code === 'P2002',
+        'Failure must be caused by unique constraint violation',
+      );
+
+      // Cleanup
+      if (fulfilled[0]?.status === 'fulfilled') {
+        const user = (fulfilled[0] as PromiseFulfilledResult<any>).value;
+        await prisma.user.delete({ where: { id: user.id } });
       }
+    });
+
+    it('should cleanly rollback on failed session replacement inside an atomic transaction', async () => {
+      const user = await prisma.user.create({
+        data: {
+          email: `sess_rollback_${Date.now()}@transcendence.local`,
+          username: `sess_${Date.now().toString().slice(-8)}`,
+          passwordHash: '$argon2id$dummy',
+        },
+      });
+
+      const initialTokenHash = '1'.repeat(64);
+      const initialSession = await prisma.session.create({
+        data: {
+          userId: user.id,
+          tokenHash: initialTokenHash,
+          expiresAt: new Date(Date.now() + 60000),
+        },
+      });
+
+      // Simulate session rotation transaction: delete old session, insert new one, but force an error
+      await assert.rejects(
+        async () => {
+          await prisma.$transaction(async (tx) => {
+            // Step 1: delete old session
+            await tx.session.delete({ where: { id: initialSession.id } });
+
+            // Step 2: insert invalid session (violates expires_at > created_at check constraint)
+            await tx.session.create({
+              data: {
+                userId: user.id,
+                tokenHash: '2'.repeat(64),
+                expiresAt: new Date(Date.now() - 60000), // invalid: in the past
+              },
+            });
+          });
+        },
+        /sessions_expiry_check|constraint/i,
+      );
+
+      // Verify that transaction rolled back: initial session must still exist
+      const sessionAfterRollback = await prisma.session.findUnique({
+        where: { id: initialSession.id },
+      });
+      assert.ok(sessionAfterRollback, 'Initial session must remain intact after rollback');
+      assert.equal(sessionAfterRollback?.tokenHash, initialTokenHash);
+
+      // Cleanup
+      await prisma.user.delete({ where: { id: user.id } });
     });
 
     it('should safely project public user profile without exposing passwordHash', async () => {

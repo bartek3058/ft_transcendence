@@ -79,20 +79,26 @@ When running `docker compose up --build` or `make up`:
 ```mermaid
 flowchart TD
     A["postgres container starts"] --> B["Health check: pg_isready"]
-    B -- Healthy --> C["backend container starts (docker-entrypoint.sh)"]
+    B -- Healthy --> C["migration container starts"]
     C --> D["npx prisma generate"]
     D --> E["npx prisma migrate deploy (MIGRATION_DATABASE_URL)"]
     E --> F["npx prisma db seed (idempotent admin creation)"]
-    F --> G["npm run start:dev (NestJS launch)"]
+    F -- Exits 0 --> G["backend container starts (docker-entrypoint.sh)"]
+    G --> H["npx prisma generate"]
+    H --> I["npm run start:dev (NestJS launch with restricted APP_DB_USER)"]
 ```
 
 1. **`postgres`** starts and checks readiness via `pg_isready`.
-2. **`backend`** waits until `postgres` reports healthy.
-3. **`docker-entrypoint.sh`**:
+2. **`migration`** starts once `postgres` is healthy:
+   - Receives owner credentials (`MIGRATION_DATABASE_URL`).
    - Generates Prisma client bindings (`npx prisma generate`).
-   - Applies any unapplied migrations via `MIGRATION_DATABASE_URL` (`npx prisma migrate deploy`).
-   - Runs idempotent seeding via `npx prisma db seed`.
-   - Starts the NestJS development server.
+   - Applies unapplied migrations (`npx prisma migrate deploy`).
+   - Runs idempotent seeding (`npx prisma db seed`).
+   - Completes successfully and exits.
+3. **`backend`** starts once `migration` completes successfully:
+   - Receives only runtime application credentials (`DATABASE_URL`).
+   - Generates Prisma client bindings.
+   - Starts the NestJS server without access to database-owner credentials.
 
 ---
 
