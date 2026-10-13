@@ -2,7 +2,18 @@ require('reflect-metadata');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { NestFactory } = require('@nestjs/core');
-const { AppModule } = require('../dist/app.module');
+const { Module } = require('@nestjs/common');
+const { AuthModule } = require('../dist/auth/auth.module');
+const { HealthModule } = require('../dist/health/health.module');
+// Isolate the unavailable-adapter contract from PostgreSQL startup.
+class AuthInfrastructureModule {}
+const { AuthRepository } = require('../dist/auth/auth.repository');
+const { UnavailableAuthRepository } = require('../dist/auth/unavailable-auth.repository');
+const providers = Reflect.getMetadata('providers', AuthModule).map(provider =>
+  provider.provide === AuthRepository
+    ? { provide: AuthRepository, useClass: UnavailableAuthRepository } : provider);
+Module({ imports: [HealthModule], controllers: Reflect.getMetadata('controllers', AuthModule),
+  providers })(AuthInfrastructureModule);
 const { configureApp } = require('../dist/configure-app');
 const { AuthRateLimiter } = require('../dist/auth/auth-rate-limiter');
 const { loadAuthConfig } = require('../dist/auth/auth.config');
@@ -42,8 +53,8 @@ test('logout accepts only an empty object', async () => {
   }
 });
 
-test('real application fails closed without database adapter while health remains live', async (t) => {
-  const app = await NestFactory.create(AppModule, { bodyParser: false, logger: false });
+test('auth module fails closed without database adapter while health remains live', async (t) => {
+  const app = await NestFactory.create(AuthInfrastructureModule, { bodyParser: false, logger: false });
   configureApp(app);
   await app.listen(0, '127.0.0.1');
   t.after(() => app.close());

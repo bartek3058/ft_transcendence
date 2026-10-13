@@ -1,4 +1,47 @@
 services:
+  postgres:
+    image: postgres:16-bookworm
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./backend/prisma/init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migration:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "Generating Prisma client..."
+        npx prisma generate
+        echo "Applying migrations with owner role..."
+        npx prisma migrate deploy
+        echo "Running database seed..."
+        npx prisma db seed
+    environment:
+      - DATABASE_URL=${MIGRATION_DATABASE_URL}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
@@ -11,6 +54,12 @@ services:
       - APP_ORIGIN=${APP_ORIGIN:-https://localhost}
       - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-604800}
       - TRUSTED_PROXY_IP=${TRUSTED_PROXY_IP:-}
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
 
   frontend:
     build:
@@ -29,3 +78,6 @@ services:
     depends_on:
       - backend
       - frontend
+
+volumes:
+  db_data:

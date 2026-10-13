@@ -1,6 +1,6 @@
 # Authentication stage 2: request flow and cookie sessions
 
-Implemented in `chess_git/git_brogal`, 2026-10-06. The database teammate's Prisma/PostgreSQL work is not ready. This stage implements the HTTP and authentication behavior against an explicit repository interface. **The deployed application does not yet create real accounts:** its default repository returns 503 for operations requiring storage. Test storage exists only under `backend/test/`.
+Implemented in `chess_git/git_brogal`, 2026-10-06; database integration completed 2026-10-11. The real Prisma adapter is now wired into AuthModule and verified against PostgreSQL. See [registration/login testing](auth-testing.md) for the current test and manual verification workflow.
 
 ## What happens next, and why this split helps
 
@@ -17,7 +17,7 @@ flowchart TD
     F --> H[SessionService]
     F --> I[AuthRepository interface]
     H --> I
-    I --> J[Prisma adapter: pending database teammate]
+    I --> J[Prisma adapter: PostgreSQL]
 ```
 
 `GET /me` uses SessionGuard instead of credential DTOs: it looks up the cookie token's hash, checks expiry on every request and attaches only safe account fields. Logout uses an explicitly empty DTO. Nest guards run before parameter validation; account rate-limit keys therefore use a type-checked, bounded, normalized email rather than trusting an already validated DTO.
@@ -39,7 +39,7 @@ The returned owner profile is exactly `{id, email, username, createdAt}`. Future
 
 1. [AuthController](../backend/src/auth/auth.controller.ts) declares the four endpoints, DTOs, guards and cookie operations. It has no SQL or password hashing logic.
 2. [AuthService](../backend/src/auth/auth.service.ts) orchestrates registration/login; [UsersService](../backend/src/auth/users.service.ts) translates repository outcomes to safe profile data or HTTP errors.
-3. [AuthRepository](../backend/src/auth/auth.repository.ts) is the database contract. The default [unavailable adapter](../backend/src/auth/unavailable-auth.repository.ts) rejects storage operations. It never stores data or grants authentication.
+3. [AuthRepository](../backend/src/auth/auth.repository.ts) is the database contract. The [Prisma adapter](../backend/src/auth/prisma-auth.repository.ts) provides production persistence. The unavailable adapter remains only for explicit failure-path tests.
 4. [SessionService](../backend/src/auth/session.service.ts) issues, checks and revokes sessions; [session-cookie.ts](../backend/src/auth/session-cookie.ts) handles random token generation, SHA-256 hashing and strict cookie extraction.
 5. [SessionGuard](../backend/src/auth/session.guard.ts) is reusable by later authenticated endpoints. Import AuthModule and apply `@UseGuards(SessionGuard)`; a session check does not replace per-resource authorization.
 6. [AuthRequestGuard](../backend/src/auth/auth-request.guard.ts) checks origin/header and applies [rate limits](../backend/src/auth/auth-rate-limiter.ts). [AuthExceptionFilter](../backend/src/auth/auth-exception.filter.ts) formats safe auth errors and Retry-After.
@@ -55,7 +55,7 @@ The returned owner profile is exactly `{id, email, username, createdAt}`. Future
 - With a configured adapter, an hourly timer deletes at most 500 expired rows and never overlaps itself. A cleanup backlog does not make expired tokens valid; monitor/tune batch size if usage grows.
 - Ambiguous duplicate session cookies and malformed tokens are rejected. Tokens in query parameters or Authorization headers are not used.
 
-## Database teammate: implement this adapter
+## Database adapter contract (implemented)
 
 The table/constraint requirements remain in [auth-database-handoff.md](auth-database-handoff.md). The next integration deliverable is a Nest injectable class extending `AuthRepository`, with `configured = true`, using the shared PrismaService:
 
@@ -68,7 +68,7 @@ The table/constraint requirements remain in [auth-database-handoff.md](auth-data
 | `deleteSession(hash)` | Idempotent delete; DB failures must reject, not look like success |
 | `deleteExpiredSessions(now, limit)` | Delete at most limit rows with expiresAt <= now; return actual count; use expiry index |
 
-Wire the provider in [AuthModule](../backend/src/auth/auth.module.ts): import DatabaseModule and replace `{ provide: AuthRepository, useClass: UnavailableAuthRepository }` with `{ provide: AuthRepository, useClass: PrismaAuthRepository }`. Let Nest inject the shared PrismaService into that adapter. Do not register both providers under the same token, create another connection pool, or import test storage.
+The provider is wired in [AuthModule](../backend/src/auth/auth.module.ts) using DatabaseModule and `{ provide: AuthRepository, useClass: PrismaAuthRepository }`. Nest injects the shared PrismaService into that adapter. Do not register both providers under the same token, create another connection pool, or import test storage.
 
 The adapter must pass integration tests against real PostgreSQL before the module is considered functional. Specifically verify concurrent unique registration, transaction rollback on session replacement, revocation, session expiry, persistence across process restart and cleanup limits. The current in-memory test double validates orchestration/error mapping, **not PostgreSQL constraints or transaction isolation**.
 
@@ -88,7 +88,7 @@ Current single-process limits: 60 auth requests per IP/minute; 20 combined regis
 
 The existing 16 KiB backend JSON limit now has an auth-specific Nginx limit with a JSON 413 response. Local certificate generation includes a localhost/127.0.0.1 Subject Alternative Name; it is still self-signed and needs explicit local trust. A second computer needs the actual reachable hostname in a trusted certificate—localhost does not solve remote access. No insecure cookie mode was added.
 
-## Frontend integration after the database adapter lands
+## Frontend integration
 
 From the existing same-origin React app:
 
@@ -116,7 +116,7 @@ From backend with Node 22: `npm ci`, then `npm test`. Tests use actual Nest HTTP
 
 Verified on 2026-10-06: TypeScript/Nest build and all 37 tests passed. Documentation links and `git diff --check` also passed. The existing dependency lockfile was used without adding packages.
 
-Still pending: real Prisma adapter and PostgreSQL tests; trusted HTTPS browser and Docker/Nginx integration checks; frontend forms; dependency-advisory remediation already recorded in stage 1. Docker/Nginx are unavailable in this workspace, so their configuration changes have not been executed here. Passing HTTP harness tests does not validate browser cookie enforcement or the proxy deployment.
+Prisma adapter and PostgreSQL tests are complete. Still pending: trusted HTTPS browser and Docker/Nginx integration checks; frontend forms; dependency-advisory remediation already recorded in stage 1. Docker/Nginx are unavailable in this workspace, so their configuration changes have not been executed here. Passing HTTP harness tests does not validate browser cookie enforcement or the proxy deployment.
 
 AI assistance: this stage's auth orchestration, guards, repository contract, tests and documentation were drafted with an AI coding assistant. Review these pieces as a team and ensure contributors can explain the behavior during evaluation.
 
