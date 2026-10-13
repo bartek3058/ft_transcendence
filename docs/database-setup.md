@@ -83,9 +83,8 @@ flowchart TD
     C --> D["npx prisma generate"]
     D --> E["npx prisma migrate deploy (MIGRATION_DATABASE_URL)"]
     E --> F["npx prisma db seed (idempotent admin creation)"]
-    F -- Exits 0 --> G["backend container starts (docker-entrypoint.sh)"]
-    G --> H["npx prisma generate"]
-    H --> I["npm run start:dev (NestJS launch with restricted APP_DB_USER)"]
+    F -- Exits 0 --> G["backend container starts"]
+    G --> I["npm run start:dev (NestJS launch with restricted APP_DB_USER)"]
 ```
 
 1. **`postgres`** starts and checks readiness via `pg_isready`.
@@ -97,7 +96,7 @@ flowchart TD
    - Completes successfully and exits.
 3. **`backend`** starts once `migration` completes successfully:
    - Receives only runtime application credentials (`DATABASE_URL`).
-   - Generates Prisma client bindings.
+   - Uses Prisma client bindings generated during the Docker image build.
    - Starts the NestJS server without access to database-owner credentials.
 
 ---
@@ -114,7 +113,10 @@ ADMIN_PASSWORD=replace-with-secure-admin-password
 On startup, `backend/prisma/seed.ts`:
 - Checks if a user with `ADMIN_EMAIL` or `ADMIN_USERNAME` already exists.
 - If missing, securely hashes `ADMIN_PASSWORD` using Argon2id and creates the user with `role: 'admin'`.
-- If an admin exists, it safely skips insertion without error.
+- If `ADMIN_PASSWORD` is absent or empty, skips bootstrap entirely. The example environment leaves it empty.
+- Preserves the password exactly, including spaces. Requires 15–128 Unicode characters, valid Unicode and at most 512 UTF-8 bytes, matching registration.
+- Skips insertion only when both identifiers match an existing admin; its current password is retained.
+- Fails startup on any other identity collision; existing ordinary users are never promoted.
 
 ---
 
@@ -127,4 +129,47 @@ On startup, `backend/prisma/seed.ts`:
   make clean
   # or: docker compose down -v
   ```
-  On the subsequent `make up`, PostgreSQL will re-run the role initialization script and the backend entrypoint will recreate tables and the admin account from scratch.
+  On the subsequent `make up`, PostgreSQL will re-run the role initialization script and the migration service will recreate tables and the admin account from scratch.
+
+
+## 7. Running verification
+
+Use Node.js 22 (the Docker image pins 22.23.3). From `backend`, run `npm ci`, `npm run prisma:generate`,
+`npm run test:bootstrap`, and `npm run build`. Bootstrap unit tests need no database.
+
+Database tests require a **separate disposable database**, with a name ending in
+`_test` (for example `chess_test`). Provision it using the same owner/application
+role separation and grants as the application database. Apply migrations to that
+database using the owner URL:
+
+```bash
+DATABASE_URL='<owner URL for chess_test>' npm run prisma:migrate:deploy
+TEST_DATABASE_URL='<application-role URL for chess_test>' npm run test:db
+```
+
+`test:db` never falls back to `DATABASE_URL`. Do not point it at a database containing
+real users or games. It creates its own user fixture and does not require admin
+seeding. The DDL permission check rolls back even when permissions are incorrect.
+Other tests clean up on success; if a test fails, fixture records can remain in the
+disposable database. Never use owner credentials for `TEST_DATABASE_URL`.
+
+
+## Integration with authentication
+
+This folder combines the database implementation with the existing authentication
+backend. Admin bootstrap reuses the authentication password validation policy.
+`main.ts`, `configure-app.ts`, Nginx configuration, auth dependencies and
+auth tests are retained. Docker generates Prisma bindings at build time and runs
+migrations/seeding in a separate owner-credential service. The backend connects
+using the restricted application role.
+
+The `AuthRepository` binding uses `PrismaAuthRepository` and the shared PrismaService.
+The adapter provides account persistence, atomic session rotation and bounded cleanup. `npm test` tests authentication without PostgreSQL;
+`npm run test:bootstrap` tests seed policies and the database URL guard;
+`npm run test:db` and `npm run test:auth:db` require the isolated database described above.
+See [auth testing](auth-testing.md) for commands and the manual browser checklist.
+
+For local backend startup, provide `DATABASE_URL` in the process environment.
+The root `.env` is used by Docker Compose; it is not automatically loaded by Nest.
+Copy any missing values from `.env.example` into your local configuration and set
+real database secrets. URL-encode passwords in connection URLs.
