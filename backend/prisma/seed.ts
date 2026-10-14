@@ -1,31 +1,34 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { isExistingAdmin, validateAdminPassword } from './admin-bootstrap';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
-  if (!adminPassword) {
+  const configuredPassword = process.env.ADMIN_PASSWORD;
+  if (configuredPassword === undefined || configuredPassword === '') {
     console.log('[Seed] ADMIN_PASSWORD not set or empty. Skipping admin user creation.');
     return;
   }
+  const adminPassword = validateAdminPassword(configuredPassword);
 
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@transcendence.local').trim().toLowerCase();
   const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
 
   console.log(`[Seed] Checking for existing admin: ${adminEmail} (${adminUsername})...`);
 
-  const existingUser = await prisma.user.findFirst({
+  const existingUsers = await prisma.user.findMany({
     where: {
       OR: [
         { email: adminEmail },
         { username: adminUsername },
       ],
     },
+    select: { email: true, username: true, role: true },
   });
 
-  if (existingUser) {
-    console.log(`[Seed] User already exists (id: ${existingUser.id}, role: ${existingUser.role}). Skipping seed.`);
+  if (isExistingAdmin(existingUsers, adminEmail, adminUsername)) {
+    console.log('[Seed] Matching admin already exists. Keeping its current password.');
     return;
   }
 
@@ -52,8 +55,9 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('[Seed] Error seeding admin user:', e);
-    process.exit(1);
+    // Prisma errors can include query inputs; never log a credential/hash payload.
+    console.error('[Seed] Admin bootstrap failed:', e.constructor === Error ? e.message : 'Database operation failed. Check connectivity and bootstrap identity configuration.');
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

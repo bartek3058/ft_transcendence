@@ -1,30 +1,47 @@
-import { test, describe, it, before, after } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { randomUUID } from 'node:crypto';
+import { requireTestDatabaseUrl } from './test-database-url';
+
+const prisma = new PrismaClient({
+  datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
+});
+let fixtureId: string;
+
 
 describe('PostgreSQL Database & Security Verification', () => {
   before(async () => {
     await prisma.$connect();
+    const suffix = randomUUID().replace(/-/g, '').slice(0, 12);
+    const fixture = await prisma.user.create({ data: {
+      email: `fixture_${suffix}@example.test`, username: `fixture_${suffix}`,
+      passwordHash: '$argon2id$test-fixture-not-a-real-password',
+    } });
+    fixtureId = fixture.id;
   });
 
   after(async () => {
-    await prisma.$disconnect();
+    try {
+      if (fixtureId) await prisma.user.deleteMany({ where: { id: fixtureId } });
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   /* -------------------------------------------------------------------------
    * Suite 1: Schema Integrity & Core Relations
    * ------------------------------------------------------------------------- */
   describe('Suite 1: Schema Integrity & Core Relations', () => {
-    it('should verify database connectivity and admin user presence', async () => {
-      const admin = await prisma.user.findFirst({
-        where: { role: 'admin' },
+    it('should retrieve its own user fixture without requiring an admin seed', async () => {
+      const fixture = await prisma.user.findFirst({
+        where: { id: fixtureId },
       });
-      assert.ok(admin, 'Admin user should be seeded in the database');
-      assert.equal(admin.role, 'admin');
-      assert.ok(admin.passwordHash.startsWith('$argon2id$'), 'Admin password must use Argon2id hash');
-      assert.ok(['offline', 'online', 'in_game'].includes(admin.status));
+      assert.ok(fixture, 'Test fixture should exist');
+      assert.equal(fixture.role, 'user');
+      assert.ok(fixture.passwordHash.startsWith('$argon2id$'), 'Fixture should have the expected hash format');
+      assert.ok(['offline', 'online', 'in_game'].includes(fixture.status));
     });
 
     it('should create and retrieve a valid user with default rating and status', async () => {
@@ -374,7 +391,11 @@ describe('PostgreSQL Database & Security Verification', () => {
     it('should block DDL (CREATE/DROP TABLE) execution under runtime application credentials (Least Privilege)', async () => {
       await assert.rejects(
         async () => {
-          await prisma.$executeRawUnsafe('CREATE TABLE evil_table (id INT);');
+          await prisma.$transaction(async (tx) => {
+            await tx.$executeRawUnsafe('CREATE TABLE evil_table (id INT);');
+            // Roll back even if the role is incorrectly privileged.
+            throw new Error('DDL unexpectedly succeeded');
+          });
         },
         /permission denied|42501/i,
         'Runtime user must not have CREATE TABLE permission (42501)',
@@ -462,8 +483,8 @@ describe('PostgreSQL Database & Security Verification', () => {
     });
 
     it('should safely project public user profile without exposing passwordHash', async () => {
-      const admin = await prisma.user.findFirst({
-        where: { role: 'admin' },
+      const fixture = await prisma.user.findFirst({
+        where: { id: fixtureId },
         select: {
           id: true,
           username: true,
@@ -474,8 +495,8 @@ describe('PostgreSQL Database & Security Verification', () => {
         },
       });
 
-      assert.ok(admin);
-      assert.equal('passwordHash' in admin, false, 'Public profile projections must not expose passwordHash');
+      assert.ok(fixture);
+      assert.equal('passwordHash' in fixture, false, 'Public profile projections must not expose passwordHash');
     });
   });
 });
