@@ -15,7 +15,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "test:db": "ts-node --project tsconfig.tools.json test/database-security-and-schema.test.ts",
     "test:bootstrap": "ts-node --project tsconfig.tools.json test/admin-bootstrap.test.ts",
-    "test:auth:db": "npm run build && node --test test/integration/auth-postgres.test.cjs"
+    "test:auth:db": "npm run build && node --test test/integration/auth-postgres.test.cjs",
+    "test:elo": "ts-node --project tsconfig.tools.json test/elo.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
