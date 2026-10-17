@@ -1,6 +1,124 @@
-import { FormEvent, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { FormEvent, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-function validate(username:string,password:string,confirm:string){const u=username.trim().toLowerCase();if(!/^[a-z0-9_]{3,20}$/.test(u))return 'Nazwa użytkownika: 3–20 znaków, tylko a-z, 0-9 i _.';if(Array.from(password).length<15)return 'Hasło musi mieć co najmniej 15 znaków.';if(Array.from(password).length>128)return 'Hasło może mieć maksymalnie 128 znaków.';if(new TextEncoder().encode(password).length>512)return 'Hasło jest zbyt długie.';if(password!==confirm)return 'Hasła nie są identyczne.';return ''}
-export function RegisterPage(){const {user,register}=useAuth();const navigate=useNavigate();const [email,setEmail]=useState('');const [username,setUsername]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [error,setError]=useState('');const [success,setSuccess]=useState('');const [busy,setBusy]=useState(false);if(user)return <Navigate to="/" replace/>;async function submit(e:FormEvent){e.preventDefault();setError('');setSuccess('');const validation=validate(username,password,confirm);if(validation){setError(validation);return}setBusy(true);try{await register(email.trim().toLowerCase(),username.trim().toLowerCase(),password);setSuccess('Konto utworzone. Możesz się teraz zalogować.');setTimeout(()=>navigate('/login',{replace:true}),900);}catch(err){setError(err instanceof Error?err.message:'Nie udało się utworzyć konta.');}finally{setBusy(false)}}return <div className="auth-shell"><section className="auth-card"><div className="auth-brand">♞ <b>ChessHub</b></div><h1>Utwórz konto</h1><p>Publiczna nazwa użytkownika zostanie zapisana małymi literami.</p><form onSubmit={submit} className="auth-form"><label>E-mail<input type="email" autoComplete="email" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Nazwa użytkownika<input type="text" autoComplete="username" required minLength={3} maxLength={20} value={username} onChange={e=>setUsername(e.target.value)}/></label><label>Hasło<input type="password" autoComplete="new-password" required value={password} onChange={e=>setPassword(e.target.value)}/><small>Minimum 15 znaków. Spacje są częścią hasła.</small></label><label>Powtórz hasło<input type="password" autoComplete="new-password" required value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>{error&&<div className="auth-error" role="alert">{error}</div>}{success&&<div className="auth-success">{success}</div>}<button className="auth-submit" disabled={busy}>{busy?'Tworzenie konta…':'Zarejestruj się'}</button></form><div className="auth-switch">Masz już konto? <Link to="/login">Zaloguj się</Link></div></section></div>}
+function validate(username: string, password: string, confirm: string) {
+  const u = username.trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,20}$/.test(u))
+    return "Nazwa użytkownika: 3–20 znaków, tylko a-z, 0-9 i _.";
+  if (Array.from(password).length < 15)
+    return "Hasło musi mieć co najmniej 15 znaków.";
+  if (Array.from(password).length > 128)
+    return "Hasło może mieć maksymalnie 128 znaków.";
+  if (new TextEncoder().encode(password).length > 512)
+    return "Hasło jest zbyt długie.";
+  if (password !== confirm) return "Hasła nie są identyczne.";
+  return "";
+}
+export function RegisterPage() {
+  const { user, register } = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (user) return <Navigate to="/" replace />;
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    const validation = validate(username, password, confirm);
+    if (validation) {
+      setError(validation);
+      return;
+    }
+    setBusy(true);
+    try {
+      await register(
+        email.trim().toLowerCase(),
+        username.trim().toLowerCase(),
+        password,
+      );
+      setSuccess("Konto utworzone. Możesz się teraz zalogować.");
+      setTimeout(() => navigate("/login", { replace: true }), 900);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Nie udało się utworzyć konta.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="auth-shell">
+      <section className="auth-card">
+        <div className="auth-brand">
+          ♞ <b>ChessHub</b>
+        </div>
+        <h1>Utwórz konto</h1>
+        <p>Publiczna nazwa użytkownika zostanie zapisana małymi literami.</p>
+        <form onSubmit={submit} className="auth-form">
+          <label>
+            E-mail
+            <input
+              type="email"
+              autoComplete="email"
+              required
+              maxLength={254}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            Nazwa użytkownika
+            <input
+              type="text"
+              autoComplete="username"
+              required
+              minLength={3}
+              maxLength={20}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </label>
+          <label>
+            Hasło
+            <input
+              type="password"
+              autoComplete="new-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <small>Minimum 15 znaków. Spacje są częścią hasła.</small>
+          </label>
+          <label>
+            Powtórz hasło
+            <input
+              type="password"
+              autoComplete="new-password"
+              required
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          </label>
+          {error && (
+            <div className="auth-error" role="alert">
+              {error}
+            </div>
+          )}
+          {success && <div className="auth-success">{success}</div>}
+          <button className="auth-submit" disabled={busy}>
+            {busy ? "Tworzenie konta…" : "Zarejestruj się"}
+          </button>
+        </form>
+        <div className="auth-switch">
+          Masz już konto? <Link to="/login">Zaloguj się</Link>
+        </div>
+      </section>
+    </div>
+  );
+}
