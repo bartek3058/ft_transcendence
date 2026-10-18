@@ -1,23 +1,39 @@
-import React, { useEffect, useState } from 'react';
+import { Navigate, Route, Routes } from "react-router-dom";
+import { Header } from "./components/layout/Header";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { GamePage } from "./pages/GamePage";
+import { TournamentsPage } from "./pages/TournamentsPage";
+import { RankingPage } from "./pages/RankingPage";
+import { HistoryPage } from "./pages/HistoryPage";
+import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { ProfilePage } from "./pages/ProfilePage";
 
-export default function App() {
-  const [health, setHealth] = useState<string>('Checking backend status...');
-
-  useEffect(() => {
-    fetch('/api/health/')
-      .then((res) => res.json())
-      .then((data) => setHealth(JSON.stringify(data)))
-      .catch((err) => setHealth('Failed to connect to backend: ' + err.message));
-  }, []);
-
+function AppLayout() {
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '2rem', textAlign: 'center' }}>
-      <h1>🏓 Welcome to ft_transcendence</h1>
-      <p>Infrastructure baseline is up and running!</p>
-      <div style={{ marginTop: '2rem', padding: '1rem', background: '#f4f4f5', borderRadius: '8px', display: 'inline-block' }}>
-        <strong>Backend Health Status (/api/health/):</strong>
-        <pre>{health}</pre>
-      </div>
+    <div className="app">
+      <Header />
+      <main>
+        <Routes>
+          <Route path="/" element={<GamePage />} />
+          <Route path="/tournaments" element={<TournamentsPage />} />
+          <Route path="/ranking" element={<RankingPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
     </div>
+  );
+}
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/*" element={<AppLayout />} />
+      </Route>
+    </Routes>
   );
 }
