@@ -27,6 +27,7 @@ export interface MoveExecutionResult
     currentFen: string;
     //Explicit failure code if success is false
     errorReason?:
+    | 'UNAUTHORIZED_PLAYER'
     | 'NOT_YOUR_TURN'
     | 'ILLEGAL_MOVE'
     | 'GAME_NOT_FOUND'
@@ -37,7 +38,7 @@ export interface MoveExecutionResult
     isGameOver?: boolean;
     //detailed reason why the game ended or null if still ongoing
     gameOverReason?: GameOverReason | null;
-    winnerColor?: DatabaseMoveColor | null;
+    winnerColor?: PlayerColor | null;
 }
 
 export interface CreateGameOptions 
@@ -114,4 +115,14 @@ export interface PublicGameState
     isFinished: boolean;
     winnerColor: PlayerColor | null;
     gameOverReason: GameOverReason | null;
+}
+
+// (Hot-Path) if aithorized is false, 'rejectionResult' contains a ready-to-send 'MoveExecutionResult'
+// with the authoritative 'currentFen' for client resynchronization
+export interface MoveAuthorizationResult
+{
+    authorized: boolean;
+    session?: GameSession;
+    playerColor?: PlayerColor;
+    rejectionResult?: MoveExecutionResult;
 }

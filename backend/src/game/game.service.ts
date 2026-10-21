@@ -11,6 +11,9 @@ import {
   GameSession,
   PendingMoveRecord,
   PublicGameState,
+  MoveAuthorizationResult,
+  MoveExecutionResult,
+  PlayerColor,
 } from './types/chess.types';
 
 //Default time control: 10 minutes (600,000 ms) per player.
@@ -183,6 +186,100 @@ export class GameService
   //Temporary asynchronous stub simulating database write until Prisma schema for moves is merged.
   private async persistSingleMoveStub(_move: PendingMoveRecord): Promise<void> {
     return Promise.resolve();
+  }
+  public authorizeMove(
+    gameId: string,
+    authenticatedUserId: string,
+  ): MoveAuthorizationResult {
+    const session = this.activeGames.get(gameId);
+
+    //verify the match exists in Hot-path RAM
+    if (!session){
+      this.logger.warn(
+        'Move authorization failed: Game [${gameId}] not found in RAM (User: ${authenticatedUserId}).',
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen: '',
+          errorReason: 'GAME_NOT_FOUND',
+        },
+      };
+    }
+    const currentFen = session.engine.fen();
+
+    //verify the match has not already concluded
+    if (session.isFinished){
+      this.logger.warn(
+        `Move authorization failed: Game [${gameId}] is already finished (User: ${authenticatedUserId}).`,
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'GAME_ALREADY_FINISHED',
+          isGameOver: true,
+          gameOverReason: session.gameOverReason,
+          winnerColor: session.winnerColor,
+        },
+      };
+    }
+
+    //verify the user is actually one of the two seated players (not a spectator)
+    const playerColor = this.getPlayerColor(session, authenticatedUserId);
+    if (!playerColor) {
+      this.logger.warn(
+        `Move authorization failed: User [${authenticatedUserId}] is not a participant in game [${gameId}].`,
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'UNAUTHORIZED_PLAYER',
+        },
+      };
+    }
+
+    //Verify it is currently this player's turn to move
+    const activeTurnColor = session.engine.turn();
+    if (playerColor !== activeTurnColor) {
+      this.logger.debug(
+        `Move authorization failed: User [${authenticatedUserId}] (${playerColor}) attempted to move on ${activeTurnColor}'s turn in game [${gameId}].`,
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'NOT_YOUR_TURN',
+        },
+      };
+    }
+
+    return {
+      authorized: true,
+      session,
+      playerColor,
+    };
+  }
+
+  public getPlayerColor(
+    session: GameSession,
+    userId: string,
+  ): PlayerColor | null {
+    if (!userId) {
+      return null;
+    }
+    if (session.whitePlayerId === userId) {
+      return 'w';
+    }
+    if (session.blackPlayerId === userId) {
+      return 'b';
+    }
+    return null;
   }
 }
 
