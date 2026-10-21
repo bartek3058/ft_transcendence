@@ -4,8 +4,12 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  Optional,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Chess } from 'chess.js';
+import { SafeAccount } from '../auth/auth.repository';
+import { SessionService } from '../auth/session.service';
 import {
   CreateGameOptions,
   GameSession,
@@ -34,6 +38,9 @@ export class GameService
    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
     private isFlushingQueue = false;
+    constructor(
+      @Optional() private readonly sessionService?: SessionService,
+    ) {}
     public createGame(options: CreateGameOptions): PublicGameState {
     const {
       gameId,
@@ -189,7 +196,7 @@ export class GameService
   }
   public authorizeMove(
     gameId: string,
-    authenticatedUserId: string,
+    caller: SafeAccount | string | null | undefined,
   ): MoveAuthorizationResult {
     const session = this.activeGames.get(gameId);
 
@@ -208,6 +215,21 @@ export class GameService
       };
     }
     const currentFen = session.engine.fen();
+
+    const authenticatedUserId =
+      typeof caller === 'string' ? caller.trim() : caller?.id; // if given string take string if not takie caller.id from SafeAccount
+
+    if (!authenticatedUserId) {
+      this.logger.warn('Move authorization failed: Unauthenticated caller in game [${gameId}].');
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'UNAUTHENTICATED',
+        },
+      };
+    }
 
     //verify the match has not already concluded
     if (session.isFinished){
@@ -263,7 +285,39 @@ export class GameService
       authorized: true,
       session,
       playerColor,
+      playerId: authenticatedUserId,
     };
+  }
+
+  public async authorizeMoveBySessionToken(
+    gameId: string,
+    sessionToken: string | null,
+  ): Promise<MoveAuthorizationResult> {
+    const session = this.activeGames.get(gameId);
+    const fallbackFen = session ? session.engine.fen() : '';
+
+    if (!this.sessionService) {
+      throw new Error(
+        'SessionService is not injected. Ensure AuthModule is imported in GameModule.',
+      );
+    }
+
+    try {
+      const account = await this.sessionService.authenticate(sessionToken);
+      return this.authorizeMove(gameId, account);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        return {
+          authorized: false,
+          rejectionResult: {
+            success: false,
+            currentFen: fallbackFen,
+            errorReason: 'UNAUTHENTICATED',
+          },
+        };
+      }
+      throw error;
+    }
   }
 
   public getPlayerColor(
@@ -281,5 +335,8 @@ export class GameService
     }
     return null;
   }
+  
 }
+
+
 

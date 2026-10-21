@@ -27,6 +27,7 @@ export interface MoveExecutionResult
     currentFen: string;
     //Explicit failure code if success is false
     errorReason?:
+    | 'UNAUTHENTICATED'
     | 'UNAUTHORIZED_PLAYER'
     | 'NOT_YOUR_TURN'
     | 'ILLEGAL_MOVE'
@@ -124,5 +125,6 @@ export interface MoveAuthorizationResult
     authorized: boolean;
     session?: GameSession;
     playerColor?: PlayerColor;
+    playerId?: string;
     rejectionResult?: MoveExecutionResult;
 }
