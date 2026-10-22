@@ -25,7 +25,7 @@ async function readError(response: Response): Promise<Error> {
   } catch {
     /* empty/non-json error */
   }
-  const message = body?.error?.message ?? `Błąd serwera (${response.status})`;
+  const message = body?.error?.message ?? `Server error (${response.status})`;
   const error = new Error(message) as Error & {
     status?: number;
     code?: string;

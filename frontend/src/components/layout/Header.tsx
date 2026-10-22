@@ -1,18 +1,20 @@
-import { LogOut, UserRound  } from "lucide-react";
+import { LogOut, UserRound } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 export function Header() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
   async function signOut() {
     try {
       await logout();
       navigate("/login", { replace: true });
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Nie udało się wylogować.");
+      alert(err instanceof Error ? err.message : "Failed to log out.");
     }
   }
+
   return (
     <header>
       <NavLink className="brand" to="/">
@@ -21,11 +23,11 @@ export function Header() {
       </NavLink>
       <nav>
         <NavLink to="/" end>
-          Graj
+          Play
         </NavLink>
-        <NavLink to="/tournaments">Turnieje</NavLink>
+        <NavLink to="/tournaments">Tournaments</NavLink>
         <NavLink to="/ranking">Ranking</NavLink>
-        <NavLink to="/history">Historia</NavLink>
+        <NavLink to="/history">History</NavLink>
       </nav>
       <div className="user">
         <span className="dot" />
@@ -35,8 +37,8 @@ export function Header() {
         </NavLink>
         <button
           className="icon"
-          aria-label="Wyloguj"
-          title="Wyloguj"
+          aria-label="Log out"
+          title="Log out"
           onClick={() => void signOut()}
         >
           <LogOut size={18} />

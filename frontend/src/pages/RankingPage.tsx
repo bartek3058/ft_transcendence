@@ -2,7 +2,7 @@ import { Page } from "../components/ui/Page";
 import { ranking } from "../data/mockData";
 export function RankingPage() {
   return (
-    <Page title="Ranking ELO" sub="Najlepsi gracze platformy.">
+    <Page title="ELO Ranking" sub="The best players on the platform.">
       <div className="card table">
         {ranking.map(([name, elo], i) => (
           <div key={name}>

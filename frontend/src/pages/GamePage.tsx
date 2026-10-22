@@ -64,7 +64,7 @@ export function GamePage() {
             <h2>{chess.result.title}</h2>
             <p>{chess.result.message}</p>
             <button className="primary resultButton" onClick={chess.reset}>
-              Zagraj ponownie
+              Play again
             </button>
           </div>
         </div>

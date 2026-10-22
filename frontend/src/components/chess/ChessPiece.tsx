@@ -2,11 +2,6 @@ import type { Color, PieceSymbol } from "chess.js";
 
 type Props = { type: PieceSymbol; color: Color; className?: string };
 
-/**
- * Klasyczny zestaw Cburnett (Wikimedia Commons) – smukłe figury Staunton,
- * podobne do zestawu z przesłanej referencji. Pliki są SVG 45×45 z
- * przezroczystym tłem, więc zachowują identyczne proporcje i centrowanie.
- */
 const pieceUrls: Record<Color, Record<PieceSymbol, string>> = {
   w: {
     k: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_klt45.svg",

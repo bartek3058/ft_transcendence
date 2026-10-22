@@ -1,5 +1,6 @@
 import { Flag, History, MessageCircle, RotateCcw, Send } from "lucide-react";
 import type { ChatMessage } from "../../types";
+
 type Props = {
   moves: string[];
   messages: ChatMessage[];
@@ -9,6 +10,7 @@ type Props = {
   onNewGame: () => void;
   onResign: () => void;
 };
+
 export function GameSidebar({
   moves,
   messages,
@@ -22,7 +24,7 @@ export function GameSidebar({
     <aside>
       <div className="card moves">
         <div className="cardTitle">
-          <History size={18} /> Ruchy <span>{moves.length}</span>
+          <History size={18} /> Moves <span>{moves.length}</span>
         </div>
         <div className="moveList">
           {moves.length ? (
@@ -35,15 +37,16 @@ export function GameSidebar({
             ))
           ) : (
             <p className="muted">
-              Kliknij figurę, a potem pole docelowe. Legalność ruchów sprawdza
-              chess.js.
+              Click a piece, then the destination square. Move legality is
+              checked by chess.js.
             </p>
           )}
         </div>
       </div>
+
       <div className="card chat">
         <div className="cardTitle">
-          <MessageCircle size={18} /> Czat
+          <MessageCircle size={18} /> Chat
         </div>
         <div className="chatBody">
           {messages.map((m) => (
@@ -58,19 +61,20 @@ export function GameSidebar({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Napisz wiadomość…"
+            placeholder="Write a message…"
           />
-          <button onClick={send} aria-label="Wyślij">
+          <button onClick={send} aria-label="Send">
             <Send size={17} />
           </button>
         </div>
       </div>
+
       <div className="actions sidebarActions">
         <button onClick={onNewGame}>
-          <RotateCcw size={16} /> Nowa partia
+          <RotateCcw size={16} /> New game
         </button>
         <button onClick={onResign}>
-          <Flag size={16} /> Poddaj
+          <Flag size={16} /> Resign
         </button>
       </div>
     </aside>

@@ -36,9 +36,7 @@ export function ProfilePage() {
         (err) =>
           active &&
           setError(
-            err instanceof Error
-              ? err.message
-              : "Nie udało się pobrać profilu.",
+            err instanceof Error ? err.message : "Failed to load profile.",
           ),
       );
     return () => {
@@ -55,7 +53,7 @@ export function ProfilePage() {
   if (!profile)
     return (
       <div className="profilePage">
-        <div className="profileState">Ładowanie profilu…</div>
+        <div className="profileState">Loading profile…</div>
       </div>
     );
 
@@ -73,7 +71,7 @@ export function ProfilePage() {
         <div className="profileIdentity">
           <span className="profileOnline">
             <i />
-            {user.status === "offline" ? "Zalogowany" : user.status}
+            {user.status === "offline" ? "Logged in" : user.status}
           </span>
           <h1>{user.username}</h1>
           <div className="profileMeta">
@@ -83,7 +81,7 @@ export function ProfilePage() {
             </span>
             <span>
               <CalendarDays size={15} />
-              Dołączył {formatDate(user.createdAt)}
+              Joined {formatDate(user.createdAt)}
             </span>
           </div>
         </div>
@@ -98,22 +96,22 @@ export function ProfilePage() {
         <div className="card">
           <Gamepad2 />
           <strong>{stats.games}</strong>
-          <span>Partii</span>
+          <span>Games</span>
         </div>
         <div className="card winStat">
           <Trophy />
           <strong>{stats.wins}</strong>
-          <span>Wygranych</span>
+          <span>Wins</span>
         </div>
         <div className="card">
           <Minus />
           <strong>{stats.draws}</strong>
-          <span>Remisów</span>
+          <span>Draws</span>
         </div>
         <div className="card lossStat">
           <X />
           <strong>{stats.losses}</strong>
-          <span>Porażek</span>
+          <span>Losses</span>
         </div>
         <div className="card">
           <CircleUserRound />
@@ -125,17 +123,18 @@ export function ProfilePage() {
       <section className="profileHistory card">
         <div className="profileSectionTitle">
           <div>
-            <h2>Ostatnie partie</h2>
-            <p>Wyniki zapisane w bazie danych</p>
+            <h2>Recent games</h2>
+            <p>Results saved in the database</p>
           </div>
           <span>{recentGames.length}</span>
         </div>
         {recentGames.length === 0 ? (
           <div className="profileEmpty">
             <Gamepad2 size={32} />
-            <b>Brak rozegranych partii</b>
+            <b>No games played yet</b>
             <span>
-              Historia pojawi się tutaj po zakończeniu pierwszej gry online.
+              Your game history will appear here after you finish your first
+              online game.
             </span>
           </div>
         ) : (
@@ -146,14 +145,14 @@ export function ProfilePage() {
                   {game.outcome === "WIN"
                     ? "W"
                     : game.outcome === "DRAW"
-                      ? "R"
-                      : "P"}
+                      ? "D"
+                      : "L"}
                 </span>
                 <div>
                   <b>vs {game.opponent}</b>
                   <small>
-                    {game.color === "WHITE" ? "Białe" : "Czarne"} ·{" "}
-                    {game.timeControl ?? "Bez kontroli czasu"} ·{" "}
+                    {game.color === "WHITE" ? "White" : "Black"} ·{" "}
+                    {game.timeControl ?? "No time control"} ·{" "}
                     {formatDate(game.playedAt)}
                   </small>
                 </div>

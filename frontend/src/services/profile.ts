@@ -27,7 +27,7 @@ export async function getMyProfile(): Promise<ProfileData> {
     credentials: "same-origin",
   });
   if (!response.ok) {
-    let message = `Błąd serwera (${response.status})`;
+    let message = `Server error (${response.status})`;
     try {
       message = (await response.json())?.error?.message ?? message;
     } catch {
