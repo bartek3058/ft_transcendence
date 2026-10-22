@@ -4,13 +4,20 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  Optional,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Chess } from 'chess.js';
+import { SafeAccount } from '../auth/auth.repository';
+import { SessionService } from '../auth/session.service';
 import {
   CreateGameOptions,
   GameSession,
   PendingMoveRecord,
   PublicGameState,
+  MoveAuthorizationResult,
+  MoveExecutionResult,
+  PlayerColor,
 } from './types/chess.types';
 
 //Default time control: 10 minutes (600,000 ms) per player.
@@ -31,6 +38,9 @@ export class GameService
    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
     private isFlushingQueue = false;
+    constructor(
+      @Optional() private readonly sessionService?: SessionService,
+    ) {}
     public createGame(options: CreateGameOptions): PublicGameState {
     const {
       gameId,
@@ -184,5 +194,149 @@ export class GameService
   private async persistSingleMoveStub(_move: PendingMoveRecord): Promise<void> {
     return Promise.resolve();
   }
+  public authorizeMove(
+    gameId: string,
+    caller: SafeAccount | string | null | undefined,
+  ): MoveAuthorizationResult {
+    const session = this.activeGames.get(gameId);
+
+    //verify the match exists in Hot-path RAM
+    if (!session){
+      this.logger.warn(
+        'Move authorization failed: Game [${gameId}] not found in RAM (User: ${authenticatedUserId}).',
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen: '',
+          errorReason: 'GAME_NOT_FOUND',
+        },
+      };
+    }
+    const currentFen = session.engine.fen();
+
+    const authenticatedUserId =
+      typeof caller === 'string' ? caller.trim() : caller?.id; // if given string take string if not takie caller.id from SafeAccount
+
+    if (!authenticatedUserId) {
+      this.logger.warn('Move authorization failed: Unauthenticated caller in game [${gameId}].');
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'UNAUTHENTICATED',
+        },
+      };
+    }
+
+    //verify the match has not already concluded
+    if (session.isFinished){
+      this.logger.warn(
+        `Move authorization failed: Game [${gameId}] is already finished (User: ${authenticatedUserId}).`,
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'GAME_ALREADY_FINISHED',
+          isGameOver: true,
+          gameOverReason: session.gameOverReason,
+          winnerColor: session.winnerColor,
+        },
+      };
+    }
+
+    //verify the user is actually one of the two seated players (not a spectator)
+    const playerColor = this.getPlayerColor(session, authenticatedUserId);
+    if (!playerColor) {
+      this.logger.warn(
+        `Move authorization failed: User [${authenticatedUserId}] is not a participant in game [${gameId}].`,
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'UNAUTHORIZED_PLAYER',
+        },
+      };
+    }
+
+    //Verify it is currently this player's turn to move
+    const activeTurnColor = session.engine.turn();
+    if (playerColor !== activeTurnColor) {
+      this.logger.debug(
+        `Move authorization failed: User [${authenticatedUserId}] (${playerColor}) attempted to move on ${activeTurnColor}'s turn in game [${gameId}].`,
+      );
+      return {
+        authorized: false,
+        rejectionResult: {
+          success: false,
+          currentFen,
+          errorReason: 'NOT_YOUR_TURN',
+        },
+      };
+    }
+
+    return {
+      authorized: true,
+      session,
+      playerColor,
+      playerId: authenticatedUserId,
+    };
+  }
+
+  public async authorizeMoveBySessionToken(
+    gameId: string,
+    sessionToken: string | null,
+  ): Promise<MoveAuthorizationResult> {
+    const session = this.activeGames.get(gameId);
+    const fallbackFen = session ? session.engine.fen() : '';
+
+    if (!this.sessionService) {
+      throw new Error(
+        'SessionService is not injected. Ensure AuthModule is imported in GameModule.',
+      );
+    }
+
+    try {
+      const account = await this.sessionService.authenticate(sessionToken);
+      return this.authorizeMove(gameId, account);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        return {
+          authorized: false,
+          rejectionResult: {
+            success: false,
+            currentFen: fallbackFen,
+            errorReason: 'UNAUTHENTICATED',
+          },
+        };
+      }
+      throw error;
+    }
+  }
+
+  public getPlayerColor(
+    session: GameSession,
+    userId: string,
+  ): PlayerColor | null {
+    if (!userId) {
+      return null;
+    }
+    if (session.whitePlayerId === userId) {
+      return 'w';
+    }
+    if (session.blackPlayerId === userId) {
+      return 'b';
+    }
+    return null;
+  }
+  
 }
+
+
 
