@@ -35,6 +35,12 @@ export interface MoveExecutionResult
     | 'GAME_ALREADY_FINISHED';
     //standard algebraic notation representation (e.g. 'e4')
     san?: string;
+    // e.g. 'e2e4' 'e7e8q' for frontend board
+    uci?: string;
+    // Current half-move counter after move
+    plyCount?: number;
+    // Current full move number after move
+    moveNumber?: number;
     isCheck?: boolean;
     isGameOver?: boolean;
     //detailed reason why the game ended or null if still ongoing
