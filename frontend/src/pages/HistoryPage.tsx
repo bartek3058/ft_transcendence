@@ -1,27 +1,25 @@
 import { BarChart3, Swords, Trophy } from "lucide-react";
 import { Page } from "../components/ui/Page";
 import { games } from "../data/mockData";
+
 export function HistoryPage() {
   return (
-    <Page
-      title="Historia partii"
-      sub="Twoje ostatnie wyniki i zmiany rankingu."
-    >
+    <Page title="Game History" sub="Your recent results and rating changes.">
       <div className="stats">
         <div className="card">
           <BarChart3 />
           <b>1542</b>
-          <small>Aktualne ELO</small>
+          <small>Current ELO</small>
         </div>
         <div className="card">
           <Swords />
           <b>58%</b>
-          <small>Wygranych</small>
+          <small>Wins</small>
         </div>
         <div className="card">
           <Trophy />
           <b>126</b>
-          <small>Partii</small>
+          <small>Games</small>
         </div>
       </div>
       <div className="card table games">

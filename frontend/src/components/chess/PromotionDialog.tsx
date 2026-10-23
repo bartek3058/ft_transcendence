@@ -9,10 +9,10 @@ type Props = {
 };
 
 const choices: { type: PromotionPiece; label: string }[] = [
-  { type: "q", label: "Hetman" },
-  { type: "r", label: "Wieża" },
-  { type: "b", label: "Goniec" },
-  { type: "n", label: "Skoczek" },
+  { type: "q", label: "Queen" },
+  { type: "r", label: "Rook" },
+  { type: "b", label: "Bishop" },
+  { type: "n", label: "Knight" },
 ];
 
 export function PromotionDialog({ color, onSelect, onCancel }: Props) {
@@ -29,10 +29,10 @@ export function PromotionDialog({ color, onSelect, onCancel }: Props) {
         aria-labelledby="promotion-title"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 id="promotion-title">Wybierz figurę</h2>
+        <h2 id="promotion-title">Choose a piece</h2>
         <p>
-          Pion dotarł do ostatniej linii. Wybierz figurę, na którą ma zostać
-          promowany.
+          The pawn has reached the last rank. Choose the piece you want to
+          promote it to.
         </p>
         <div className="promotionChoices">
           {choices.map(({ type, label }) => (
@@ -49,7 +49,7 @@ export function PromotionDialog({ color, onSelect, onCancel }: Props) {
           ))}
         </div>
         <button className="promotionCancel" type="button" onClick={onCancel}>
-          Anuluj
+          Cancel
         </button>
       </div>
     </div>

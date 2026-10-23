@@ -20,7 +20,7 @@ export function LoginPage() {
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from || "/profile", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nie udało się zalogować.");
+      setError(err instanceof Error ? err.message : "Failed to log in.");
     } finally {
       setBusy(false);
     }
@@ -31,11 +31,11 @@ export function LoginPage() {
         <div className="auth-brand">
           ♞ <b>ChessHub</b>
         </div>
-        <h1>Zaloguj się</h1>
-        <p>Wejdź do gry i kontynuuj swoje partie.</p>
+        <h1>Log in</h1>
+        <p>Enter the game and continue your matches.</p>
         <form onSubmit={submit} className="auth-form">
           <label>
-            E-mail
+            Email
             <input
               type="email"
               autoComplete="email"
@@ -45,7 +45,7 @@ export function LoginPage() {
             />
           </label>
           <label>
-            Hasło
+            Password
             <input
               type="password"
               autoComplete="current-password"
@@ -60,11 +60,11 @@ export function LoginPage() {
             </div>
           )}
           <button className="auth-submit" disabled={busy}>
-            {busy ? "Logowanie…" : "Zaloguj się"}
+            {busy ? "Logging in…" : "Log in"}
           </button>
         </form>
         <div className="auth-switch">
-          Nie masz konta? <Link to="/register">Zarejestruj się</Link>
+          Don't have an account? <Link to="/register">Sign up</Link>
         </div>
       </section>
     </div>

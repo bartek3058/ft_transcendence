@@ -1,4 +1,5 @@
 import type { GameHistoryItem, Tournament } from "../types";
+
 export const games: GameHistoryItem[] = [
   {
     white: "Piotr",
@@ -22,26 +23,28 @@ export const games: GameHistoryItem[] = [
     elo: "-7",
   },
 ];
+
 export const tournaments: Tournament[] = [
   {
-    name: "Arena Wieczorna",
+    name: "Evening Arena",
     mode: "Blitz 5+0",
-    players: "128 graczy",
-    startsAt: "Dziś, 20:00",
+    players: "128 players",
+    startsAt: "Today, 20:00",
   },
   {
     name: "Rapid Cup #12",
     mode: "Rapid 10+0",
-    players: "64 graczy",
-    startsAt: "Sobota, 18:00",
+    players: "64 players",
+    startsAt: "Saturday, 18:00",
   },
   {
     name: "Weekend Swiss",
-    mode: "7 rund",
-    players: "92 graczy",
-    startsAt: "Niedziela, 16:00",
+    mode: "7 rounds",
+    players: "92 players",
+    startsAt: "Sunday, 16:00",
   },
 ];
+
 export const ranking = [
   ["Przemek", 2118],
   ["Bartek", 1987],

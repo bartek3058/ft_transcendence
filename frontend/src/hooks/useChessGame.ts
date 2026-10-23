@@ -25,8 +25,8 @@ export function useChessGame() {
         setWhiteTime((t) => {
           if (t <= 1) {
             setResult({
-              title: "Koniec czasu",
-              message: "Alicja wygrywa — Piotrowi skończył się czas.",
+              title: "Time's up",
+              message: "Alice wins — Peter ran out of time.",
             });
             return 0;
           }
@@ -36,8 +36,8 @@ export function useChessGame() {
         setBlackTime((t) => {
           if (t <= 1) {
             setResult({
-              title: "Koniec czasu",
-              message: "Piotr wygrywa — Alicji skończył się czas.",
+              title: "Time's up",
+              message: "Peter wins — Alice ran out of time.",
             });
             return 0;
           }
@@ -50,19 +50,19 @@ export function useChessGame() {
 
   function finishIfNeeded(next: Chess) {
     if (next.isCheckmate()) {
-      const winner = next.turn() === "w" ? "Alicja" : "Piotr";
-      setResult({ title: "Szach-mat!", message: `${winner} wygrywa partię.` });
+      const winner = next.turn() === "w" ? "Alice" : "Peter";
+      setResult({ title: "Checkmate!", message: `${winner} wins the game.` });
     } else if (next.isStalemate())
-      setResult({ title: "Pat", message: "Partia zakończyła się remisem." });
+      setResult({ title: "Stalemate", message: "The game ended in a draw." });
     else if (next.isThreefoldRepetition())
-      setResult({ title: "Remis", message: "Trzykrotne powtórzenie pozycji." });
+      setResult({ title: "Draw", message: "Threefold repetition." });
     else if (next.isInsufficientMaterial())
       setResult({
-        title: "Remis",
-        message: "Niewystarczający materiał do mata.",
+        title: "Draw",
+        message: "Insufficient material to checkmate.",
       });
     else if (next.isDraw())
-      setResult({ title: "Remis", message: "Partia zakończyła się remisem." });
+      setResult({ title: "Draw", message: "The game ended in a draw." });
   }
 
   function makeMove(from: Square, to: Square, promotion?: PromotionPiece) {
@@ -76,7 +76,7 @@ export function useChessGame() {
         finishIfNeeded(next);
       }
     } catch {
-      /* nielegalny ruch */
+      /* illegal move */
     }
   }
 
@@ -110,14 +110,17 @@ export function useChessGame() {
     makeMove(selected, square);
     setSelected(null);
   }
+
   function promote(piece: PromotionPiece) {
     if (!pendingPromotion) return;
     makeMove(pendingPromotion.from, pendingPromotion.to, piece);
     setPendingPromotion(null);
   }
+
   function cancelPromotion() {
     setPendingPromotion(null);
   }
+
   function reset() {
     setGame(new Chess());
     setMoves([]);
@@ -128,13 +131,15 @@ export function useChessGame() {
     setStarted(false);
     setResult(null);
   }
+
   function resign() {
     if (!result)
       setResult({
-        title: "Poddanie partii",
-        message: `${game.turn() === "w" ? "Alicja" : "Piotr"} wygrywa — przeciwnik poddał partię.`,
+        title: "Resignation",
+        message: `${game.turn() === "w" ? "Alice" : "Peter"} wins — the opponent resigned.`,
       });
   }
+
   return {
     game,
     board,

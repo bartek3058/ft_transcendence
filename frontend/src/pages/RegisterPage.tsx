@@ -5,14 +5,14 @@ import { useAuth } from "../context/AuthContext";
 function validate(username: string, password: string, confirm: string) {
   const u = username.trim().toLowerCase();
   if (!/^[a-z0-9_]{3,20}$/.test(u))
-    return "Nazwa użytkownika: 3–20 znaków, tylko a-z, 0-9 i _.";
+    return "Username: 3–20 characters, only a-z, 0-9 and _.";
   if (Array.from(password).length < 15)
-    return "Hasło musi mieć co najmniej 15 znaków.";
+    return "Password must be at least 15 characters long.";
   if (Array.from(password).length > 128)
-    return "Hasło może mieć maksymalnie 128 znaków.";
+    return "Password can be up to 128 characters long.";
   if (new TextEncoder().encode(password).length > 512)
-    return "Hasło jest zbyt długie.";
-  if (password !== confirm) return "Hasła nie są identyczne.";
+    return "Password is too long.";
+  if (password !== confirm) return "Passwords do not match.";
   return "";
 }
 export function RegisterPage() {
@@ -42,11 +42,11 @@ export function RegisterPage() {
         username.trim().toLowerCase(),
         password,
       );
-      setSuccess("Konto utworzone. Możesz się teraz zalogować.");
+      setSuccess("Account created.You can now log in.");
       setTimeout(() => navigate("/login", { replace: true }), 900);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Nie udało się utworzyć konta.",
+        err instanceof Error ? err.message : "Failed to create account.",
       );
     } finally {
       setBusy(false);
@@ -58,8 +58,8 @@ export function RegisterPage() {
         <div className="auth-brand">
           ♞ <b>ChessHub</b>
         </div>
-        <h1>Utwórz konto</h1>
-        <p>Publiczna nazwa użytkownika zostanie zapisana małymi literami.</p>
+        <h1>Create account</h1>
+        <p>Your public username will be saved in lowercase.</p>
         <form onSubmit={submit} className="auth-form">
           <label>
             E-mail
@@ -73,7 +73,7 @@ export function RegisterPage() {
             />
           </label>
           <label>
-            Nazwa użytkownika
+            Username
             <input
               type="text"
               autoComplete="username"
@@ -85,7 +85,7 @@ export function RegisterPage() {
             />
           </label>
           <label>
-            Hasło
+            Password
             <input
               type="password"
               autoComplete="new-password"
@@ -93,10 +93,12 @@ export function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <small>Minimum 15 znaków. Spacje są częścią hasła.</small>
+            <small>
+              Minimum 15 characters. Spaces are part of the password.
+            </small>
           </label>
           <label>
-            Powtórz hasło
+            Confirm password
             <input
               type="password"
               autoComplete="new-password"
@@ -112,11 +114,11 @@ export function RegisterPage() {
           )}
           {success && <div className="auth-success">{success}</div>}
           <button className="auth-submit" disabled={busy}>
-            {busy ? "Tworzenie konta…" : "Zarejestruj się"}
+            {busy ? "Creating account…" : "Sign up"}
           </button>
         </form>
         <div className="auth-switch">
-          Masz już konto? <Link to="/login">Zaloguj się</Link>
+          Already have an account? <Link to="/login">Log in</Link>
         </div>
       </section>
     </div>

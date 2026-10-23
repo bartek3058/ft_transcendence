@@ -1,4 +1,4 @@
-export type Tab = "gra" | "turnieje" | "ranking" | "historia";
+export type Tab = "Game" | "Tournaments" | "Ranking" | "History";
 export type ChatMessage = { id: string; user: string; text: string };
 export type GameHistoryItem = {
   white: string;
