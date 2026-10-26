@@ -204,12 +204,6 @@ A containerized stack orchestrated by Docker Compose: Nginx (TLS, reverse proxy)
 # Resources
 
 ## Documentation and References
-- [Database setup and verification]()
-- [Registration and login testing]()
-- [Database teammate handoff]()
-- [Authentication input and API contract]()
-- [Stage 1 implementation guide]()
-- [Stage 2 implementation guide]()
 - _TODO: official documentation consulted (NestJS, Prisma, Socket.IO, etc.)._
 
 ## AI Usage
