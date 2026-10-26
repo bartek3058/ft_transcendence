@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { PrismaService } from '../database/prisma.service';
 import { GameService } from '../game/game.service';
 import { PublicGameState } from '../game/types/chess.types';
 import { QueueService } from './queue.service';
@@ -29,11 +30,12 @@ export interface MatchResult {
 @Injectable()
 export class MatchmakingService {
   private readonly logger = new Logger(MatchmakingService.name);
+  private readonly config: MatchmakingConfig = DEFAULT_MATCHMAKING_CONFIG;
 
   constructor(
     private readonly queue: QueueService,
     private readonly game: GameService,
-    private readonly config: MatchmakingConfig = DEFAULT_MATCHMAKING_CONFIG,
+    private readonly prisma: PrismaService,
   ) {}
 
   //Put a player into the queue
@@ -53,7 +55,7 @@ export class MatchmakingService {
     return this.queue.remove(userId);
   }
 
-  tryMatch(now: number = Date.now()): MatchResult | null {
+  async tryMatch(now: number = Date.now()): Promise<MatchResult | null> {
     const pair = selectPair(this.queue.all(), now, this.config);
     if (!pair) return null;
 
@@ -64,35 +66,56 @@ export class MatchmakingService {
     return this.createMatch(a, b);
   }
 
-  matchAll(now: number = Date.now()): MatchResult[] {
+  async matchAll(now: number = Date.now()): Promise<MatchResult[]> {
     const results: MatchResult[] = [];
-    let next = this.tryMatch(now);
+    let next = await this.tryMatch(now);
     while (next) {
       results.push(next);
-      next = this.tryMatch(now);
+      next = await this.tryMatch(now);
     }
     return results;
   }
 
-  private createMatch(a: QueueEntry, b: QueueEntry): MatchResult {
+  private async createMatch(a: QueueEntry, b: QueueEntry): Promise<MatchResult> {
     const gameId = randomUUID();
     // Randomise colours so neither player is always white
     const whiteFirst = Math.random() < 0.5;
-    const whitePlayerId = whiteFirst ? a.userId : b.userId;
-    const blackPlayerId = whiteFirst ? b.userId : a.userId;
+    const white = whiteFirst ? a : b;
+    const black = whiteFirst ? b : a;
     const timeControl = a.timeControl;
+
+    // Persist an IN_PROGRESS row (same id as the in-memory session) with the players'
+    // pre-game ratings, so RatingService.applyGameResult can read it when the game ends.
+    await this.prisma.game.create({
+      data: {
+        id: gameId,
+        whiteId: white.userId,
+        blackId: black.userId,
+        whiteRating: white.rating,
+        blackRating: black.rating,
+        timeControl,
+        result: 'IN_PROGRESS',
+      },
+    });
 
     const state = this.game.createGame({
       gameId,
-      whitePlayerId,
-      blackPlayerId,
+      whitePlayerId: white.userId,
+      blackPlayerId: black.userId,
       timeControl,
     });
 
     this.logger.log(
-      `Matched ${whitePlayerId} (W) vs ${blackPlayerId} (B) [${timeControl ?? 'default'}] -> game ${gameId}`,
+      `Matched ${white.userId} (W) vs ${black.userId} (B) [${timeControl ?? 'default'}] -> game ${gameId}`,
     );
 
-    return { gameId, whitePlayerId, blackPlayerId, timeControl, players: [a.userId, b.userId], state };
+    return {
+      gameId,
+      whitePlayerId: white.userId,
+      blackPlayerId: black.userId,
+      timeControl,
+      players: [a.userId, b.userId],
+      state,
+    };
   }
 }
