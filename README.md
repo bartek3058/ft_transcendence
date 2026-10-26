@@ -59,8 +59,8 @@ Nginx terminates TLS with a self-signed certificate generated at build time and 
 | Member | Role | Main Responsibilities |
 |--------|------|-----------------------|
 | tszymans | Product Owner | _TODO_ |
-| pjedrycz | Project Manager | _TODO_ |
-| brogalsk | Tech Lead | _TODO_ |
+| pjedrycz | Tech Lead | _TODO_ |
+| brogalsk | Project Manager | _TODO_ |
 | astefans | Developer | Matchmaking, ELO ranking and game statistics |
 | pmamala | Developer | _TODO_ |
 
@@ -134,7 +134,7 @@ _TODO_
 ### Challenges
 _TODO_
 
-## pjedrycz — Project Manager
+## pjedrycz — Tech Lead
 ### Responsibilities
 _TODO_
 ### Main Contributions
@@ -142,7 +142,7 @@ _TODO_
 ### Challenges
 _TODO_
 
-## brogalsk — Tech Lead
+## brogalsk — Project Manager
 ### Responsibilities
 _TODO_
 ### Main Contributions
@@ -202,12 +202,12 @@ A containerized stack orchestrated by Docker Compose: Nginx (TLS, reverse proxy)
 # Resources
 
 ## Documentation and References
-- [Database setup and verification](docs/database-setup.md)
-- [Registration and login testing](docs/auth-testing.md)
-- [Database teammate handoff](docs/auth-database-handoff.md)
-- [Authentication input and API contract](docs/auth-input-contract.md)
-- [Stage 1 implementation guide](docs/auth-stage-one.md)
-- [Stage 2 implementation guide](docs/auth-stage-two.md)
+- [Database setup and verification]()
+- [Registration and login testing]()
+- [Database teammate handoff]()
+- [Authentication input and API contract]()
+- [Stage 1 implementation guide]()
+- [Stage 2 implementation guide]()
 - _TODO: official documentation consulted (NestJS, Prisma, Socket.IO, etc.)._
 
 ## AI Usage
