@@ -10,10 +10,10 @@ A real-time, full-stack **chess** application: multiplayer matches over WebSocke
 The purpose of this project is to create a chess application including multiuser/multiplayer mode, tournament options, scoring system and AI integration.
 
 ### Features
-- **Authentication & security** — registration, login, cookie sessions, CSRF checks, rate limiting (Argon2id password hashing).
-- **Real-time chess gameplay** — authoritative server-side engine with move validation and turn ownership.
-- **Matchmaking & ranking** — waiting queue, ELO-based automated opponent matching, player rating.
-- **User profiles & statistics** — per-user profile with win/loss/draw record and recent games.
+- **Authentication & security** - registration, login, cookie sessions, CSRF checks, rate limiting (Argon2id password hashing).
+- **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
+- **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
+- **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
 ---
@@ -65,9 +65,11 @@ Nginx terminates TLS with a self-signed certificate generated at build time and 
 | pmamala | Developer | _TODO_ |
 
 ## Project Management
-- **GitHub Issues & Projects** — task tracking and board.
-- **Feature-branch Git workflow** — one feature per pull request, reviewed before merge to `main`.
-- _TODO: other tools (communication, documentation)._
+- **GitHub Issues & Projects** - task tracking and board.
+- **Feature-branch Git workflow** - one feature per pull request, reviewed before merge to `main`.
+- **Trello** - storing notes, references/sources and documentation.
+- **Slack** - team communication.
+- **Google Meet** - weekly team meetings.
 
 ---
 
@@ -88,7 +90,7 @@ Nginx terminates TLS with a self-signed certificate generated at build time and 
 | Version control | Git / GitHub |
 
 ### Why These Technologies?
-- _TODO: short justification per major choice (NestJS, Prisma, PostgreSQL, Socket.IO, Docker...)._
+- _TODO: ._
 
 ---
 
@@ -96,10 +98,10 @@ Nginx terminates TLS with a self-signed certificate generated at build time and 
 
 Four data modules (full contract in [docs/database-setup.md](docs/database-setup.md)):
 
-- **users** — accounts, ELO `rating`, role, status, Argon2id password hash.
-- **sessions** — hashed bearer tokens with expiry (cascade-deleted with the user).
-- **games** — match records (players, result, ratings and rating changes, PGN, timing).
-- **game_moves** — per-move history (ply, SAN/UCI, FEN, clock), unique per `(game_id, ply)`.
+- **users** - accounts, ELO `rating`, role, status, Argon2id password hash.
+- **sessions** - hashed bearer tokens with expiry (cascade-deleted with the user).
+- **games** - match records (players, result, ratings and rating changes, PGN, timing).
+- **game_moves** - per-move history (ply, SAN/UCI, FEN, clock), unique per `(game_id, ply)`.
 
 Database roles are separated: a migration/owner role runs DDL and seeding; a restricted application role handles runtime CRUD only.
 
@@ -126,7 +128,7 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
 
 # Individual Contributions
 
-## tszymans — Product Owner
+## tszymans - Product Owner
 ### Responsibilities
 _TODO_
 ### Main Contributions
@@ -134,7 +136,7 @@ _TODO_
 ### Challenges
 _TODO_
 
-## pjedrycz — Tech Lead
+## pjedrycz - Tech Lead
 ### Responsibilities
 _TODO_
 ### Main Contributions
@@ -142,7 +144,7 @@ _TODO_
 ### Challenges
 _TODO_
 
-## brogalsk — Project Manager
+## brogalsk - Project Manager
 ### Responsibilities
 _TODO_
 ### Main Contributions
@@ -150,7 +152,7 @@ _TODO_
 ### Challenges
 _TODO_
 
-## astefans — Developer
+## astefans - Developer
 ### Responsibilities
 Matchmaking, player ranking and game statistics: ELO rating system, waiting queue, automated opponent matching, and the ranking/statistics API.
 
@@ -161,9 +163,9 @@ Matchmaking, player ranking and game statistics: ELO rating system, waiting queu
 
 ### Challenges
 - Keeping matchmaking logic transport-agnostic so it could be unit-tested without a database or sockets, with the Socket.IO gateway as a thin layer on top.
-- Coordinating integration seams across teammates' work — creating the game through the engine's `GameService`, and wiring rating recalculation into the game-over lifecycle.
+- Coordinating integration seams across teammates' work - creating the game through the engine's `GameService`, and wiring rating recalculation into the game-over lifecycle.
 
-## pmamala — Developer
+## pmamala - Developer
 ### Responsibilities
 _TODO_
 ### Main Contributions
@@ -195,7 +197,7 @@ ft_transcendence/
 ```
 
 ## Architecture
-A containerized stack orchestrated by Docker Compose: Nginx (TLS, reverse proxy) in front of the React frontend and the NestJS backend, with PostgreSQL and a one-shot migration/seed container. _TODO: link to an architecture document if added._
+A containerized stack orchestrated by Docker Compose: Nginx (TLS, reverse proxy) in front of the React frontend and the NestJS backend, with PostgreSQL and a one-shot migration/seed container. _TODO: link to an architecture document._
 
 ---
 
