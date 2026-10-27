@@ -4,6 +4,7 @@ import { DatabaseModule } from "./database/database.module";
 import { AuthModule } from "./auth/auth.module";
 import { RatingModule } from "./rating/rating.module";
 import { ProfileModule } from "./profile/profile.module";
+import { PublicApiModule } from "./public-api/public-api.module";
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { ProfileModule } from "./profile/profile.module";
     AuthModule,
     RatingModule,
     ProfileModule,
+    PublicApiModule,
   ],
   controllers: [],
   providers: [],
