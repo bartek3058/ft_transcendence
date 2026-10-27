@@ -19,7 +19,7 @@
     "test:elo": "ts-node --project tsconfig.tools.json test/elo.test.ts",
     "test:apikey": "ts-node --project tsconfig.tools.json test/api-key.service.test.ts",
     "test:api-guard": "ts-node --project tsconfig.tools.json test/public-api-guard-and-limiter.test.ts",
-    "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts"
+    "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
     "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts"
   },
