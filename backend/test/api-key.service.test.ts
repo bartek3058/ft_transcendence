@@ -103,7 +103,7 @@ describe('ApiKeyService', () => {
 
     await assert.rejects(
       () => service.validateApiKey(generated.rawKey),
-      /This API key has been revoked/,
+      (err: any) => err.status === 401 && err.response?.error?.code === 'API_KEY_REVOKED',
     );
   });
 
@@ -127,7 +127,7 @@ describe('ApiKeyService', () => {
 
     await assert.rejects(
       () => service.validateApiKey(generated.rawKey),
-      /This API key has expired/,
+      (err: any) => err.status === 401 && err.response?.error?.code === 'API_KEY_EXPIRED',
     );
   });
 

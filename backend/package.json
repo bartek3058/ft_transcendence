@@ -17,7 +17,8 @@
     "test:bootstrap": "ts-node --project tsconfig.tools.json test/admin-bootstrap.test.ts",
     "test:auth:db": "npm run build && node --test test/integration/auth-postgres.test.cjs",
     "test:elo": "ts-node --project tsconfig.tools.json test/elo.test.ts",
-    "test:apikey": "ts-node --project tsconfig.tools.json test/api-key.service.test.ts"
+    "test:apikey": "ts-node --project tsconfig.tools.json test/api-key.service.test.ts",
+    "test:api-guard": "ts-node --project tsconfig.tools.json test/public-api-guard-and-limiter.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
