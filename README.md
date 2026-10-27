@@ -14,6 +14,7 @@ The purpose of this project is to create a chess application including multiuser
 - **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
 - **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
+- **Public API & Match History** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), and match history endpoints.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
 ---
@@ -115,12 +116,30 @@ Database roles are separated: a migration/owner role runs DDL and seeding; a res
 | Player waiting queue | astefans | In-memory queue; one entry per authenticated user, holding their rating and chosen time control. |
 | Automated opponent matching | astefans | Pairs the closest-rated waiting players within a tolerance that widens the longer they wait; creates the game (RAM session + `IN_PROGRESS` row) and notifies both clients over Socket.IO. |
 | Ranking & statistics API | astefans, pmamala | Per-user profile and statistics (`GET /api/profile/me`); global leaderboard by rating (planned). |
+| Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90) and full API key CRUD with OpenAPI/Swagger docs at `/api/docs`. |
 
 ---
 
 # Modules
 
 Point values follow the subject: **major module = 2 points**, **minor module = 1 point**.
+
+### Web
+- **Public API & Match History (Major Module — 2 Points)**:
+  A stateless, machine-to-machine REST API authenticated via cryptographic `X-API-Key` headers and protected by sliding-window rate limiting. Interactive OpenAPI/Swagger documentation is served at `/api/docs`.
+  - **Documentation & Architecture Contract**: [docs/public-api.md](docs/public-api.md)
+  - **Interactive Swagger UI**: `https://localhost/api/docs`
+  - **Pre-seeded Evaluator Key**:
+    `tr_live_evaluator000000000000000000000000000000000000000000000000000000`
+  - **Endpoints**:
+    - Match History (Issue #90): `GET /api/v1/matches`, `GET /api/v1/matches/:id`
+    - API Keys CRUD: `POST /api/v1/api-keys`, `GET /api/v1/api-keys`, `GET /api/v1/api-keys/:id`, `PUT /api/v1/api-keys/:id`, `DELETE /api/v1/api-keys/:id`
+  - **Verification Commands**:
+    ```bash
+    docker compose run --rm backend npm run test:public-api
+    docker compose run --rm backend npm run test:api-guard
+    docker compose run --rm backend npm run test:apikey
+    ```
 
 - _TODO: list the modules the project implements, grouped by category, with a running subtotal and total._
 

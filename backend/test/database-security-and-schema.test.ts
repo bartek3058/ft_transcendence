@@ -96,6 +96,37 @@ describe('PostgreSQL Database & Security Verification', () => {
       assert.equal(foundSession, null, 'Sessions must be automatically cascade deleted with user');
     });
 
+    it('should cascade delete api_keys when a user is deleted', async () => {
+      const user = await prisma.user.create({
+        data: {
+          email: `keyuser_${Date.now()}@transcendence.local`,
+          username: `ku_${Date.now().toString().slice(-10)}`,
+          passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dummyhash$dummyhash',
+        },
+      });
+
+      const keyHash = 'b'.repeat(64);
+      const apiKey = await (prisma as any).apiKey.create({
+        data: {
+          userId: user.id,
+          name: 'Cascade Test Key',
+          keyPrefix: 'tr_live_test1234',
+          keyHash,
+        },
+      });
+
+      assert.ok(apiKey.id);
+
+      // Delete the user
+      await prisma.user.delete({ where: { id: user.id } });
+
+      // Verify the api_key was cascade-deleted
+      const foundKey = await (prisma as any).apiKey.findUnique({
+        where: { id: apiKey.id },
+      });
+      assert.equal(foundKey, null, 'API keys must be automatically cascade deleted with user');
+    });
+
     it('should preserve game records and nullify player IDs when a user is deleted (ON DELETE SET NULL)', async () => {
       const whitePlayer = await prisma.user.create({
         data: {

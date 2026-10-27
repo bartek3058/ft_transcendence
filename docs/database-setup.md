@@ -20,7 +20,9 @@ Following project security standards, database roles are strictly separated:
 | **Application User** | `APP_DB_USER` (`chess_app`) | Handling runtime NestJS REST & WebSocket queries | Restricted CRUD (`SELECT`, `INSERT`, `UPDATE`, `DELETE`) |
 
 ### Role Initialization (`01-init-roles.sh`)
+
 When the PostgreSQL data volume (`db_data`) is initialized for the first time:
+
 1. Docker executes `backend/prisma/init-db/01-init-roles.sh`.
 2. It creates role `APP_DB_USER` with `APP_DB_PASSWORD`.
 3. Grants `CONNECT` on `POSTGRES_DB` and `USAGE` on schema `public`.
@@ -31,6 +33,7 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 ## 3. Database Schema Contract
 
 ### User (`users`)
+
 - **`id`**: UUID primary key (`@default(uuid())`).
 - **`email`**: Unique lowercase canonical email, ASCII validation, `"C"` collation.
 - **`username`**: Unique handle `^[a-z0-9_]{3,20}$`, `"C"` collation.
@@ -41,12 +44,14 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`created_at` / `updated_at`**: Timestamps in `TIMESTAMPTZ(3)`.
 
 ### Session (`sessions`)
+
 - **`id`**: UUID primary key.
 - **`user_id`**: Foreign key to `users.id` with `ON DELETE CASCADE`.
 - **`token_hash`**: SHA-256 hex digest of the bearer token, `"C"` collation, check `^[0-9a-f]{64}$`.
 - **`created_at` / `expires_at`**: `TIMESTAMPTZ(3)`, enforced check `expires_at > created_at`.
 
 ### Game (`games`)
+
 - **`id`**: UUID primary key.
 - **`white_id` / `black_id`**: Foreign keys to `users.id` with `ON DELETE SET NULL` (preserves historical match logs).
 - **`result`**: `'WHITE_WON'`, `'BLACK_WON'`, `'DRAW'`, `'IN_PROGRESS'`, `'ABORTED'`.
@@ -58,6 +63,7 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`game_start` / `game_end`**: Timestamps with check `game_end IS NULL OR game_end >= game_start`.
 
 ### Game Moves (`game_moves`)
+
 - **`id`**: UUID primary key.
 - **`game_id`**: Foreign key to `games.id` with `ON DELETE CASCADE`.
 - **`ply`**: Sequential half-move counter (1 = White move 1, 2 = Black move 1, 3 = White move 2, etc.; check `ply >= 1`).
@@ -104,6 +110,7 @@ flowchart TD
 ## 5. Admin Bootstrap Seeding
 
 Initial admin credentials can be set in `.env`:
+
 ```dotenv
 ADMIN_EMAIL=admin@transcendence.local
 ADMIN_USERNAME=admin
@@ -111,6 +118,7 @@ ADMIN_PASSWORD=replace-with-secure-admin-password
 ```
 
 On startup, `backend/prisma/seed.ts`:
+
 - Checks if a user with `ADMIN_EMAIL` or `ADMIN_USERNAME` already exists.
 - If missing, securely hashes `ADMIN_PASSWORD` using Argon2id and creates the user with `role: 'admin'`.
 - If `ADMIN_PASSWORD` is absent or empty, skips bootstrap entirely. The example environment leaves it empty.
@@ -125,12 +133,13 @@ On startup, `backend/prisma/seed.ts`:
 - **Data Persistence:** Database files are stored in the Docker named volume `db_data`. They persist across `docker compose down` and system reboots.
 - **Resetting Database (Destructive):**
   To perform a complete clean reset (erasing all accounts, matches, and tables):
+
   ```bash
   make clean
   # or: docker compose down -v
   ```
-  On the subsequent `make up`, PostgreSQL will re-run the role initialization script and the migration service will recreate tables and the admin account from scratch.
 
+  On the subsequent `make up`, PostgreSQL will re-run the role initialization script and the migration service will recreate tables and the admin account from scratch.
 
 ## 7. Running verification
 
@@ -152,7 +161,6 @@ real users or games. It creates its own user fixture and does not require admin
 seeding. The DDL permission check rolls back even when permissions are incorrect.
 Other tests clean up on success; if a test fails, fixture records can remain in the
 disposable database. Never use owner credentials for `TEST_DATABASE_URL`.
-
 
 ## Integration with authentication
 
