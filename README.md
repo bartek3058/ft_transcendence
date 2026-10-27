@@ -48,7 +48,7 @@ make up
 > **Do not commit `.env` or any secret files.** Only `.env.example` is tracked.
 
 ## HTTPS
-Nginx terminates TLS with a self-signed certificate generated at build time and reverse-proxies the frontend, the REST API and the Socket.IO connection. The app is served at `https://localhost` (HTTP on port 80 redirects to HTTPS).
+Nginx handles TLS (with a self-signed cert baked into the image) and proxies the frontend, the REST API and the Socket.IO connection. Everything's served at `https://localhost` - plain HTTP on port 80 just redirects to HTTPS.
 
 ---
 
@@ -103,7 +103,7 @@ Four data modules (full contract in [docs/database-setup.md](docs/database-setup
 - **games** - match records (players, result, ratings and rating changes, PGN, timing).
 - **game_moves** - per-move history (ply, SAN/UCI, FEN, clock), unique per `(game_id, ply)`.
 
-Database roles are separated: a migration/owner role runs DDL and seeding; a restricted application role handles runtime CRUD only.
+The DB roles are split: an owner role runs migrations and seeding, while the app connects with a restricted role that can only do CRUD.
 
 ---
 
@@ -111,10 +111,10 @@ Database roles are separated: a migration/owner role runs DDL and seeding; a res
 
 | Feature | Contributor(s) | Description |
 | :--- | :--- | :--- |
-| ELO rating system | astefans | Pure ELO engine (expected score + rating update, K-factor 32, rating floor) and a transactional, idempotent service that updates both players' ratings when a game ends. |
-| Player waiting queue | astefans | In-memory queue; one entry per authenticated user, holding their rating and chosen time control. |
-| Automated opponent matching | astefans | Pairs the closest-rated waiting players within a tolerance that widens the longer they wait; creates the game (RAM session + `IN_PROGRESS` row) and notifies both clients over Socket.IO. |
-| Ranking & statistics API | astefans, pmamala | Per-user profile and statistics (`GET /api/profile/me`); global leaderboard by rating (planned). |
+| ELO rating system | astefans | A small, dependency-free ELO engine (expected score + rating update, K-factor 32, with a rating floor) and a service that writes the new ratings when a game ends - in one transaction, and safe to call twice. |
+| Player waiting queue | astefans | In-memory queue, one spot per logged-in player, holding their rating and chosen time control. |
+| Automated opponent matching | astefans | Pairs the closest-rated players waiting, widening the allowed gap the longer you wait, then spins up the game (in-memory session + `IN_PROGRESS` row) and tells both players over Socket.IO. |
+| Ranking & statistics API | astefans, pmamala | Per-player profile and stats (`GET /api/profile/me`); global leaderboard by rating (still to come). |
 
 ---
 
