@@ -9,9 +9,11 @@ import {
 } from '@nestjs/common';
 import { Chess } from 'chess.js';
 import { SafeAccount } from '../auth/auth.repository';
+import { MakeMoveDto } from './dto/make-move.dto';
 import { SessionService } from '../auth/session.service';
 import {
   CreateGameOptions,
+  DatabaseMoveColor,
   GameSession,
   PendingMoveRecord,
   PublicGameState,
@@ -170,6 +172,38 @@ export class GameService
     }
     return deleted;
   }
+
+  public verifyAndResyncState(
+    gameId: string,
+    clientFen?: string,
+  ): { synchronized: boolean; state: PublicGameState } {
+    const session = this.activeGames.get(gameId);
+    if (!session) {
+      throw new NotFoundException(
+        `Active game session "${gameId}" not found in memory.`,
+      );
+    }
+
+    const authoritativeFen = session.engine.fen();
+    const synchronized =
+      typeof clientFen === 'string' && clientFen.trim() === authoritativeFen;
+
+    if (clientFen !== undefined && !synchronized) {
+      this.logger.warn(
+        `Client desynchronization detected in game [${gameId}]. Client FEN: "${clientFen}" vs Server FEN: "${authoritativeFen}". Sending correction.`,
+      );
+    }
+
+    return {
+      synchronized,
+      state: this.toPublicState(session),
+    };
+  }
+
+  private toDatabaseColor(color: PlayerColor): DatabaseMoveColor {
+    return color === 'w' ? 'WHITE' : 'BLACK';
+  }
+
   //Maps internal mutable GameSession to a clean, read-only PublicGameState object.
   private toPublicState(session: GameSession): PublicGameState {
     return {
@@ -320,6 +354,84 @@ export class GameService
     }
   }
 
+  public executeMove(
+    dto: MakeMoveDto,
+    caller: SafeAccount | string | null | undefined,
+  ): MoveExecutionResult{
+    //Hot-Path Authorization (#114)
+    const auth = this.authorizeMove(dto.gameId, caller);
+    if (!auth.authorized || !auth.session || !auth.playerColor || !auth.playerId){
+      return auth.rejectionResult!;
+    }
+
+    const { session, playerColor, playerId } = auth;
+    const fenBeforeMove = session.engine.fen();
+    let moveObj: ReturnType<Chess['move']>;
+    try {
+      moveObj = session.engine.move({
+        from: dto.from,
+        to: dto.to,
+        ...(dto.promotion ? { promotion: dto.promotion } : {}),
+      });
+    } catch (error) {
+      this.logger.debug(
+        `Illegal move rejected in game [${dto.gameId}] by user [${playerId}]: ${dto.from}->${dto.to} (${(error as Error).message})`,
+      );
+      return {
+        success: false,
+        currentFen: fenBeforeMove,
+        errorReason: 'ILLEGAL_MOVE',
+      };
+    }
+    if (!moveObj) {
+      return {
+        success: false,
+        currentFen: fenBeforeMove,
+        errorReason: 'ILLEGAL_MOVE',
+      };
+    }
+    const now = Date.now();
+    const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
+    session.lastMoveTimestamp = now;
+    session.plyCount += 1;
+
+    const currentFen = session.engine.fen();
+    const moveNumber = Math.ceil(session.plyCount / 2);
+    const uci = `${moveObj.from}${moveObj.to}${moveObj.promotion ?? ''}`;
+    const timeRemainingMs =
+      playerColor === 'w'
+        ? session.whiteTimeRemainingMs
+        : session.blackTimeRemainingMs;
+      
+    const moveRecord: PendingMoveRecord = {
+      gameId: session.gameId,
+      ply: session.plyCount,
+      moveNumber,
+      color: this.toDatabaseColor(playerColor),
+      playedById: playerId,
+      san: moveObj.san,
+      uci,
+      fenAfter: currentFen,
+      timeSpentMs,
+      timeRemainingMs,
+      createdAt: new Date(now),
+    };
+    this.enqueueMoveForPersistence(moveRecord);
+
+    return {
+      success: true,
+      currentFen,
+      san: moveObj.san,
+      uci,
+      plyCount: session.plyCount,
+      moveNumber,
+      isCheck: session.engine.inCheck(),
+      isGameOver: session.engine.isGameOver(),
+      gameOverReason: session.gameOverReason,
+      winnerColor: session.winnerColor,
+    };
+  }
+
   public getPlayerColor(
     session: GameSession,
     userId: string,
@@ -335,7 +447,6 @@ export class GameService
     }
     return null;
   }
-  
 }
 
 
