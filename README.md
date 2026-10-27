@@ -4,16 +4,16 @@
 
 ## Description
 
-A real-time, full-stack **chess** application: multiplayer matches over WebSockets, matchmaking, an ELO ranking system, player statistics, and (planned) tournaments and AI opponents.
+A full-stack **chess** app you play in the browser: real-time multiplayer over WebSockets, matchmaking, ELO ranking, player stats, and — further down the line — tournaments and an AI opponent.
 
 ### Goal
-The purpose of this project is to create a chess application including multiuser/multiplayer mode, tournament options, scoring system and AI integration.
+Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI.
 
 ### Features
-- **Authentication & security** - registration, login, cookie sessions, CSRF checks, rate limiting (Argon2id password hashing).
-- **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
-- **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
-- **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
+- **Auth & security** - registration, login, cookie sessions, CSRF checks and rate limiting (passwords hashed with Argon2id).
+- **Real-time chess** - the server runs the actual game and checks every move, so the client can't cheat.
+- **Matchmaking & ranking** - a waiting queue that pairs you with someone close to your ELO.
+- **Profiles & stats** - each player's win/loss/draw record and recent games.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
 ---
