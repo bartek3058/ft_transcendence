@@ -1,12 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ApiKeyModule } from './api-key/api-key.module';
-import { ApiKeyRateLimiter } from './common/api-key-rate-limiter';
-import { ApiKeyGuard } from './common/api-key.guard';
-import { PublicApiExceptionFilter } from './common/public-api-exception.filter';
+import { MatchesModule } from './matches/matches.module';
 
 @Module({
-  imports: [ApiKeyModule],
-  providers: [ApiKeyRateLimiter, ApiKeyGuard, PublicApiExceptionFilter],
-  exports: [ApiKeyModule, ApiKeyRateLimiter, ApiKeyGuard, PublicApiExceptionFilter],
+  imports: [ApiKeyModule, MatchesModule],
+  exports: [ApiKeyModule, MatchesModule],
 })
 export class PublicApiModule {}

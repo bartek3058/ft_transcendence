@@ -148,10 +148,12 @@ export class ApiKeyService {
 
   /**
    * Lists all API keys belonging to a user (safe metadata only).
+   * If caller is admin, returns all keys in the system.
    */
-  async listUserKeys(userId: string): Promise<ApiKeySummary[]> {
+  async listUserKeys(caller: { id: string; role: string }): Promise<ApiKeySummary[]> {
+    const where = caller.role === 'admin' ? {} : { userId: caller.id };
     return this.prisma.apiKey.findMany({
-      where: { userId },
+      where,
       select: {
         id: true,
         name: true,
@@ -166,7 +168,111 @@ export class ApiKeyService {
   }
 
   /**
-   * Revokes an API key owned by a user.
+   * Retrieves single API key by ID, verifying ownership or admin status.
+   */
+  async getKeyById(id: string, caller: { id: string; role: string }): Promise<ApiKeySummary> {
+    const key = await this.prisma.apiKey.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        keyPrefix: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
+    });
+
+    if (!key || (caller.role !== 'admin' && key.userId !== caller.id)) {
+      throw new NotFoundException({
+        error: { code: 'API_KEY_NOT_FOUND', message: 'API key not found.' },
+      });
+    }
+
+    return {
+      id: key.id,
+      name: key.name,
+      keyPrefix: key.keyPrefix,
+      lastUsedAt: key.lastUsedAt,
+      expiresAt: key.expiresAt,
+      revokedAt: key.revokedAt,
+      createdAt: key.createdAt,
+    };
+  }
+
+  /**
+   * Updates an existing API key's name, verifying ownership or admin role.
+   */
+  async updateApiKey(
+    id: string,
+    name: string | undefined,
+    caller: { id: string; role: string },
+  ): Promise<ApiKeySummary> {
+    const key = await this.prisma.apiKey.findUnique({ where: { id } });
+    if (!key || (caller.role !== 'admin' && key.userId !== caller.id)) {
+      throw new NotFoundException({
+        error: { code: 'API_KEY_NOT_FOUND', message: 'API key not found.' },
+      });
+    }
+
+    const trimmedName = (name ?? '').trim();
+    if (!trimmedName || trimmedName.length > 64) {
+      throw new BadRequestException({
+        error: { code: 'INVALID_API_KEY_NAME', message: 'Key name must be between 1 and 64 characters.' },
+      });
+    }
+
+    const updated = await this.prisma.apiKey.update({
+      where: { id },
+      data: { name: trimmedName },
+      select: {
+        id: true,
+        name: true,
+        keyPrefix: true,
+        lastUsedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Revokes or permanently purges an API key.
+   * If purge=true and caller is admin, permanently deletes record from DB.
+   * Otherwise, sets revokedAt = now() (soft revocation).
+   */
+  async deleteApiKey(
+    id: string,
+    purge = false,
+    caller: { id: string; role: string },
+  ): Promise<{ message: string }> {
+    const key = await this.prisma.apiKey.findUnique({ where: { id } });
+    if (!key || (caller.role !== 'admin' && key.userId !== caller.id)) {
+      throw new NotFoundException({
+        error: { code: 'API_KEY_NOT_FOUND', message: 'API key not found.' },
+      });
+    }
+
+    if (purge && caller.role === 'admin') {
+      await this.prisma.apiKey.delete({ where: { id } });
+      return { message: 'API key permanently deleted from database.' };
+    }
+
+    await this.prisma.apiKey.update({
+      where: { id },
+      data: { revokedAt: new Date() },
+    });
+
+    return { message: 'API key revoked successfully.' };
+  }
+
+  /**
+   * Revokes an API key owned by a user (backward compatibility helper).
    */
   async revokeApiKey(userId: string, keyId: string): Promise<void> {
     const key = await this.prisma.apiKey.findFirst({

@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException, PayloadTooLargeException, UnsupportedMediaTypeException } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, Request, Response, NextFunction } from 'express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AuthValidationPipe } from './auth/validation/auth-validation.pipe';
 import { AUTH_CONFIG, AuthConfig } from './auth/auth.config';
 
@@ -41,4 +42,29 @@ export function configureApp(app: NestExpressApplication): void {
   });
   app.useGlobalPipes(new AuthValidationPipe());
   // Frontend and API are behind the same Nginx origin: no permissive CORS.
+
+  // OpenAPI / Swagger Documentation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('ft_transcendence Public API')
+    .setDescription(
+      'Public REST API for the Transcendence platform. Authenticated via high-entropy API keys passed in the X-API-Key header. Rate limited to 60 req/min per key.',
+    )
+    .setVersion('1.0')
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+        description: 'Pre-seeded Evaluator Key: tr_live_evaluator000000000000000000000000000000000000000000000000000000',
+      },
+      'api-key',
+    )
+    .addTag('Matches', 'Match history, results, and ply-by-ply moves')
+    .addTag('API Keys', 'Complete CRUD lifecycle for Public API Keys')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, document, {
+    customSiteTitle: 'Transcendence Public API Documentation',
+  });
 }
