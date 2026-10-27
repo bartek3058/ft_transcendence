@@ -5,6 +5,7 @@ import { AuthModule } from "./auth/auth.module";
 import { RatingModule } from "./rating/rating.module";
 import { ProfileModule } from "./profile/profile.module";
 import { PublicApiModule } from "./public-api/public-api.module";
+import { MatchmakingModule } from "./matchmaking/matchmaking.module";
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PublicApiModule } from "./public-api/public-api.module";
     RatingModule,
     ProfileModule,
     PublicApiModule,
+    MatchmakingModule,
   ],
   controllers: [],
   providers: [],
