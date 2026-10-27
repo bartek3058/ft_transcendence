@@ -154,16 +154,16 @@ _TODO_
 
 ## astefans - Developer
 ### Responsibilities
-Matchmaking, player ranking and game statistics: ELO rating system, waiting queue, automated opponent matching, and the ranking/statistics API.
+Matchmaking, player ranking and game stats: the ELO system, the waiting queue, automated opponent matching, and the ranking/stats API.
 
 ### Main Contributions
-- Implemented the ELO rating engine as a pure, fully unit-tested module, plus a transactional, idempotent `RatingService` that applies rating changes at game end.
-- Built the matchmaking subsystem: in-memory queue, rating-based pairing with a time-widening tolerance window, and game creation (DB `IN_PROGRESS` row + in-memory session), exposed over a Socket.IO gateway authenticated with the session cookie.
-- Added the Nginx WebSocket route for Socket.IO and kept the whole feature covered by unit tests.
+- Wrote the ELO engine as a standalone, fully tested module, plus a service that applies the rating changes at the end of a game (runs in a transaction and is safe to call more than once).
+- Built the matchmaking side: the waiting queue, rating-based pairing that loosens up the longer you wait, and creating the game (DB row + in-memory session), all exposed over a Socket.IO gateway that reuses the session cookie for auth.
+- Added the Nginx route for Socket.IO and kept the whole thing under unit tests.
 
 ### Challenges
-- Keeping matchmaking logic transport-agnostic so it could be unit-tested without a database or sockets, with the Socket.IO gateway as a thin layer on top.
-- Coordinating integration seams across teammates' work - creating the game through the engine's `GameService`, and wiring rating recalculation into the game-over lifecycle.
+- Keeping the matchmaking logic independent of the transport, so I could unit-test it without a DB or sockets - the Socket.IO gateway ended up being just a thin layer on top.
+- Hooking into other people's code - creating games through the engine's `GameService`, and plugging rating updates into the end-of-game flow.
 
 ## pmamala - Developer
 ### Responsibilities
@@ -197,7 +197,7 @@ ft_transcendence/
 ```
 
 ## Architecture
-A containerized stack orchestrated by Docker Compose: Nginx (TLS, reverse proxy) in front of the React frontend and the NestJS backend, with PostgreSQL and a one-shot migration/seed container. _TODO: link to an architecture document._
+Everything runs in Docker Compose: Nginx (TLS + reverse proxy) sits in front of the React frontend and the NestJS backend, with PostgreSQL and a one-shot container that runs migrations and seeding. _TODO: link to an architecture doc._
 
 ---
 
