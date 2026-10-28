@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { computeElo, EloOutcome, EloResult } from './elo';
+import { LeaderboardEntry } from './leaderboard.types';
 
 const RATED_RESULTS: readonly EloResult[] = ['WHITE_WON', 'BLACK_WON', 'DRAW'];
 
@@ -12,6 +13,16 @@ export class RatingService {
 
   preview(whiteRating: number, blackRating: number, result: EloResult): EloOutcome {
     return computeElo({ whiteRating, blackRating, result });
+  }
+
+  async getLeaderboard(limit = 20, offset = 0): Promise<LeaderboardEntry[]> {
+    const users = await this.prisma.user.findMany({
+      orderBy: [{ rating: 'desc' }, { username: 'asc' }],
+      skip: offset,
+      take: limit,
+      select: { id: true, username: true, rating: true },
+    });
+    return users.map((user, i) => ({ rank: offset + i + 1, ...user }));
   }
 
   
