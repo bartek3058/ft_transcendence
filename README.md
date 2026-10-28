@@ -114,7 +114,7 @@ The DB roles are split: an owner role runs migrations and seeding, while the app
 | ELO rating system | astefans | A small, dependency-free ELO engine (expected score + rating update, K-factor 32, with a rating floor) and a service that writes the new ratings when a game ends - in one transaction, and safe to call twice. |
 | Player waiting queue | astefans | In-memory queue, one spot per logged-in player, holding their rating and chosen time control. |
 | Automated opponent matching | astefans | Pairs the closest-rated players waiting, widening the allowed gap the longer you wait, then spins up the game (in-memory session + `IN_PROGRESS` row) and tells both players over Socket.IO. |
-| Ranking & statistics API | astefans, pmamala | Per-player profile and stats (`GET /api/profile/me`); global leaderboard by rating (still to come). |
+| Ranking & statistics API | astefans, pmamala | Per-player profile and stats (`GET /api/profile/me`) plus a global leaderboard by rating (`GET /api/leaderboard`). |
 
 ---
 
