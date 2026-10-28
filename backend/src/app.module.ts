@@ -1,3 +1,4 @@
+import { FriendsModule } from "./friends/friends.module";
 import { Module } from "@nestjs/common";
 import { HealthModule } from "./health/health.module";
 import { DatabaseModule } from "./database/database.module";
@@ -9,6 +10,7 @@ import { MatchmakingModule } from "./matchmaking/matchmaking.module";
 @Module({
   imports: [
     DatabaseModule,
+    FriendsModule,
     HealthModule,
     AuthModule,
     RatingModule,

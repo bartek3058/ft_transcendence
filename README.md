@@ -218,3 +218,24 @@ _TODO: add `docs/DEVELOPMENT.md` with common commands, Prisma workflows, Docker 
 
 # License
 Created for the 42 curriculum; intended for educational purposes within the context of the 42 curriculum.
+
+## Friends backend
+
+Friend requests, acceptance/removal, public user lookup and authenticated online
+presence are implemented. Frontend integration is assigned separately. See the
+[friends frontend handoff](docs/friends-frontend-handoff.md) for API contracts,
+Socket.IO integration, migration instructions and tests.
+
+### Friends deployment notes
+
+The additive `202610270001_friends` migration runs through the migration service;
+existing users and games are preserved. Configure a local, Git-ignored `.env` from
+`.env.example` with matching database passwords and connection URLs before running
+`docker compose up --build -d`. Required database settings now fail with a clear
+message when missing; admin bootstrap settings remain optional.
+
+Compose assigns project-specific container names, avoiding conflicts with older
+checkouts using a container named `postgres`. Only one checkout can bind the default
+host ports 80/443 at a time. Stop an older checkout from its folder with
+`docker compose down` when necessary; do not add `-v` unless deleting its database
+volume is intentional. Commit configuration changes, never the local `.env`.

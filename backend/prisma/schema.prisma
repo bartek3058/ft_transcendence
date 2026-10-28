@@ -19,6 +19,10 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  friendshipsLow Friendship[] @relation("FriendLow")
+  friendshipsHigh Friendship[] @relation("FriendHigh")
+  friendRequests Friendship[] @relation("FriendRequester")
+
   sessions     Session[]
   whiteGames   Game[]     @relation("WhitePlayer")
   blackGames   Game[]     @relation("BlackPlayer")
@@ -88,4 +92,22 @@ model GameMove {
   @@unique([gameId, ply], map: "game_moves_game_id_ply_key")
   @@index([gameId, ply])
   @@map("game_moves")
+}
+
+model Friendship {
+  id            String   @id @default(uuid()) @db.Uuid
+  userLowId     String   @map("user_low_id") @db.Uuid
+  userHighId    String   @map("user_high_id") @db.Uuid
+  requestedById String   @map("requested_by_id") @db.Uuid
+  status        String   @default("PENDING") @db.VarChar(8)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  acceptedAt    DateTime? @map("accepted_at") @db.Timestamptz(3)
+  userLow       User @relation("FriendLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHigh      User @relation("FriendHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+  requestedBy   User @relation("FriendRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+
+  @@unique([userLowId, userHighId], map: "friendships_pair_key")
+  @@index([userLowId, status, createdAt])
+  @@index([userHighId, status, createdAt])
+  @@map("friendships")
 }
