@@ -18,7 +18,8 @@
     "test:auth:db": "npm run build && node --test test/integration/auth-postgres.test.cjs",
     "test:elo": "ts-node --project tsconfig.tools.json test/elo.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
-    "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts"
+    "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts",
+    "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
