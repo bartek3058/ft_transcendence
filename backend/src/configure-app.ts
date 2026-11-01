@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException, PayloadTooLargeException, UnsupportedMediaTypeException } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, Request, Response, NextFunction } from 'express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AuthValidationPipe } from './auth/validation/auth-validation.pipe';
 import { AUTH_CONFIG, AuthConfig } from './auth/auth.config';
 
@@ -22,6 +23,14 @@ export function configureApp(app: NestExpressApplication): void {
     }
     next();
   });
+  app.use('/api/v1', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+  app.use('/api/user/api-keys', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(json({ limit: '16kb', strict: true }));
   app.use((error: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
     let response: HttpException;
@@ -41,4 +50,29 @@ export function configureApp(app: NestExpressApplication): void {
   });
   app.useGlobalPipes(new AuthValidationPipe());
   // Frontend and API are behind the same Nginx origin: no permissive CORS.
+
+  // OpenAPI / Swagger Documentation
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('ft_transcendence Public API')
+    .setDescription(
+      'Public REST API for the Transcendence platform. Authenticated via high-entropy API keys passed in the X-API-Key header. Rate limited to 60 req/min per key.',
+    )
+    .setVersion('1.0')
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'X-API-Key',
+        in: 'header',
+        description: 'Pre-seeded Evaluator Key: tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      },
+      'api-key',
+    )
+    .addTag('Matches', 'Match history, results, and ply-by-ply moves')
+    .addTag('API Keys', 'Complete CRUD lifecycle for Public API Keys')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, document, {
+    customSiteTitle: 'Transcendence Public API Documentation',
+  });
 }
