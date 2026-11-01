@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
-import { GameService } from './game.service';
 import { AuthModule } from '../auth/auth.module';
+import { GameService } from './game.service';
+import { GameGateway } from './game.gateway';
 
-//Core Game Module encapsulating the authoritative chess engine and state manager (#106)
 @Module({
   imports: [AuthModule],
-  providers: [GameService],
+  providers: [GameService, GameGateway],
   exports: [GameService],
 })
 export class GameModule {}
