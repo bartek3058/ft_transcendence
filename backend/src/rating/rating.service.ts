@@ -65,18 +65,27 @@ export class RatingService {
         result: game.result as EloResult,
       });
 
+      // Claim the game atomically: only the call that flips the rating columns
+      // from null wins. Under READ COMMITTED a second concurrent call blocks on
+      // this row until we commit, then re-checks the WHERE, matches nothing and
+      // gets count 0 - so it bails out below without touching player ratings.
+      const claimed = await tx.game.updateMany({
+        where: { id: gameId, whiteRatingChange: null, blackRatingChange: null },
+        data: {
+          whiteRating: white.rating,
+          blackRating: black.rating,
+          whiteRatingChange: outcome.whiteRatingChange,
+          blackRatingChange: outcome.blackRatingChange,
+        },
+      });
+      if (claimed.count === 0) {
+        this.logger.debug(`applyGameResult: game ${gameId} claimed by a concurrent call, skipping`);
+        return null;
+      }
+
       await Promise.all([
         tx.user.update({ where: { id: whiteId }, data: { rating: outcome.whiteRating } }),
         tx.user.update({ where: { id: blackId }, data: { rating: outcome.blackRating } }),
-        tx.game.update({
-          where: { id: gameId },
-          data: {
-            whiteRating: white.rating,
-            blackRating: black.rating,
-            whiteRatingChange: outcome.whiteRatingChange,
-            blackRatingChange: outcome.blackRatingChange,
-          },
-        }),
       ]);
 
       this.logger.log(
