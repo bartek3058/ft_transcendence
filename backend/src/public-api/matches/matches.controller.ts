@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseFilters, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseFilters, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { MatchesService } from './matches.service';
 import { MatchQueryDto } from './dto/match-query.dto';
@@ -36,7 +36,7 @@ export class MatchesController {
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Match not found' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
-  async getMatch(@Param('id') id: string): Promise<MatchDetailDto> {
+  async getMatch(@Param('id', new ParseUUIDPipe()) id: string): Promise<MatchDetailDto> {
     return this.matchesService.findMatchById(id);
   }
 }

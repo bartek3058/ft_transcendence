@@ -130,10 +130,11 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
   - **Documentation & Architecture Contract**: [docs/public-api.md](docs/public-api.md)
   - **Interactive Swagger UI**: `https://localhost/api/docs`
   - **Pre-seeded Evaluator Key**:
-    `tr_live_evaluator000000000000000000000000000000000000000000000000000000`
+    `tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef`
   - **Endpoints**:
     - Match History (Issue #90): `GET /api/v1/matches`, `GET /api/v1/matches/:id`
     - API Keys CRUD: `POST /api/v1/api-keys`, `GET /api/v1/api-keys`, `GET /api/v1/api-keys/:id`, `PUT /api/v1/api-keys/:id`, `DELETE /api/v1/api-keys/:id`
+    - Web User API Keys (Session Auth): `POST /api/user/api-keys`, `GET /api/user/api-keys`, `DELETE /api/user/api-keys/:id`
   - **Verification Commands**:
     ```bash
     docker compose run --rm backend npm run test:public-api

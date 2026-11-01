@@ -44,6 +44,7 @@ describe('Public API Security: ApiKeyGuard & ApiKeyRateLimiter', () => {
 
   function createMockApiKeyService() {
     return {
+      touchLastUsed: (_id: string) => {},
       validateApiKey: async (key: string) => {
         if (key === validRawKey) {
           return {

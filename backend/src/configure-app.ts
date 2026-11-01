@@ -23,6 +23,14 @@ export function configureApp(app: NestExpressApplication): void {
     }
     next();
   });
+  app.use('/api/v1', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+  app.use('/api/user/api-keys', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(json({ limit: '16kb', strict: true }));
   app.use((error: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
     let response: HttpException;
@@ -55,7 +63,7 @@ export function configureApp(app: NestExpressApplication): void {
         type: 'apiKey',
         name: 'X-API-Key',
         in: 'header',
-        description: 'Pre-seeded Evaluator Key: tr_live_evaluator000000000000000000000000000000000000000000000000000000',
+        description: 'Pre-seeded Evaluator Key: tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
       },
       'api-key',
     )

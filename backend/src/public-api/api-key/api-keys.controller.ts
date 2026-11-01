@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Put,
   Query,
@@ -82,7 +83,7 @@ export class ApiKeysController {
   @ApiResponse({ status: 404, description: 'API key not found' })
   async getKey(
     @Req() request: PublicApiRequest,
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<ApiKeySummaryDto> {
     return this.apiKeyService.getKeyById(id, request.apiKeyUser!);
   }
@@ -93,12 +94,12 @@ export class ApiKeysController {
     description: 'Updates the human-readable label of an existing API key.',
   })
   @ApiResponse({ status: 200, description: 'Updated API key metadata', type: ApiKeySummaryDto })
-  @ApiResponse({ status: 400, description: 'Invalid key name' })
+  @ApiResponse({ status: 400, description: 'Invalid key name or invalid UUID' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'API key not found' })
   async updateKey(
     @Req() request: PublicApiRequest,
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateApiKeyDto,
   ): Promise<ApiKeySummaryDto> {
     return this.apiKeyService.updateApiKey(id, dto.name, request.apiKeyUser!);
@@ -111,11 +112,12 @@ export class ApiKeysController {
   })
   @ApiQuery({ name: 'purge', required: false, type: Boolean, description: 'Permanently remove from database (admin only)' })
   @ApiResponse({ status: 200, description: 'Revocation / deletion confirmation', type: ApiKeyMessageResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid UUID format or key ineligible for purge' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'API key not found' })
   async deleteKey(
     @Req() request: PublicApiRequest,
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Query('purge') purge?: string,
   ): Promise<ApiKeyMessageResponseDto> {
     const isPurge = purge === 'true' || purge === '1';

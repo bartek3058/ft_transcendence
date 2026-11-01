@@ -6,9 +6,6 @@ export class PlayerSummaryDto {
 
   @ApiProperty()
   username: string;
-
-  @ApiPropertyOptional()
-  rating?: number;
 }
 
 export class MatchSummaryDto {
@@ -29,6 +26,12 @@ export class MatchSummaryDto {
 
   @ApiPropertyOptional({ example: '10+0' })
   timeControl: string | null;
+
+  @ApiPropertyOptional({ example: 1216, description: 'White player rating at time of match (historical snapshot)' })
+  whiteRating: number | null;
+
+  @ApiPropertyOptional({ example: 1184, description: 'Black player rating at time of match (historical snapshot)' })
+  blackRating: number | null;
 
   @ApiPropertyOptional({ example: 16 })
   whiteRatingChange: number | null;

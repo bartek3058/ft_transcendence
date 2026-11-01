@@ -78,7 +78,8 @@ export class ApiKeyService {
 
   /**
    * Validates a raw API key from request headers.
-   * Checks revocation, expiration, and updates lastUsedAt asynchronously.
+   * Checks revocation and expiration. Does NOT update lastUsedAt
+   * (caller must invoke touchLastUsed after admission).
    */
   async validateApiKey(rawKey: string | null | undefined): Promise<ValidatedApiKeyResult> {
     if (!rawKey || typeof rawKey !== 'string' || !rawKey.startsWith(API_KEY_PREFIX)) {
@@ -132,18 +133,24 @@ export class ApiKeyService {
       });
     }
 
-    // Update lastUsedAt asynchronously without blocking request
-    void this.prisma.apiKey
-      .update({
-        where: { id: record.id },
-        data: { lastUsedAt: new Date() },
-      })
-      .catch(() => {});
-
     return {
       apiKeyId: record.id,
       user: record.user,
     };
+  }
+
+  /**
+   * Updates lastUsedAt asynchronously without blocking the request pipeline.
+   * Must be called only AFTER rate limiting admission to avoid writing
+   * timestamps for rejected requests.
+   */
+  touchLastUsed(apiKeyId: string): void {
+    void this.prisma.apiKey
+      .update({
+        where: { id: apiKeyId },
+        data: { lastUsedAt: new Date() },
+      })
+      .catch(() => {});
   }
 
   /**
@@ -259,6 +266,19 @@ export class ApiKeyService {
     }
 
     if (purge && caller.role === 'admin') {
+      const isRevoked = Boolean(key.revokedAt);
+      const isExpired = key.expiresAt ? key.expiresAt.getTime() <= Date.now() : false;
+      const isUnused = !key.lastUsedAt;
+
+      if (!isRevoked && !isExpired && !isUnused) {
+        throw new BadRequestException({
+          error: {
+            code: 'CANNOT_PURGE_ACTIVE_KEY',
+            message: 'Only revoked, expired, or unused API keys can be permanently purged.',
+          },
+        });
+      }
+
       await this.prisma.apiKey.delete({ where: { id } });
       return { message: 'API key permanently deleted from database.' };
     }
