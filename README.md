@@ -10,10 +10,11 @@ A full-stack **chess** app you play in the browser: real-time multiplayer over W
 Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI.
 
 ### Features
-- **Auth & security** - registration, login, cookie sessions, CSRF checks and rate limiting (passwords hashed with Argon2id).
-- **Real-time chess** - the server runs the actual game and checks every move, so the client can't cheat.
-- **Matchmaking & ranking** - a waiting queue that pairs you with someone close to your ELO.
-- **Profiles & stats** - each player's win/loss/draw record and recent games.
+- **Authentication & security** - registration, login, cookie sessions, CSRF checks, rate limiting (Argon2id password hashing).
+- **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
+- **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
+- **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
+- **Public API & Match History** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), and match history endpoints.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
 ---
@@ -111,16 +112,35 @@ The DB roles are split: an owner role runs migrations and seeding, while the app
 
 | Feature | Contributor(s) | Description |
 | :--- | :--- | :--- |
-| ELO rating system | astefans | A small, dependency-free ELO engine (expected score + rating update, K-factor 32, with a rating floor) and a service that writes the new ratings when a game ends - in one transaction, and safe to call twice. |
-| Player waiting queue | astefans | In-memory queue, one spot per logged-in player, holding their rating and chosen time control. |
-| Automated opponent matching | astefans | Pairs the closest-rated players waiting, widening the allowed gap the longer you wait, then spins up the game (in-memory session + `IN_PROGRESS` row) and tells both players over Socket.IO. |
-| Ranking & statistics API | astefans, pmamala | Per-player profile and stats (`GET /api/profile/me`) plus a global leaderboard by rating (`GET /api/leaderboard`). |
+| ELO rating system | astefans | Pure ELO engine (expected score + rating update, K-factor 32, rating floor) and a transactional, idempotent service that updates both players' ratings when a game ends. |
+| Player waiting queue | astefans | In-memory queue; one entry per authenticated user, holding their rating and chosen time control. |
+| Automated opponent matching | astefans | Pairs the closest-rated waiting players within a tolerance that widens the longer they wait; creates the game (RAM session + `IN_PROGRESS` row) and notifies both clients over Socket.IO. |
+| Ranking & statistics API | astefans, pmamala | Per-user profile and statistics (`GET /api/profile/me`); global leaderboard by rating (planned). |
+| Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90) and full API key CRUD with OpenAPI/Swagger docs at `/api/docs`. |
 
 ---
 
 # Modules
 
 Point values follow the subject: **major module = 2 points**, **minor module = 1 point**.
+
+### Web
+- **Public API & Match History (Major Module — 2 Points)**:
+  A stateless, machine-to-machine REST API authenticated via cryptographic `X-API-Key` headers and protected by sliding-window rate limiting. Interactive OpenAPI/Swagger documentation is served at `/api/docs`.
+  - **Documentation & Architecture Contract**: [docs/public-api.md](docs/public-api.md)
+  - **Interactive Swagger UI**: `https://localhost/api/docs`
+  - **Pre-seeded Evaluator Key**:
+    `tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef`
+  - **Endpoints**:
+    - Match History (Issue #90): `GET /api/v1/matches`, `GET /api/v1/matches/:id`
+    - API Keys CRUD: `POST /api/v1/api-keys`, `GET /api/v1/api-keys`, `GET /api/v1/api-keys/:id`, `PUT /api/v1/api-keys/:id`, `DELETE /api/v1/api-keys/:id`
+    - Web User API Keys (Session Auth): `POST /api/user/api-keys`, `GET /api/user/api-keys`, `DELETE /api/user/api-keys/:id`
+  - **Verification Commands**:
+    ```bash
+    docker compose run --rm backend npm run test:public-api
+    docker compose run --rm backend npm run test:api-guard
+    docker compose run --rm backend npm run test:apikey
+    ```
 
 - _TODO: list the modules the project implements, grouped by category, with a running subtotal and total._
 

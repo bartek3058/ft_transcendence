@@ -19,6 +19,6 @@ import { AuthRateLimiter } from './auth-rate-limiter';
     { provide: AUTH_CONFIG, useFactory: loadAuthConfig },
     { provide: AuthRepository, useClass: PrismaAuthRepository },
   ],
-  exports: [PasswordService, SessionGuard, SessionService, AUTH_CONFIG],
+  exports: [PasswordService, SessionGuard, SessionService, AuthRequestGuard, AuthRateLimiter, AUTH_CONFIG],
 })
 export class AuthModule {}
