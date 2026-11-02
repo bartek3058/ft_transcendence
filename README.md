@@ -15,6 +15,7 @@ The purpose of this project is to create a chess application including multiuser
 - **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
 - **Public API & Match History** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), and match history endpoints.
+- **Move history & Cold-Path persistence** - asynchronous, batched database writes for verified plies without blocking the real-time game loop.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
 ---
@@ -117,6 +118,7 @@ Database roles are separated: a migration/owner role runs DDL and seeding; a res
 | Automated opponent matching | astefans | Pairs the closest-rated waiting players within a tolerance that widens the longer they wait; creates the game (RAM session + `IN_PROGRESS` row) and notifies both clients over Socket.IO. |
 | Ranking & statistics API | astefans, pmamala | Per-user profile and statistics (`GET /api/profile/me`); global leaderboard by rating (planned). |
 | Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90) and full API key CRUD with OpenAPI/Swagger docs at `/api/docs`. |
+| Move history persistence (Cold Path) | tszymans | Asynchronous buffer draining verified in-memory moves to PostgreSQL `game_moves` in 50-ply batches with debouncing (50ms), exponential backoff for transient errors, poison-record isolation, and bounded wait on game completion. |
 
 ---
 
