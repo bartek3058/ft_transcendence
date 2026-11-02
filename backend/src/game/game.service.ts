@@ -291,22 +291,6 @@ export class GameService implements OnModuleDestroy
       return this.persistRowByRow(batch);
     }
   }
-  /**
-   * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)]
-   * Concludes a match and frees its in-memory session (#143):
-   *  1. Resolves the final result (explicit conclusion > session state > engine state > ABORTED).
-   *  2. Freezes the session so no further moves are accepted.
-   *  3. Flushes pending moves, then writes result / end_reason / game_end to `games`.
-   *  4. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
-   *  5. Purges the session from RAM.
-   * If the result cannot be written, the session is KEPT (frozen) and `false` is returned,
-   * so the caller can retry without losing the outcome.
-   */
-  public async removeGame(
-    gameId: string,
-    conclusion?: GameConclusion,
-  ): Promise<boolean> {
-
   //Fallback after a permanent batch error: one bad ply must not block the others.
   private async persistRowByRow(batch: PendingMoveRecord[]): Promise<boolean> {
     for (const record of batch) {
@@ -393,8 +377,21 @@ export class GameService implements OnModuleDestroy
     return true;
   }
 
-  //INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)
-  public async removeGame(gameId: string): Promise<boolean> {
+  /**
+   * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)]
+   * Concludes a match and frees its in-memory session (#143):
+   *  1. Resolves the final result (explicit conclusion > session state > engine state > ABORTED).
+   *  2. Freezes the session so no further moves are accepted.
+   *  3. Flushes pending moves, then writes result / end_reason / game_end to `games`.
+   *  4. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
+   *  5. Purges the session from RAM.
+   * If the result cannot be written, the session is KEPT (frozen) and `false` is returned,
+   * so the caller can retry without losing the outcome.
+   */
+  public async removeGame(
+    gameId: string,
+    conclusion?: GameConclusion,
+  ): Promise<boolean> {
     const session = this.activeGames.get(gameId);
     if (!session) {
       return false;
@@ -543,6 +540,8 @@ export class GameService implements OnModuleDestroy
         `Rating update failed for game [${gameId}] (result is saved, rating can be re-applied): ${(error as Error).message}`,
       );
     }
+  }
+
   //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
   public async onModuleDestroy(): Promise<void> {
     this.clearFlushTimer();
