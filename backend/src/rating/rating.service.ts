@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { computeElo, EloOutcome, EloResult } from './elo';
+import { LeaderboardEntry } from './leaderboard.types';
 
 const RATED_RESULTS: readonly EloResult[] = ['WHITE_WON', 'BLACK_WON', 'DRAW'];
 
@@ -12,6 +13,16 @@ export class RatingService {
 
   preview(whiteRating: number, blackRating: number, result: EloResult): EloOutcome {
     return computeElo({ whiteRating, blackRating, result });
+  }
+
+  async getLeaderboard(limit = 20, offset = 0): Promise<LeaderboardEntry[]> {
+    const users = await this.prisma.user.findMany({
+      orderBy: [{ rating: 'desc' }, { username: 'asc' }],
+      skip: offset,
+      take: limit,
+      select: { id: true, username: true, rating: true },
+    });
+    return users.map((user, i) => ({ rank: offset + i + 1, ...user }));
   }
 
   
@@ -54,18 +65,27 @@ export class RatingService {
         result: game.result as EloResult,
       });
 
+      // Claim the game atomically: only the call that flips the rating columns
+      // from null wins. Under READ COMMITTED a second concurrent call blocks on
+      // this row until we commit, then re-checks the WHERE, matches nothing and
+      // gets count 0 - so it bails out below without touching player ratings.
+      const claimed = await tx.game.updateMany({
+        where: { id: gameId, whiteRatingChange: null, blackRatingChange: null },
+        data: {
+          whiteRating: white.rating,
+          blackRating: black.rating,
+          whiteRatingChange: outcome.whiteRatingChange,
+          blackRatingChange: outcome.blackRatingChange,
+        },
+      });
+      if (claimed.count === 0) {
+        this.logger.debug(`applyGameResult: game ${gameId} claimed by a concurrent call, skipping`);
+        return null;
+      }
+
       await Promise.all([
         tx.user.update({ where: { id: whiteId }, data: { rating: outcome.whiteRating } }),
         tx.user.update({ where: { id: blackId }, data: { rating: outcome.blackRating } }),
-        tx.game.update({
-          where: { id: gameId },
-          data: {
-            whiteRating: white.rating,
-            blackRating: black.rating,
-            whiteRatingChange: outcome.whiteRatingChange,
-            blackRatingChange: outcome.blackRatingChange,
-          },
-        }),
       ]);
 
       this.logger.log(
