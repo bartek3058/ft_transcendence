@@ -14,6 +14,30 @@ export class RatingService {
     return computeElo({ whiteRating, blackRating, result });
   }
 
+  async getLeaderboard(limit = 20, offset = 0) {
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safeOffset = Math.max(0, Number(offset) || 0);
+
+    const [total, users] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.user.findMany({
+        orderBy: [{ rating: 'desc' }, { username: 'asc' }],
+        skip: safeOffset,
+        take: safeLimit,
+        select: { id: true, username: true, rating: true },
+      }),
+    ]);
+
+    const entries = users.map((u, i) => ({
+      rank: safeOffset + i + 1,
+      id: u.id,
+      username: u.username,
+      rating: u.rating,
+    }));
+
+    return { total, entries };
+  }
+
   
   async applyGameResult(gameId: string): Promise<EloOutcome | null> {
     const game = await this.prisma.game.findUnique({ where: { id: gameId } });

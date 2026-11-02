@@ -62,9 +62,24 @@ export class ProfileService {
       else losses++;
     }
 
+    const higherRankCount = await this.prisma.user.count({
+      where: {
+        OR: [
+          { rating: { gt: user.rating } },
+          { rating: user.rating, username: { lt: user.username } },
+        ],
+      },
+    });
+    const rank = higherRankCount + 1;
+    const totalGames = totals.length;
+    const winRate = totalGames > 0 ? Number(((wins / totalGames) * 100).toFixed(1)) : 0;
+
     return {
-      user,
-      stats: { games: totals.length, wins, draws, losses },
+      user: {
+        ...user,
+        rank,
+      },
+      stats: { games: totalGames, wins, draws, losses, winRate, rank },
       recentGames: games.map((game) => {
         const isWhite = game.whiteId === userId;
         const won =
@@ -74,8 +89,8 @@ export class ProfileService {
         return {
           id: game.id,
           opponent: isWhite
-            ? (game.blackPlayer?.username ?? "Nieznany gracz")
-            : (game.whitePlayer?.username ?? "Nieznany gracz"),
+            ? (game.blackPlayer?.username ?? "Unknown player")
+            : (game.whitePlayer?.username ?? "Unknown player"),
           color: isWhite ? "WHITE" : "BLACK",
           outcome,
           result: game.result,

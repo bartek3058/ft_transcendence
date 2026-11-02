@@ -8,8 +8,16 @@ export interface ProfileData {
     rating: number;
     status: string;
     createdAt: string;
+    rank?: number;
   };
-  stats: { games: number; wins: number; draws: number; losses: number };
+  stats: {
+    games: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    winRate?: number;
+    rank?: number;
+  };
   recentGames: Array<{
     id: string;
     opponent: string;
