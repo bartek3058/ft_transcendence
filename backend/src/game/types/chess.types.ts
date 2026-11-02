@@ -13,11 +13,39 @@ export type GameOverReason =
 | 'CHECKMATE'
 | 'STALEMATE'
 | 'INSUFFICIENT_MATERIAL'
-| 'THREEFOLD_REPETITATION'
+| 'THREEFOLD_REPETITION'
 | 'FIFTY_MOVE_RULE'
 | 'TIMEOUT'
 | 'RESIGNATION'
 | 'ABANDONMENT';
+
+// Reasons where nobody wins: a conclusion with one of these is always persisted as DRAW.
+export const DRAW_REASONS: readonly GameOverReason[] = [
+  'STALEMATE',
+  'INSUFFICIENT_MATERIAL',
+  'THREEFOLD_REPETITION',
+  'FIFTY_MOVE_RULE',
+];
+
+/**
+ * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Game Over Pipeline (#117/#118)]
+ * Explicit match conclusion passed to GameService.removeGame for endings the chess
+ * engine cannot detect on its own (TIMEOUT, RESIGNATION, ABANDONMENT).
+ * winnerColor = null means a draw.
+ */
+export interface GameConclusion
+{
+    winnerColor: PlayerColor | null;
+    gameOverReason: GameOverReason;
+}
+
+// Final result as written to the `games` table (#143).
+export interface PersistedGameConclusion
+{
+    result: Exclude<DatabaseGameResult, 'IN_PROGRESS'>;
+    endReason: GameOverReason | null;
+    winnerColor: PlayerColor | null;
+}
 
 export interface MoveExecutionResult
 {
