@@ -1,7 +1,15 @@
-import { Flag, History, MessageCircle, RotateCcw, Send } from "lucide-react";
+import {
+  CircleDot,
+  Flag,
+  History,
+  MessageCircle,
+  RotateCcw,
+  Send,
+} from "lucide-react";
 import type { ChatMessage } from "../../types";
 
 type Props = {
+  gameId: string;
   moves: string[];
   messages: ChatMessage[];
   draft: string;
@@ -12,6 +20,7 @@ type Props = {
 };
 
 export function GameSidebar({
+  gameId,
   moves,
   messages,
   draft,
@@ -22,6 +31,14 @@ export function GameSidebar({
 }: Props) {
   return (
     <aside>
+      <div className="card gameRoomCard">
+        <div className="gameRoomInfo">
+          <CircleDot size={16} />
+          <span>Game room</span>
+          <strong>{gameId.slice(0, 8)}</strong>
+        </div>
+      </div>
+
       <div className="card moves">
         <div className="cardTitle">
           <History size={18} /> Moves <span>{moves.length}</span>
@@ -56,6 +73,7 @@ export function GameSidebar({
             </div>
           ))}
         </div>
+
         <div className="chatInput">
           <input
             value={draft}
