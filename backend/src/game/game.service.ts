@@ -75,7 +75,7 @@ export class GameService implements OnModuleDestroy
       private readonly prisma: PrismaService,
       private readonly ratingService: RatingService,
       @Optional() private readonly sessionService?: SessionService,
-      @Optional() private readonly prisma?: PrismaService,
+      // @Optional() private readonly prisma?: PrismaService,
     ) {}
     public createGame(options: CreateGameOptions): PublicGameState {
     const {
