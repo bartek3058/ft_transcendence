@@ -110,13 +110,15 @@ describe('Public API Step 3: Match History & API Keys Full CRUD', () => {
       result: 'WHITE_WON',
       endReason: 'CHECKMATE',
       timeControl: '10+0',
+      whiteRating: 2800,
+      blackRating: 2780,
       whiteRatingChange: 16,
       blackRatingChange: -16,
       pgn: '1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0',
       gameStart: new Date('2026-10-27T10:00:00Z'),
       gameEnd: new Date('2026-10-27T10:05:00Z'),
-      whitePlayer: { id: 'user-1', username: 'magnus', rating: 2800 },
-      blackPlayer: { id: 'user-2', username: 'hikaru', rating: 2780 },
+      whitePlayer: { id: 'user-1', username: 'magnus' },
+      blackPlayer: { id: 'user-2', username: 'hikaru' },
       moves: [
         { ply: 1, moveNumber: 1, color: 'WHITE', san: 'e4', uci: 'e2e4', fenAfter: '...', timeSpentMs: 1200, timeRemainingMs: 598800 },
         { ply: 2, moveNumber: 1, color: 'BLACK', san: 'e5', uci: 'e7e5', fenAfter: '...', timeSpentMs: 900, timeRemainingMs: 599100 },
@@ -127,13 +129,15 @@ describe('Public API Step 3: Match History & API Keys Full CRUD', () => {
       result: 'DRAW',
       endReason: 'STALEMATE',
       timeControl: '5+3',
+      whiteRating: 1550,
+      blackRating: 2800,
       whiteRatingChange: 0,
       blackRatingChange: 0,
       pgn: '1. d4 d5 ... 1/2-1/2',
       gameStart: new Date('2026-10-27T11:00:00Z'),
       gameEnd: new Date('2026-10-27T11:15:00Z'),
-      whitePlayer: { id: 'user-3', username: 'tomek', rating: 1550 },
-      blackPlayer: { id: 'user-1', username: 'magnus', rating: 2800 },
+      whitePlayer: { id: 'user-3', username: 'tomek' },
+      blackPlayer: { id: 'user-1', username: 'magnus' },
       moves: [],
     },
   ];
@@ -307,6 +311,29 @@ describe('Public API Step 3: Match History & API Keys Full CRUD', () => {
         () => service.getKeyById(created.id, { id: 'admin-1', role: 'admin' }),
         (err: any) => err.status === 404,
       );
+    });
+
+    it('D: admin purge rejects active in-use key that has not been revoked or expired', async () => {
+      const mockPrisma = createMockPrisma();
+      const service = new ApiKeyService(mockPrisma);
+
+      const created = await service.createApiKey('user-1', 'Active In-Use Key');
+      // Simulate that key was used
+      await (mockPrisma as any).apiKey.update({
+        where: { id: created.id },
+        data: { lastUsedAt: new Date() },
+      });
+
+      // Admin purge attempt should be rejected
+      await assert.rejects(
+        () => service.deleteApiKey(created.id, true, { id: 'admin-1', role: 'admin' }),
+        (err: any) => err.status === 400 && err.response?.error?.code === 'CANNOT_PURGE_ACTIVE_KEY',
+      );
+
+      // Once revoked, purge succeeds
+      await service.deleteApiKey(created.id, false, { id: 'user-1', role: 'user' });
+      const res = await service.deleteApiKey(created.id, true, { id: 'admin-1', role: 'admin' });
+      assert.equal(res.message, 'API key permanently deleted from database.');
     });
   });
 });

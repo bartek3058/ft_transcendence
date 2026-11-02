@@ -1,14 +1,73 @@
-// Adapter pod przyszłe WebSockety/Socket.IO. UI nie zależy od konkretnej biblioteki realtime.
-export type RealtimeEvent = "move" | "chat" | "game-state";
-export interface RealtimeClient {
-  connect(): void;
-  disconnect(): void;
-  emit(event: RealtimeEvent, payload: unknown): void;
+import { io, type Socket } from "socket.io-client";
+
+export type PlayerColor = "w" | "b";
+
+export interface PublicGameState {
+  gameId: string;
+  fen: string;
+  turn: PlayerColor;
+  whitePlayerId: string;
+  blackPlayerId: string;
+  whiteTimeRemainingMs: number;
+  blackTimeRemainingMs: number;
+  timeControl: string | null;
+  plyCount: number;
+  moveNumber: number;
+  isFinished: boolean;
 }
-export const realtime: RealtimeClient = {
-  connect() {},
-  disconnect() {},
-  emit() {
-    /* backend do podpięcia */
-  },
-};
+
+export interface MatchFound {
+  gameId: string;
+  whitePlayerId: string;
+  blackPlayerId: string;
+  timeControl: string | null;
+  state: PublicGameState;
+}
+
+export interface GameJoined {
+  gameId: string;
+  color: PlayerColor;
+  state: PublicGameState;
+}
+
+let matchmakingSocket: Socket | null = null;
+let gameSocket: Socket | null = null;
+
+export function getMatchmakingSocket(): Socket {
+  if (!matchmakingSocket) {
+    matchmakingSocket = io("/matchmaking", {
+      autoConnect: false,
+      transports: ["websocket", "polling"],
+    });
+  }
+  return matchmakingSocket;
+}
+
+export function getGameSocket(): Socket {
+  if (!gameSocket) {
+    gameSocket = io("/game", {
+      autoConnect: false,
+      transports: ["websocket", "polling"],
+    });
+  }
+  return gameSocket;
+}
+
+export function joinGameRoom(gameId: string): void {
+  const socket = getGameSocket();
+
+  const join = () => {
+    socket.emit("game:join", { gameId });
+  };
+
+  socket.once("game:ready", join);
+
+  if (!socket.connected) {
+    socket.connect();
+  }
+}
+
+export function disconnectRealtime(): void {
+  matchmakingSocket?.disconnect();
+  gameSocket?.disconnect();
+}

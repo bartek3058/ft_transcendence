@@ -1,16 +1,10 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiKeyService, API_KEY_PREFIX } from '../api-key/api-key.service';
+import { ApiKeyService, hashApiKey, API_KEY_PREFIX } from '../api-key/api-key.service';
 import { ApiKeyRateLimiter } from './api-key-rate-limiter';
-import { ValidatedApiKeyResult } from '../api-key/api-key.types';
 
 export interface PublicApiRequest extends Request {
-  apiKeyUser?: ValidatedApiKeyResult['user'];
+  apiKeyUser?: { id: string; username: string; email: string; role: string };
   apiKeyId?: string;
 }
 
@@ -38,7 +32,7 @@ export class ApiKeyGuard implements CanActivate {
       });
     }
 
-    // Validate key structure before database hit to prevent query load on garbage input
+    // Stage 1: Format regex — zero I/O, rejects junk and injection payloads
     if (!apiKey.startsWith(API_KEY_PREFIX) || !API_KEY_REGEX.test(apiKey)) {
       throw new UnauthorizedException({
         error: {
@@ -48,13 +42,18 @@ export class ApiKeyGuard implements CanActivate {
       });
     }
 
-    // 1. Validate key cryptographic hash against database, check revocation and expiration
+    // Stage 2: Pre-auth rate limit — keyed on the SHA-256 hash of the raw key
+    // This runs BEFORE any database query to prevent DB exhaustion from fake keys
+    const keyHash = hashApiKey(apiKey);
+    this.rateLimiter.consume(`pre:${keyHash}`, 60, 60000);
+
+    // Stage 3: Database authentication — verify hash, check revocation/expiration
     const validation = await this.apiKeyService.validateApiKey(apiKey);
 
-    // 2. Consume rate limit quota for this authenticated key (default 60 requests/minute)
-    this.rateLimiter.consume(validation.apiKeyId, 60, 60000);
+    // Stage 4: Post-admission — update lastUsedAt only after all checks pass
+    this.apiKeyService.touchLastUsed(validation.apiKeyId);
 
-    // 3. Attach verified caller identity and key ID to request context
+    // Attach verified caller identity and key ID to request context
     request.apiKeyUser = validation.user;
     request.apiKeyId = validation.apiKeyId;
 

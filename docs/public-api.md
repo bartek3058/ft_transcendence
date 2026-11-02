@@ -68,7 +68,7 @@ Evaluators can explore and test all endpoints interactively:
 2. Click the green **Authorize** button at the top right.
 3. Enter the pre-seeded evaluation key:
    ```text
-   tr_live_evaluator000000000000000000000000000000000000000000000000000000
+   tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
    ```
 4. Click **Authorize** -> **Close**.
 5. Select any endpoint (e.g., `GET /v1/matches`), click **Try it out**, and click **Execute**.

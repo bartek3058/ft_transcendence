@@ -5,16 +5,31 @@ import {
   BadRequestException,
   NotFoundException,
   Optional,
+  OnModuleDestroy,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Chess } from 'chess.js';
 import { SafeAccount } from '../auth/auth.repository';
 import { MakeMoveDto } from './dto/make-move.dto';
 import { SessionService } from '../auth/session.service';
+import { PrismaService } from '../database/prisma.service';
+import { RatingService } from '../rating/rating.service';
+import {
+  classifyPersistenceError,
+  computeBackoffMs,
+  DeadLetterMove,
+  describeError,
+  MOVE_PERSISTENCE_CONFIG,
+  toGameMoveCreateInput,
+} from './move-persistence';
 import {
   CreateGameOptions,
   DatabaseGameResult,
   DatabaseMoveColor,
+  DRAW_REASONS,
+  GameConclusion,
+  GameOverReason,
+  PersistedGameConclusion,
   GameSession,
   PendingMoveRecord,
   PublicGameState,
@@ -26,8 +41,13 @@ import {
 //Default time control: 10 minutes (600,000 ms) per player.
 const DEFAULT_INITIAL_TIME_MS = 10 * 60 * 1000;
 
+// `games.id` is a PostgreSQL UUID column: check the format before any I/O so a malformed
+// id never reaches the database (would otherwise raise 22P02 invalid_text_representation).
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @Injectable()
-export class GameService
+export class GameService implements OnModuleDestroy
 {
     private readonly logger = new Logger(GameService.name);
     /**
@@ -41,7 +61,20 @@ export class GameService
    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
     private isFlushingQueue = false;
+    // Game ids whose conclusion is currently being persisted (guards concurrent removeGame calls).
+    private readonly concludingGames = new Set<string>();
+    /** Poison records rejected permanently by the database (bounded, for inspection). */
+    private readonly deadLetterMoves: DeadLetterMove[] = [];
+    /** Single in-flight drain; concurrent callers share it. */
+    private flushPromise: Promise<void> | null = null;
+    private flushTimer: NodeJS.Timeout | null = null;
+    private retryTimer: NodeJS.Timeout | null = null;
+    private consecutiveFailures = 0;
+    private queueCapWarned = false;
+    private missingPrismaWarned = false;
     constructor(
+      private readonly prisma: PrismaService,
+      private readonly ratingService: RatingService,
       @Optional() private readonly sessionService?: SessionService,
     ) {}
     public createGame(options: CreateGameOptions): PublicGameState {
@@ -122,56 +155,406 @@ export class GameService
   public getActiveGamesCount(): number {
     return this.activeGames.size;
   }
-  //Enqueues a verified move into the Cold-Path buffer and triggers non-blocking persistence.
+  //Enqueues a verified move into the Cold-Path buffer and schedules non-blocking persistence.
   public enqueueMoveForPersistence(moveRecord: PendingMoveRecord): void {
     this.pendingMovesQueue.push(moveRecord);
-  // Fire-and-forget asynchronous flush: does NOT block the WebSocket event loop
-  void this.flushPendingMoves();
+
+    // Soft cap: never drop plies (data loss), but make a runaway buffer loud.
+    if (this.pendingMovesQueue.length > MOVE_PERSISTENCE_CONFIG.maxQueueSize) {
+      if (!this.queueCapWarned) {
+        this.queueCapWarned = true;
+        this.logger.error(
+          `Pending move buffer exceeded ${MOVE_PERSISTENCE_CONFIG.maxQueueSize} records. Database persistence is falling behind or unavailable.`,
+        );
+      }
+    } else {
+      this.queueCapWarned = false;
+    }
+
+    // Never awaited: the WebSocket event loop must not wait for PostgreSQL.
+    this.scheduleFlush();
   }
-  //Asynchronous Cold-Path worker that drains the pendingMovesQueue,
-  //writes records to PostgreSQL, and deletes them from RAM.
-  public async flushPendingMoves(): Promise<void> {
-    if (this.isFlushingQueue || this.pendingMovesQueue.length === 0) {
+
+  //Number of plies still waiting for database confirmation (all games).
+  public getPendingMovesCount(): number {
+    return this.pendingMovesQueue.length;
+  }
+
+  //Plies the database rejected permanently (bad data / missing parent row).
+  public getDeadLetterMoves(): readonly DeadLetterMove[] {
+    return this.deadLetterMoves;
+  }
+
+  //Debounced trigger: several plies arriving together share one INSERT.
+  private scheduleFlush(): void {
+    if (!this.prisma) {
+      if (!this.missingPrismaWarned) {
+        this.missingPrismaWarned = true;
+        this.logger.warn(
+          'PrismaService is not injected: moves stay in the RAM buffer and are NOT persisted.',
+        );
+      }
       return;
     }
+    // While backing off after a failure, the retry timer owns the schedule.
+    if (this.retryTimer || this.flushPromise) {
+      return;
+    }
+    if (this.pendingMovesQueue.length >= MOVE_PERSISTENCE_CONFIG.batchSize) {
+      this.clearFlushTimer();
+      void this.flushPendingMoves();
+      return;
+    }
+    if (this.flushTimer) {
+      return;
+    }
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flushPendingMoves();
+    }, MOVE_PERSISTENCE_CONFIG.flushDelayMs);
+    this.flushTimer.unref();
+  }
 
-    this.isFlushingQueue = true;
-
-    try {
-      while (this.pendingMovesQueue.length > 0) {
-        // Peek at the oldest move in the buffer
-        const nextMove = this.pendingMovesQueue[0];
-
-        // [INTEGRATION - HOOK for @tszyman (Database #64 / Move History #88)]
-        // TODO: Inject PrismaService / MatchHistoryService and persist `nextMove` here.
-        // Example: await this.prismaService.move.create({ data: nextMove });
-        await this.persistSingleMoveStub(nextMove);
-
-        // Remove the move from RAM immediately after successful DB confirmation
-        this.pendingMovesQueue.shift();
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to flush pending move to database. Record retained in buffer for retry: ${(error as Error).message}`,
-      );
-    } finally {
-      this.isFlushingQueue = false;
+  private clearFlushTimer(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
   }
-  //INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)
-  public async removeGame(gameId: string): Promise<boolean> {
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
+
+  //Asynchronous Cold-Path worker: drains the buffer into PostgreSQL in batches.
+  //Concurrent callers share one in-flight drain, so awaiting it is always safe.
+  public flushPendingMoves(): Promise<void> {
+    if (!this.prisma || this.pendingMovesQueue.length === 0) {
+      return this.flushPromise ?? Promise.resolve();
+    }
+    if (!this.flushPromise) {
+      this.clearFlushTimer();
+      this.flushPromise = this.drainQueue().finally(() => {
+        this.flushPromise = null;
+        // A ply enqueued while the drain was finishing must not be stranded.
+        if (this.pendingMovesQueue.length > 0 && !this.retryTimer) {
+          this.scheduleFlush();
+        }
+      });
+    }
+    return this.flushPromise;
+  }
+
+  private async drainQueue(): Promise<void> {
+    while (this.pendingMovesQueue.length > 0) {
+      const batch = this.pendingMovesQueue.slice(0, MOVE_PERSISTENCE_CONFIG.batchSize);
+      const completed = await this.persistBatch(batch);
+      if (!completed) {
+        this.scheduleRetry();
+        return;
+      }
+      this.consecutiveFailures = 0;
+    }
+  }
+
+  /**
+   * Writes one batch. Returns true when every record of the batch was either
+   * stored or dead-lettered (and removed from RAM); false when a transient
+   * failure requires a later retry (unpersisted records stay at the queue head).
+   *
+   * Only this method removes records, and only from the head, so the
+   * records at index [0, n) always match the batch we just wrote.
+   */
+  private async persistBatch(batch: PendingMoveRecord[]): Promise<boolean> {
+    try {
+      await this.prisma!.gameMove.createMany({
+        data: batch.map(toGameMoveCreateInput),
+        // A retry after a lost acknowledgement must not fail on UNIQUE(game_id, ply).
+        skipDuplicates: true,
+      });
+      this.pendingMovesQueue.splice(0, batch.length);
+      return true;
+    } catch (error) {
+      if (classifyPersistenceError(error) === 'transient') {
+        this.consecutiveFailures += 1;
+        this.logger.error(
+          `Transient failure persisting ${batch.length} move(s); retrying with backoff (attempt ${this.consecutiveFailures}): ${describeError(error)}`,
+        );
+        return false;
+      }
+      this.logger.warn(
+        `Batch of ${batch.length} move(s) rejected permanently (${describeError(error)}). Isolating the bad record(s).`,
+      );
+      return this.persistRowByRow(batch);
+    }
+  }
+  //Fallback after a permanent batch error: one bad ply must not block the others.
+  private async persistRowByRow(batch: PendingMoveRecord[]): Promise<boolean> {
+    for (const record of batch) {
+      try {
+        await this.prisma!.gameMove.createMany({
+          data: [toGameMoveCreateInput(record)],
+          skipDuplicates: true,
+        });
+        this.pendingMovesQueue.shift();
+      } catch (error) {
+        if (classifyPersistenceError(error) === 'transient') {
+          this.consecutiveFailures += 1;
+          this.logger.error(
+            `Transient failure while isolating move [${record.gameId}#${record.ply}]; retrying with backoff: ${describeError(error)}`,
+          );
+          return false;
+        }
+        this.deadLetter(record, error);
+        this.pendingMovesQueue.shift();
+      }
+    }
+    return true;
+  }
+
+  private deadLetter(record: PendingMoveRecord, error: unknown): void {
+    this.logger.error(
+      `Dead-lettered move [game ${record.gameId}, ply ${record.ply}, ${record.san}]: ${describeError(error)}`,
+    );
+    this.deadLetterMoves.push({
+      record,
+      reason: describeError(error),
+      failedAt: new Date(),
+    });
+    if (this.deadLetterMoves.length > MOVE_PERSISTENCE_CONFIG.maxDeadLetters) {
+      this.deadLetterMoves.shift();
+    }
+  }
+
+  private scheduleRetry(): void {
+    if (this.retryTimer) {
+      return;
+    }
+    const delay = computeBackoffMs(this.consecutiveFailures);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.flushPendingMoves();
+    }, delay);
+    this.retryTimer.unref();
+  }
+
+  private hasPendingMovesFor(gameId: string): boolean {
+    return this.pendingMovesQueue.some((m) => m.gameId === gameId);
+  }
+
+  /**
+   * Waits (bounded) until the buffer holds no more plies of `gameId`
+   * (or, without gameId, no plies at all). Forces a flush attempt on each
+   * round so a pending backoff timer does not delay the caller.
+   * Returns false on timeout; the plies then stay buffered and keep retrying.
+   */
+  private async waitForPersistence(
+    timeoutMs: number,
+    gameId?: string,
+  ): Promise<boolean> {
+    if (!this.prisma) {
+      return false;
+    }
+    const pending = () =>
+      gameId ? this.hasPendingMovesFor(gameId) : this.pendingMovesQueue.length > 0;
+    const deadline = Date.now() + timeoutMs;
+    while (pending()) {
+      this.clearRetryTimer();
+      await this.flushPendingMoves();
+      if (!pending()) {
+        break;
+      }
+      // The attempt failed transiently: wait a little before trying again.
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      this.clearRetryTimer(); // drainQueue armed one; this loop drives retries now
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    }
+    return true;
+  }
+
+  /**
+   * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)]
+   * Concludes a match and frees its in-memory session (#143):
+   *  1. Resolves the final result (explicit conclusion > session state > engine state > ABORTED).
+   *  2. Freezes the session so no further moves are accepted.
+   *  3. Waits (bounded) until every ply of the game reached the database (#140).
+   *  4. Writes result / end_reason / game_end to `games`.
+   *  5. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
+   *  6. Purges the session from RAM.
+   * If the result cannot be written, the session is KEPT (frozen) and `false` is returned,
+   * so the caller can retry without losing the outcome.
+   */
+  public async removeGame(
+    gameId: string,
+    conclusion?: GameConclusion,
+  ): Promise<boolean> {
     const session = this.activeGames.get(gameId);
     if (!session) {
       return false;
     }
-  // Ensure any queued moves are flushed before freeing the session memory
-  await this.flushPendingMoves();
-  //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
-  const deleted = this.activeGames.delete(gameId);
-    if (deleted) {
-      this.logger.log(`Purged game session [${gameId}] from server RAM.`);
+    if (this.concludingGames.has(gameId)) {
+      this.logger.warn(`removeGame: game [${gameId}] is already being concluded, ignoring duplicate call.`);
+      return false;
     }
-    return deleted;
+    this.concludingGames.add(gameId);
+
+    try {
+      const final = this.resolveConclusion(session, conclusion);
+      // Freeze the session first: authorizeMove() rejects every move from now on.
+      session.isFinished = true;
+      session.winnerColor = final.winnerColor;
+      session.gameOverReason = final.endReason;
+
+      // Every ply of this game must reach the database before the game row is
+      // closed and rated (the ELO/results pipeline relies on a complete history).
+      // On timeout the records stay in the buffer and keep retrying in the background.
+      const movesPersisted = await this.waitForPersistence(
+        MOVE_PERSISTENCE_CONFIG.removeGameWaitMs,
+        gameId,
+      );
+      if (!movesPersisted && this.prisma) {
+        this.logger.error(
+          `Game [${gameId}] concluded while some moves are still unpersisted; they remain buffered for retry.`,
+        );
+      }
+
+      //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
+      const concluded = await this.persistGameConclusion(gameId, final);
+      if (concluded) {
+        await this.triggerRatingUpdate(gameId);
+      }
+
+      const deleted = this.activeGames.delete(gameId);
+      if (deleted) {
+        this.logger.log(`Purged game session [${gameId}] from server RAM.`);
+      }
+      return deleted;
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist conclusion of game [${gameId}]. Session kept in RAM for retry: ${(error as Error).message}`,
+      );
+      return false;
+    } finally {
+      // Released only after the purge (or failure), so a duplicate call cannot slip in.
+      this.concludingGames.delete(gameId);
+    }
+  }
+
+  /**
+   * Determines the final result of a session. Priority:
+   * explicit conclusion (TIMEOUT / RESIGNATION / ABANDONMENT...) > already-finished session
+   * > position detected by chess.js > ABORTED (removed before any conclusion, never rated).
+   */
+  private resolveConclusion(
+    session: GameSession,
+    conclusion?: GameConclusion,
+  ): PersistedGameConclusion {
+    if (conclusion) {
+      return this.toPersistedConclusion(conclusion.winnerColor, conclusion.gameOverReason);
+    }
+    if (session.isFinished && session.gameOverReason) {
+      return this.toPersistedConclusion(session.winnerColor, session.gameOverReason);
+    }
+
+    const engine = session.engine;
+    if (engine.isCheckmate()) {
+      // The side to move is the one that has been mated.
+      return this.toPersistedConclusion(engine.turn() === 'w' ? 'b' : 'w', 'CHECKMATE');
+    }
+    const drawReason = this.detectDrawReason(engine);
+    if (drawReason) {
+      return this.toPersistedConclusion(null, drawReason);
+    }
+
+    return { result: 'ABORTED', endReason: null, winnerColor: null };
+  }
+
+  private detectDrawReason(engine: Chess): GameOverReason | null {
+    if (engine.isStalemate()) return 'STALEMATE';
+    if (engine.isInsufficientMaterial()) return 'INSUFFICIENT_MATERIAL';
+    if (engine.isThreefoldRepetition()) return 'THREEFOLD_REPETITION';
+    if (engine.isDraw()) return 'FIFTY_MOVE_RULE'; // remaining isDraw() case in chess.js
+    return null;
+  }
+
+  private toPersistedConclusion(
+    winnerColor: PlayerColor | null,
+    reason: GameOverReason,
+  ): PersistedGameConclusion {
+    // Draw reasons can never have a winner, whatever the caller passed.
+    const winner = DRAW_REASONS.includes(reason) ? null : winnerColor;
+    if (winner === 'w') return { result: 'WHITE_WON', endReason: reason, winnerColor: 'w' };
+    if (winner === 'b') return { result: 'BLACK_WON', endReason: reason, winnerColor: 'b' };
+    return { result: 'DRAW', endReason: reason, winnerColor: null };
+  }
+
+  /**
+   * Writes the final result to `games`. Only an IN_PROGRESS row is updated, so a finished
+   * game is never overwritten and the rating trigger can fire at most once per game.
+   * Returns true when exactly this call closed the row.
+   */
+  private async persistGameConclusion(
+    gameId: string,
+    final: PersistedGameConclusion,
+  ): Promise<boolean> {
+    if (!UUID_REGEX.test(gameId)) {
+      this.logger.warn(`Game [${gameId}] has no UUID id, so it has no \`games\` row. Result not persisted.`);
+      return false;
+    }
+    if (!this.prisma) {
+      this.logger.warn(`PrismaService is not injected: result of game [${gameId}] not persisted.`);
+      return false;
+    }
+
+    const { count } = await this.prisma.game.updateMany({
+      where: { id: gameId, result: 'IN_PROGRESS' },
+      data: {
+        result: final.result,
+        endReason: final.endReason,
+        gameEnd: new Date(),
+      },
+    });
+
+    if (count !== 1) {
+      this.logger.warn(
+        `Game [${gameId}] has no IN_PROGRESS row in \`games\` (missing or already concluded). Result not persisted.`,
+      );
+      return false;
+    }
+    this.logger.log(
+      `Persisted conclusion of game [${gameId}]: ${final.result} (${final.endReason ?? 'no reason'}).`,
+    );
+    return true;
+  }
+
+  // The result is already stored at this point and applyGameResult skips already-rated
+  // games, so a rating failure is logged (and can be re-run) without blocking the purge.
+  private async triggerRatingUpdate(gameId: string): Promise<void> {
+    try {
+      await this.ratingService.applyGameResult(gameId);
+    } catch (error) {
+      this.logger.error(
+        `Rating update failed for game [${gameId}] (result is saved, rating can be re-applied): ${(error as Error).message}`,
+      );
+    }
+  }
+
+  //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
+  public async onModuleDestroy(): Promise<void> {
+    this.clearFlushTimer();
+    this.clearRetryTimer();
+    const drained = await this.waitForPersistence(MOVE_PERSISTENCE_CONFIG.shutdownWaitMs);
+    if (!drained && this.prisma) {
+      this.logger.error(
+        `Shutdown with ${this.pendingMovesQueue.length} unpersisted move(s) still in the buffer.`,
+      );
+    }
+    this.clearRetryTimer();
   }
 
   public verifyAndResyncState(
@@ -269,11 +652,6 @@ export class GameService
       gameOverReason: session.gameOverReason,
     };
   }
-  //INTEGRATION - HOOK for @tszyman (Database #64 / Move History #88)]
-  //Temporary asynchronous stub simulating database write until Prisma schema for moves is merged.
-  private async persistSingleMoveStub(_move: PendingMoveRecord): Promise<void> {
-    return Promise.resolve();
-  }
   public authorizeMove(
     gameId: string,
     caller: SafeAccount | string | null | undefined,
@@ -283,7 +661,7 @@ export class GameService
     //verify the match exists in Hot-path RAM
     if (!session){
       this.logger.warn(
-        'Move authorization failed: Game [${gameId}] not found in RAM (User: ${authenticatedUserId}).',
+        `Move authorization failed: Game [${gameId}] not found in RAM.`,
       );
       return {
         authorized: false,
@@ -300,7 +678,7 @@ export class GameService
       typeof caller === 'string' ? caller.trim() : caller?.id; // if given string take string if not takie caller.id from SafeAccount
 
     if (!authenticatedUserId) {
-      this.logger.warn('Move authorization failed: Unauthenticated caller in game [${gameId}].');
+      this.logger.warn(`Move authorization failed: Unauthenticated caller in game [${gameId}].`);
       return {
         authorized: false,
         rejectionResult: {

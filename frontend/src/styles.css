@@ -1370,3 +1370,113 @@ header nav a.active {
     grid-column: 2;
   }
 }
+
+.matchmakingPage {
+  min-height: calc(100vh - 110px);
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.matchmakingCard {
+  width: min(520px, 100%);
+  padding: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(24, 27, 31, 0.96);
+  text-align: center;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.matchmakingIcon {
+  font-size: 52px;
+  line-height: 1;
+  margin-bottom: 18px;
+}
+
+.matchmakingCard h2 {
+  margin: 0 0 10px;
+  font-size: 28px;
+}
+
+.matchmakingCard p {
+  min-height: 48px;
+  margin: 0 auto 22px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.matchmakingButton {
+  min-width: 210px;
+}
+
+.matchmakingGameId {
+  display: block;
+  margin: -4px 0 22px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.gameRoomBanner {
+  width: min(100%, 1180px);
+  margin: 0 auto 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gameRoomBanner strong {
+  color: var(--text);
+}
+
+.gameRoomDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #62b87a;
+  box-shadow: 0 0 0 3px rgba(98, 184, 122, 0.12);
+}
+
+.gameRoomSeparator {
+  opacity: 0.5;
+}
+
+@media (max-width: 600px) {
+  .matchmakingCard {
+    padding: 28px 20px;
+  }
+
+  .gameRoomBanner {
+    flex-wrap: wrap;
+    padding-inline: 12px;
+  }
+}
+
+.gameRoomCard {
+  padding: 12px 14px;
+}
+
+.gameRoomInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gameRoomInfo svg {
+  color: #8fc45f;
+}
+
+.gameRoomInfo span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.gameRoomInfo strong {
+  margin-left: auto;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}

@@ -1,55 +1,79 @@
-import type { Chess, Square } from "chess.js";
-type ChessBoardState = ReturnType<Chess["board"]>;
+import type { Chess, Color, Square } from "chess.js";
 import { ChessPiece } from "./ChessPiece";
+
+type ChessBoardState = ReturnType<Chess["board"]>;
+
 type Props = {
   board: ChessBoardState;
   selected: Square | null;
   onSquareClick: (square: Square) => void;
+  orientation?: Color;
 };
 
 const files = "abcdefgh".split("");
 const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
 
-export function ChessBoard({ board, selected, onSquareClick }: Props) {
-  const square = (r: number, c: number) => `${files[c]}${8 - r}` as Square;
+export function ChessBoard({
+  board,
+  selected,
+  onSquareClick,
+  orientation = "w",
+}: Props) {
+  const isBlack = orientation === "b";
+
+  const displayFiles = isBlack ? [...files].reverse() : files;
+  const displayRanks = isBlack ? [...ranks].reverse() : ranks;
+
+  const squares = board.flatMap((row, r) =>
+    row.map((piece, c) => ({
+      piece,
+      square: `${files[c]}${8 - r}` as Square,
+      row: r,
+      col: c,
+    })),
+  );
+
+  const displaySquares = isBlack ? [...squares].reverse() : squares;
+
   return (
     <div className="woodBoardFrame">
       <div className="fileLabels fileLabelsTop">
-        {files.map((f) => (
-          <span key={`t-${f}`}>{f}</span>
+        {displayFiles.map((file) => (
+          <span key={`t-${file}`}>{file}</span>
         ))}
       </div>
+
       <div className="fileLabels fileLabelsBottom">
-        {files.map((f) => (
-          <span key={`b-${f}`}>{f}</span>
+        {displayFiles.map((file) => (
+          <span key={`b-${file}`}>{file}</span>
         ))}
       </div>
+
       <div className="rankLabels rankLabelsLeft">
-        {ranks.map((r) => (
-          <span key={`l-${r}`}>{r}</span>
+        {displayRanks.map((rank) => (
+          <span key={`l-${rank}`}>{rank}</span>
         ))}
       </div>
+
       <div className="rankLabels rankLabelsRight">
-        {ranks.map((r) => (
-          <span key={`r-${r}`}>{r}</span>
+        {displayRanks.map((rank) => (
+          <span key={`r-${rank}`}>{rank}</span>
         ))}
       </div>
+
       <div className="board">
-        {board.flatMap((row, r) =>
-          row.map((piece, c) => {
-            const sq = square(r, c);
-            return (
-              <button
-                key={sq}
-                aria-label={sq}
-                onClick={() => onSquareClick(sq)}
-                className={`sq ${(r + c) % 2 ? "dark" : "light"} ${selected === sq ? "selected" : ""}`}
-              >
-                {piece && <ChessPiece type={piece.type} color={piece.color} />}
-              </button>
-            );
-          }),
-        )}
+        {displaySquares.map(({ piece, square, row, col }) => (
+          <button
+            key={square}
+            aria-label={square}
+            onClick={() => onSquareClick(square)}
+            className={`sq ${(row + col) % 2 ? "dark" : "light"} ${
+              selected === square ? "selected" : ""
+            }`}
+          >
+            {piece && <ChessPiece type={piece.type} color={piece.color} />}
+          </button>
+        ))}
       </div>
     </div>
   );
