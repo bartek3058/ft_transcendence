@@ -24,6 +24,7 @@ import {
 } from './move-persistence';
 import {
   CreateGameOptions,
+  DatabaseGameResult,
   DatabaseMoveColor,
   DRAW_REASONS,
   GameConclusion,
@@ -587,6 +588,51 @@ export class GameService implements OnModuleDestroy
     return color === 'w' ? 'WHITE' : 'BLACK';
   }
 
+  private evaluateGameOverState(
+    session: GameSession,
+    lastMoverColor: PlayerColor,
+  ): void {
+    if (!session.engine.isGameOver()) {
+      return;
+    }
+
+    session.isFinished = true;
+
+    if (session.engine.isCheckmate()) {
+      session.gameOverReason = 'CHECKMATE';
+      session.winnerColor = lastMoverColor;
+    } else if (session.engine.isStalemate()) {
+      session.gameOverReason = 'STALEMATE';
+      session.winnerColor = null;
+    } else if (session.engine.isThreefoldRepetition()) {
+      session.gameOverReason = 'THREEFOLD_REPETITATION';
+      session.winnerColor = null;
+    } else if (session.engine.isInsufficientMaterial()) {
+      session.gameOverReason = 'INSUFFICIENT_MATERIAL';
+      session.winnerColor = null;
+    } else {
+      session.gameOverReason = 'FIFTY_MOVE_RULE';
+      session.winnerColor = null;
+    }
+
+    this.logger.log(
+      `Game [${session.gameId}] finished on board. Reason: ${session.gameOverReason}, Winner: ${session.winnerColor ?? 'DRAW'}`,
+    );
+  }
+
+  public resolveDatabaseGameResult(session: GameSession): DatabaseGameResult {
+    if (!session.isFinished) {
+      return 'IN_PROGRESS';
+    }
+    if (session.winnerColor === 'w') {
+      return 'WHITE_WON';
+    }
+    if (session.winnerColor === 'b') {
+      return 'BLACK_WON';
+    }
+    return 'DRAW';
+  }
+
   //Maps internal mutable GameSession to a clean, read-only PublicGameState object.
   private toPublicState(session: GameSession): PublicGameState {
     return {
@@ -772,6 +818,7 @@ export class GameService implements OnModuleDestroy
     const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
     session.lastMoveTimestamp = now;
     session.plyCount += 1;
+    this.evaluateGameOverState(session, playerColor); // chceck that this move is game over
 
     const currentFen = session.engine.fen();
     const moveNumber = Math.ceil(session.plyCount / 2);
@@ -805,6 +852,70 @@ export class GameService implements OnModuleDestroy
       moveNumber,
       isCheck: session.engine.inCheck(),
       isGameOver: session.engine.isGameOver(),
+      gameOverReason: session.gameOverReason,
+      winnerColor: session.winnerColor,
+    };
+  }
+  public resignGame(
+    gameId: string,
+    caller: SafeAccount | string | null | undefined,
+  ): MoveExecutionResult {
+    const session = this.activeGames.get(gameId);
+    if (!session) {
+      return {
+        success: false,
+        currentFen: '',
+        errorReason: 'GAME_NOT_FOUND',
+      };
+    }
+
+    const currentFen = session.engine.fen();
+    const authenticatedUserId =
+      typeof caller === 'string' ? caller.trim() : caller?.id;
+
+    if (!authenticatedUserId) {
+      return {
+        success: false,
+        currentFen,
+        errorReason: 'UNAUTHENTICATED',
+      };
+    }
+
+    if (session.isFinished) {
+      return {
+        success: false,
+        currentFen,
+        errorReason: 'GAME_ALREADY_FINISHED',
+        isGameOver: true,
+        gameOverReason: session.gameOverReason,
+        winnerColor: session.winnerColor,
+      };
+    }
+
+    const resigningColor = this.getPlayerColor(session, authenticatedUserId);
+    if (!resigningColor) {
+      return {
+        success: false,
+        currentFen,
+        errorReason: 'UNAUTHORIZED_PLAYER',
+      };
+    }
+
+    session.isFinished = true;
+    session.gameOverReason = 'RESIGNATION';
+    session.winnerColor = resigningColor === 'w' ? 'b' : 'w';
+
+    this.logger.log(
+      `Game [${gameId}] ended by RESIGNATION. Winner: ${session.winnerColor} (User [${authenticatedUserId}] resigned).`,
+    );
+
+    return {
+      success: true,
+      currentFen,
+      plyCount: session.plyCount,
+      moveNumber: Math.ceil(session.plyCount / 2),
+      isCheck: session.engine.inCheck(),
+      isGameOver: true,
       gameOverReason: session.gameOverReason,
       winnerColor: session.winnerColor,
     };
