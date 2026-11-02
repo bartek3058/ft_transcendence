@@ -228,8 +228,6 @@ export class GameService
       session.gameOverReason = 'INSUFFICIENT_MATERIAL';
       session.winnerColor = null;
     } else {
-      // W chess.js jeżeli isGameOver() === true i nie jest to mat, pat,
-      // 3-krotne powtórzenie ani brak materiału, oznacza to regułę 50 ruchów (50-move rule).
       session.gameOverReason = 'FIFTY_MOVE_RULE';
       session.winnerColor = null;
     }
