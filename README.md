@@ -4,10 +4,10 @@
 
 ## Description
 
-A real-time, full-stack **chess** application: multiplayer matches over WebSockets, matchmaking, an ELO ranking system, player statistics, and (planned) tournaments and AI opponents.
+A full-stack **chess** app you play in the browser: real-time multiplayer over WebSockets, matchmaking, ELO ranking, player stats, and — further down the line — tournaments and an AI opponent.
 
 ### Goal
-The purpose of this project is to create a chess application including multiuser/multiplayer mode, tournament options, scoring system and AI integration.
+Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI.
 
 ### Features
 - **Authentication & security** - registration, login, cookie sessions, CSRF checks, rate limiting (Argon2id password hashing).
@@ -15,6 +15,7 @@ The purpose of this project is to create a chess application including multiuser
 - **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
 - **Public API, Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
+- **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
 ---
@@ -49,7 +50,7 @@ make up
 > **Do not commit `.env` or any secret files.** Only `.env.example` is tracked.
 
 ## HTTPS
-Nginx terminates TLS with a self-signed certificate generated at build time and reverse-proxies the frontend, the REST API and the Socket.IO connection. The app is served at `https://localhost` (HTTP on port 80 redirects to HTTPS).
+Nginx handles TLS (with a self-signed cert baked into the image) and proxies the frontend, the REST API and the Socket.IO connection. Everything's served at `https://localhost` - plain HTTP on port 80 just redirects to HTTPS.
 
 ---
 
@@ -104,7 +105,7 @@ Four data modules (full contract in [docs/database-setup.md](docs/database-setup
 - **games** - match records (players, result, ratings and rating changes, PGN, timing).
 - **game_moves** - per-move history (ply, SAN/UCI, FEN, clock), unique per `(game_id, ply)`.
 
-Database roles are separated: a migration/owner role runs DDL and seeding; a restricted application role handles runtime CRUD only.
+The DB roles are split: an owner role runs migrations and seeding, while the app connects with a restricted role that can only do CRUD.
 
 ---
 
@@ -117,6 +118,7 @@ Database roles are separated: a migration/owner role runs DDL and seeding; a res
 | Automated opponent matching | astefans | Pairs the closest-rated waiting players within a tolerance that widens the longer they wait; creates the game (RAM session + `IN_PROGRESS` row) and notifies both clients over Socket.IO. |
 | Ranking & statistics API | astefans, pmamala, tszymans | Per-user profile and statistics (`GET /api/profile/me`), public web leaderboard (`GET /api/leaderboard`), and machine-to-machine public ranking API (`GET /api/v1/leaderboard`). |
 | Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90), full API key CRUD, global ELO leaderboard & platform statistics (Issue #146) with OpenAPI/Swagger docs at `/api/docs`. |
+| Game conclusion & rating trigger | tszymans | Authoritative termination hook in `GameService.removeGame()` resolving final results (`WHITE_WON`, `BLACK_WON`, `DRAW`, `ABORTED`), persisting to PostgreSQL `games`, and triggering atomic Elo recalculations via `RatingService.applyGameResult()`. |
 
 ---
 
@@ -186,16 +188,16 @@ _TODO_
 
 ## astefans - Developer
 ### Responsibilities
-Matchmaking, player ranking and game statistics: ELO rating system, waiting queue, automated opponent matching, and the ranking/statistics API.
+Matchmaking, player ranking and game stats: the ELO system, the waiting queue, automated opponent matching, and the ranking/stats API.
 
 ### Main Contributions
-- Implemented the ELO rating engine as a pure, fully unit-tested module, plus a transactional, idempotent `RatingService` that applies rating changes at game end.
-- Built the matchmaking subsystem: in-memory queue, rating-based pairing with a time-widening tolerance window, and game creation (DB `IN_PROGRESS` row + in-memory session), exposed over a Socket.IO gateway authenticated with the session cookie.
-- Added the Nginx WebSocket route for Socket.IO and kept the whole feature covered by unit tests.
+- Wrote the ELO engine as a standalone, fully tested module, plus a service that applies the rating changes at the end of a game (runs in a transaction and is safe to call more than once).
+- Built the matchmaking side: the waiting queue, rating-based pairing that loosens up the longer you wait, and creating the game (DB row + in-memory session), all exposed over a Socket.IO gateway that reuses the session cookie for auth.
+- Added the Nginx route for Socket.IO and kept the whole thing under unit tests.
 
 ### Challenges
-- Keeping matchmaking logic transport-agnostic so it could be unit-tested without a database or sockets, with the Socket.IO gateway as a thin layer on top.
-- Coordinating integration seams across teammates' work - creating the game through the engine's `GameService`, and wiring rating recalculation into the game-over lifecycle.
+- Keeping the matchmaking logic independent of the transport, so I could unit-test it without a DB or sockets - the Socket.IO gateway ended up being just a thin layer on top.
+- Hooking into other people's code - creating games through the engine's `GameService`, and plugging rating updates into the end-of-game flow.
 
 ## pmamala - Developer
 ### Responsibilities
@@ -230,7 +232,7 @@ ft_transcendence/
 ```
 
 ## Architecture
-A containerized stack orchestrated by Docker Compose: Nginx (TLS, reverse proxy) in front of the React frontend and the NestJS backend, with PostgreSQL and a one-shot migration/seed container. _TODO: link to an architecture document._
+Everything runs in Docker Compose: Nginx (TLS + reverse proxy) sits in front of the React frontend and the NestJS backend, with PostgreSQL and a one-shot container that runs migrations and seeding. _TODO: link to an architecture doc._
 
 ---
 
@@ -251,3 +253,24 @@ _TODO: add `docs/DEVELOPMENT.md` with common commands, Prisma workflows, Docker 
 
 # License
 Created for the 42 curriculum; intended for educational purposes within the context of the 42 curriculum.
+
+## Friends backend
+
+Friend requests, acceptance/removal, public user lookup and authenticated online
+presence are implemented. Frontend integration is assigned separately. See the
+[friends frontend handoff](docs/friends-frontend-handoff.md) for API contracts,
+Socket.IO integration, migration instructions and tests.
+
+### Friends deployment notes
+
+The additive `202610270001_friends` migration runs through the migration service;
+existing users and games are preserved. Configure a local, Git-ignored `.env` from
+`.env.example` with matching database passwords and connection URLs before running
+`docker compose up --build -d`. Required database settings now fail with a clear
+message when missing; admin bootstrap settings remain optional.
+
+Compose assigns project-specific container names, avoiding conflicts with older
+checkouts using a container named `postgres`. Only one checkout can bind the default
+host ports 80/443 at a time. Stop an older checkout from its folder with
+`docker compose down` when necessary; do not add `-v` unless deleting its database
+volume is intentional. Commit configuration changes, never the local `.env`.

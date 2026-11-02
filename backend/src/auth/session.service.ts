@@ -2,11 +2,14 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Unauthorized
 import { AUTH_CONFIG, AuthConfig } from './auth.config';
 import { AuthRepository, SafeAccount, StoredSession } from './auth.repository';
 import { storageUnavailable } from './auth.errors';
+import { EventEmitter } from 'node:events';
 import { createSessionToken, hashSessionToken } from './session-cookie';
 import { safeAccount } from './users.service';
 
 @Injectable()
 export class SessionService implements OnModuleInit, OnModuleDestroy {
+  // In-process listeners invalidate live connections only after durable session changes.
+  readonly revocations = new EventEmitter();
   private timer?: ReturnType<typeof setInterval>;
   private cleanupRunning = false;
   private readonly logger = new Logger(SessionService.name);
@@ -23,6 +26,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
         userId, tokenHash: hashSessionToken(token), createdAt, expiresAt,
       });
     } catch { throw storageUnavailable(); }
+    if (previousToken) this.revocations.emit('revoked', hashSessionToken(previousToken));
     // Only return the cookie material AFTER durable commit succeeds.
     return { token, expiresAt };
   }
@@ -44,6 +48,7 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     if (!token) return;
     try { await this.repository.deleteSession(hashSessionToken(token)); }
     catch { throw storageUnavailable(); }
+    this.revocations.emit('revoked', hashSessionToken(token));
   }
 
   onModuleInit(): void {
