@@ -75,7 +75,6 @@ export class GameService implements OnModuleDestroy
       private readonly prisma: PrismaService,
       private readonly ratingService: RatingService,
       @Optional() private readonly sessionService?: SessionService,
-      // @Optional() private readonly prisma?: PrismaService,
     ) {}
     public createGame(options: CreateGameOptions): PublicGameState {
     const {
@@ -382,9 +381,10 @@ export class GameService implements OnModuleDestroy
    * Concludes a match and frees its in-memory session (#143):
    *  1. Resolves the final result (explicit conclusion > session state > engine state > ABORTED).
    *  2. Freezes the session so no further moves are accepted.
-   *  3. Flushes pending moves, then writes result / end_reason / game_end to `games`.
-   *  4. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
-   *  5. Purges the session from RAM.
+   *  3. Waits (bounded) until every ply of the game reached the database (#140).
+   *  4. Writes result / end_reason / game_end to `games`.
+   *  5. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
+   *  6. Purges the session from RAM.
    * If the result cannot be written, the session is KEPT (frozen) and `false` is returned,
    * so the caller can retry without losing the outcome.
    */
@@ -409,42 +409,39 @@ export class GameService implements OnModuleDestroy
       session.winnerColor = final.winnerColor;
       session.gameOverReason = final.endReason;
 
-      // Ensure any queued moves are flushed before the game row is closed
-      await this.flushPendingMoves();
+      // Every ply of this game must reach the database before the game row is
+      // closed and rated (the ELO/results pipeline relies on a complete history).
+      // On timeout the records stay in the buffer and keep retrying in the background.
+      const movesPersisted = await this.waitForPersistence(
+        MOVE_PERSISTENCE_CONFIG.removeGameWaitMs,
+        gameId,
+      );
+      if (!movesPersisted && this.prisma) {
+        this.logger.error(
+          `Game [${gameId}] concluded while some moves are still unpersisted; they remain buffered for retry.`,
+        );
+      }
 
       //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
-      const persisted = await this.persistGameConclusion(gameId, final);
-      if (persisted) {
+      const concluded = await this.persistGameConclusion(gameId, final);
+      if (concluded) {
         await this.triggerRatingUpdate(gameId);
       }
+
+      const deleted = this.activeGames.delete(gameId);
+      if (deleted) {
+        this.logger.log(`Purged game session [${gameId}] from server RAM.`);
+      }
+      return deleted;
     } catch (error) {
       this.logger.error(
         `Failed to persist conclusion of game [${gameId}]. Session kept in RAM for retry: ${(error as Error).message}`,
       );
       return false;
     } finally {
+      // Released only after the purge (or failure), so a duplicate call cannot slip in.
       this.concludingGames.delete(gameId);
     }
-
-    // Make sure every ply of this game reached the database before the game is
-    // freed (the ELO/results pipeline relies on a complete move history).
-    // On timeout the records stay in the buffer and keep retrying in the
-    // background, so releasing the session is still safe.
-    const persisted = await this.waitForPersistence(
-      MOVE_PERSISTENCE_CONFIG.removeGameWaitMs,
-      gameId,
-    );
-    if (!persisted && this.prisma) {
-      this.logger.error(
-        `Game [${gameId}] purged while some moves are still unpersisted; they remain buffered for retry.`,
-      );
-    }
-    //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
-    const deleted = this.activeGames.delete(gameId);
-    if (deleted) {
-      this.logger.log(`Purged game session [${gameId}] from server RAM.`);
-    }
-    return deleted;
   }
 
   /**
@@ -506,6 +503,10 @@ export class GameService implements OnModuleDestroy
   ): Promise<boolean> {
     if (!UUID_REGEX.test(gameId)) {
       this.logger.warn(`Game [${gameId}] has no UUID id, so it has no \`games\` row. Result not persisted.`);
+      return false;
+    }
+    if (!this.prisma) {
+      this.logger.warn(`PrismaService is not injected: result of game [${gameId}] not persisted.`);
       return false;
     }
 
@@ -614,7 +615,7 @@ export class GameService implements OnModuleDestroy
     //verify the match exists in Hot-path RAM
     if (!session){
       this.logger.warn(
-        'Move authorization failed: Game [${gameId}] not found in RAM (User: ${authenticatedUserId}).',
+        `Move authorization failed: Game [${gameId}] not found in RAM.`,
       );
       return {
         authorized: false,
@@ -631,7 +632,7 @@ export class GameService implements OnModuleDestroy
       typeof caller === 'string' ? caller.trim() : caller?.id; // if given string take string if not takie caller.id from SafeAccount
 
     if (!authenticatedUserId) {
-      this.logger.warn('Move authorization failed: Unauthenticated caller in game [${gameId}].');
+      this.logger.warn(`Move authorization failed: Unauthenticated caller in game [${gameId}].`);
       return {
         authorized: false,
         rejectionResult: {

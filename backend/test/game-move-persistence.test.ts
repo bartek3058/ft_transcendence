@@ -58,14 +58,23 @@ function makeFakePrisma(script: Array<(rows: any[]) => void> = []) {
         return { count: args.data.length };
       },
     },
+    // removeGame() closes the `games` row after the moves are stored (#143).
+    game: {
+      async updateMany() {
+        return { count: 1 };
+      },
+    },
   };
   return prisma;
 }
 
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// RatingService stub: the Elo update itself is covered by game-conclusion.test.ts.
+const ratingStub = { applyGameResult: async () => undefined };
+
 function makeService(prisma?: any) {
-  return new GameService(undefined, prisma);
+  return new GameService(prisma, ratingStub as any);
 }
 
 describe('move-persistence helpers', () => {
