@@ -13,6 +13,7 @@ import { SafeAccount } from '../auth/auth.repository';
 import { MakeMoveDto } from './dto/make-move.dto';
 import { SessionService } from '../auth/session.service';
 import { PrismaService } from '../database/prisma.service';
+import { RatingService } from '../rating/rating.service';
 import {
   classifyPersistenceError,
   computeBackoffMs,
@@ -24,6 +25,10 @@ import {
 import {
   CreateGameOptions,
   DatabaseMoveColor,
+  DRAW_REASONS,
+  GameConclusion,
+  GameOverReason,
+  PersistedGameConclusion,
   GameSession,
   PendingMoveRecord,
   PublicGameState,
@@ -34,6 +39,11 @@ import {
 
 //Default time control: 10 minutes (600,000 ms) per player.
 const DEFAULT_INITIAL_TIME_MS = 10 * 60 * 1000;
+
+// `games.id` is a PostgreSQL UUID column: check the format before any I/O so a malformed
+// id never reaches the database (would otherwise raise 22P02 invalid_text_representation).
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class GameService implements OnModuleDestroy
@@ -49,6 +59,9 @@ export class GameService implements OnModuleDestroy
    * Once persisted by the background worker, items are shifted (deleted) from this array.
    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
+    private isFlushingQueue = false;
+    // Game ids whose conclusion is currently being persisted (guards concurrent removeGame calls).
+    private readonly concludingGames = new Set<string>();
     /** Poison records rejected permanently by the database (bounded, for inspection). */
     private readonly deadLetterMoves: DeadLetterMove[] = [];
     /** Single in-flight drain; concurrent callers share it. */
@@ -59,6 +72,8 @@ export class GameService implements OnModuleDestroy
     private queueCapWarned = false;
     private missingPrismaWarned = false;
     constructor(
+      private readonly prisma: PrismaService,
+      private readonly ratingService: RatingService,
       @Optional() private readonly sessionService?: SessionService,
       @Optional() private readonly prisma?: PrismaService,
     ) {}
@@ -276,6 +291,21 @@ export class GameService implements OnModuleDestroy
       return this.persistRowByRow(batch);
     }
   }
+  /**
+   * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)]
+   * Concludes a match and frees its in-memory session (#143):
+   *  1. Resolves the final result (explicit conclusion > session state > engine state > ABORTED).
+   *  2. Freezes the session so no further moves are accepted.
+   *  3. Flushes pending moves, then writes result / end_reason / game_end to `games`.
+   *  4. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
+   *  5. Purges the session from RAM.
+   * If the result cannot be written, the session is KEPT (frozen) and `false` is returned,
+   * so the caller can retry without losing the outcome.
+   */
+  public async removeGame(
+    gameId: string,
+    conclusion?: GameConclusion,
+  ): Promise<boolean> {
 
   //Fallback after a permanent batch error: one bad ply must not block the others.
   private async persistRowByRow(batch: PendingMoveRecord[]): Promise<boolean> {
@@ -369,6 +399,36 @@ export class GameService implements OnModuleDestroy
     if (!session) {
       return false;
     }
+    if (this.concludingGames.has(gameId)) {
+      this.logger.warn(`removeGame: game [${gameId}] is already being concluded, ignoring duplicate call.`);
+      return false;
+    }
+    this.concludingGames.add(gameId);
+
+    try {
+      const final = this.resolveConclusion(session, conclusion);
+      // Freeze the session first: authorizeMove() rejects every move from now on.
+      session.isFinished = true;
+      session.winnerColor = final.winnerColor;
+      session.gameOverReason = final.endReason;
+
+      // Ensure any queued moves are flushed before the game row is closed
+      await this.flushPendingMoves();
+
+      //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
+      const persisted = await this.persistGameConclusion(gameId, final);
+      if (persisted) {
+        await this.triggerRatingUpdate(gameId);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist conclusion of game [${gameId}]. Session kept in RAM for retry: ${(error as Error).message}`,
+      );
+      return false;
+    } finally {
+      this.concludingGames.delete(gameId);
+    }
+
     // Make sure every ply of this game reached the database before the game is
     // freed (the ELO/results pipeline relies on a complete move history).
     // On timeout the records stay in the buffer and keep retrying in the
@@ -390,6 +450,99 @@ export class GameService implements OnModuleDestroy
     return deleted;
   }
 
+  /**
+   * Determines the final result of a session. Priority:
+   * explicit conclusion (TIMEOUT / RESIGNATION / ABANDONMENT...) > already-finished session
+   * > position detected by chess.js > ABORTED (removed before any conclusion, never rated).
+   */
+  private resolveConclusion(
+    session: GameSession,
+    conclusion?: GameConclusion,
+  ): PersistedGameConclusion {
+    if (conclusion) {
+      return this.toPersistedConclusion(conclusion.winnerColor, conclusion.gameOverReason);
+    }
+    if (session.isFinished && session.gameOverReason) {
+      return this.toPersistedConclusion(session.winnerColor, session.gameOverReason);
+    }
+
+    const engine = session.engine;
+    if (engine.isCheckmate()) {
+      // The side to move is the one that has been mated.
+      return this.toPersistedConclusion(engine.turn() === 'w' ? 'b' : 'w', 'CHECKMATE');
+    }
+    const drawReason = this.detectDrawReason(engine);
+    if (drawReason) {
+      return this.toPersistedConclusion(null, drawReason);
+    }
+
+    return { result: 'ABORTED', endReason: null, winnerColor: null };
+  }
+
+  private detectDrawReason(engine: Chess): GameOverReason | null {
+    if (engine.isStalemate()) return 'STALEMATE';
+    if (engine.isInsufficientMaterial()) return 'INSUFFICIENT_MATERIAL';
+    if (engine.isThreefoldRepetition()) return 'THREEFOLD_REPETITION';
+    if (engine.isDraw()) return 'FIFTY_MOVE_RULE'; // remaining isDraw() case in chess.js
+    return null;
+  }
+
+  private toPersistedConclusion(
+    winnerColor: PlayerColor | null,
+    reason: GameOverReason,
+  ): PersistedGameConclusion {
+    // Draw reasons can never have a winner, whatever the caller passed.
+    const winner = DRAW_REASONS.includes(reason) ? null : winnerColor;
+    if (winner === 'w') return { result: 'WHITE_WON', endReason: reason, winnerColor: 'w' };
+    if (winner === 'b') return { result: 'BLACK_WON', endReason: reason, winnerColor: 'b' };
+    return { result: 'DRAW', endReason: reason, winnerColor: null };
+  }
+
+  /**
+   * Writes the final result to `games`. Only an IN_PROGRESS row is updated, so a finished
+   * game is never overwritten and the rating trigger can fire at most once per game.
+   * Returns true when exactly this call closed the row.
+   */
+  private async persistGameConclusion(
+    gameId: string,
+    final: PersistedGameConclusion,
+  ): Promise<boolean> {
+    if (!UUID_REGEX.test(gameId)) {
+      this.logger.warn(`Game [${gameId}] has no UUID id, so it has no \`games\` row. Result not persisted.`);
+      return false;
+    }
+
+    const { count } = await this.prisma.game.updateMany({
+      where: { id: gameId, result: 'IN_PROGRESS' },
+      data: {
+        result: final.result,
+        endReason: final.endReason,
+        gameEnd: new Date(),
+      },
+    });
+
+    if (count !== 1) {
+      this.logger.warn(
+        `Game [${gameId}] has no IN_PROGRESS row in \`games\` (missing or already concluded). Result not persisted.`,
+      );
+      return false;
+    }
+    this.logger.log(
+      `Persisted conclusion of game [${gameId}]: ${final.result} (${final.endReason ?? 'no reason'}).`,
+    );
+    return true;
+  }
+
+  // The result is already stored at this point and applyGameResult skips already-rated
+  // games, so a rating failure is logged (and can be re-run) without blocking the purge.
+  private async triggerRatingUpdate(gameId: string): Promise<void> {
+    try {
+      await this.ratingService.applyGameResult(gameId);
+    } catch (error) {
+      this.logger.error(
+        `Rating update failed for game [${gameId}] (result is saved, rating can be re-applied): ${(error as Error).message}`,
+      );
+    }
   //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
   public async onModuleDestroy(): Promise<void> {
     this.clearFlushTimer();
