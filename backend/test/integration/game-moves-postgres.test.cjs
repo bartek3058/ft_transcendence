@@ -66,7 +66,9 @@ test('real PostgreSQL: moves persist, retries are idempotent, poison rows are is
     return game.id;
   };
 
-  const service = new GameService(undefined, prisma);
+  // RatingService stub: this suite checks move persistence, not the Elo update.
+  const ratingStub = { applyGameResult: async () => undefined };
+  const service = new GameService(prisma, ratingStub);
 
   await t.test('persists a full game and removeGame waits for it', async () => {
     const gameId = await makeGame();
