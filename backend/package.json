@@ -22,6 +22,8 @@
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
     "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts",
+    "test:game-moves": "ts-node --project tsconfig.tools.json test/game-move-persistence.test.ts",
+    "test:game-moves:db": "npm run build && node --test test/integration/game-moves-postgres.test.cjs"
     "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts"
   },
   "dependencies": {

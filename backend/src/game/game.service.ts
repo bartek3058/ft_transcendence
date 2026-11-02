@@ -5,12 +5,22 @@ import {
   BadRequestException,
   NotFoundException,
   Optional,
+  OnModuleDestroy,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Chess } from 'chess.js';
 import { SafeAccount } from '../auth/auth.repository';
 import { MakeMoveDto } from './dto/make-move.dto';
 import { SessionService } from '../auth/session.service';
+import { PrismaService } from '../database/prisma.service';
+import {
+  classifyPersistenceError,
+  computeBackoffMs,
+  DeadLetterMove,
+  describeError,
+  MOVE_PERSISTENCE_CONFIG,
+  toGameMoveCreateInput,
+} from './move-persistence';
 import {
   CreateGameOptions,
   DatabaseMoveColor,
@@ -26,7 +36,7 @@ import {
 const DEFAULT_INITIAL_TIME_MS = 10 * 60 * 1000;
 
 @Injectable()
-export class GameService
+export class GameService implements OnModuleDestroy
 {
     private readonly logger = new Logger(GameService.name);
     /**
@@ -39,9 +49,18 @@ export class GameService
    * Once persisted by the background worker, items are shifted (deleted) from this array.
    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
-    private isFlushingQueue = false;
+    /** Poison records rejected permanently by the database (bounded, for inspection). */
+    private readonly deadLetterMoves: DeadLetterMove[] = [];
+    /** Single in-flight drain; concurrent callers share it. */
+    private flushPromise: Promise<void> | null = null;
+    private flushTimer: NodeJS.Timeout | null = null;
+    private retryTimer: NodeJS.Timeout | null = null;
+    private consecutiveFailures = 0;
+    private queueCapWarned = false;
+    private missingPrismaWarned = false;
     constructor(
       @Optional() private readonly sessionService?: SessionService,
+      @Optional() private readonly prisma?: PrismaService,
     ) {}
     public createGame(options: CreateGameOptions): PublicGameState {
     const {
@@ -121,56 +140,267 @@ export class GameService
   public getActiveGamesCount(): number {
     return this.activeGames.size;
   }
-  //Enqueues a verified move into the Cold-Path buffer and triggers non-blocking persistence.
+  //Enqueues a verified move into the Cold-Path buffer and schedules non-blocking persistence.
   public enqueueMoveForPersistence(moveRecord: PendingMoveRecord): void {
     this.pendingMovesQueue.push(moveRecord);
-  // Fire-and-forget asynchronous flush: does NOT block the WebSocket event loop
-  void this.flushPendingMoves();
+
+    // Soft cap: never drop plies (data loss), but make a runaway buffer loud.
+    if (this.pendingMovesQueue.length > MOVE_PERSISTENCE_CONFIG.maxQueueSize) {
+      if (!this.queueCapWarned) {
+        this.queueCapWarned = true;
+        this.logger.error(
+          `Pending move buffer exceeded ${MOVE_PERSISTENCE_CONFIG.maxQueueSize} records. Database persistence is falling behind or unavailable.`,
+        );
+      }
+    } else {
+      this.queueCapWarned = false;
+    }
+
+    // Never awaited: the WebSocket event loop must not wait for PostgreSQL.
+    this.scheduleFlush();
   }
-  //Asynchronous Cold-Path worker that drains the pendingMovesQueue,
-  //writes records to PostgreSQL, and deletes them from RAM.
-  public async flushPendingMoves(): Promise<void> {
-    if (this.isFlushingQueue || this.pendingMovesQueue.length === 0) {
+
+  //Number of plies still waiting for database confirmation (all games).
+  public getPendingMovesCount(): number {
+    return this.pendingMovesQueue.length;
+  }
+
+  //Plies the database rejected permanently (bad data / missing parent row).
+  public getDeadLetterMoves(): readonly DeadLetterMove[] {
+    return this.deadLetterMoves;
+  }
+
+  //Debounced trigger: several plies arriving together share one INSERT.
+  private scheduleFlush(): void {
+    if (!this.prisma) {
+      if (!this.missingPrismaWarned) {
+        this.missingPrismaWarned = true;
+        this.logger.warn(
+          'PrismaService is not injected: moves stay in the RAM buffer and are NOT persisted.',
+        );
+      }
       return;
     }
+    // While backing off after a failure, the retry timer owns the schedule.
+    if (this.retryTimer || this.flushPromise) {
+      return;
+    }
+    if (this.pendingMovesQueue.length >= MOVE_PERSISTENCE_CONFIG.batchSize) {
+      this.clearFlushTimer();
+      void this.flushPendingMoves();
+      return;
+    }
+    if (this.flushTimer) {
+      return;
+    }
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flushPendingMoves();
+    }, MOVE_PERSISTENCE_CONFIG.flushDelayMs);
+    this.flushTimer.unref();
+  }
 
-    this.isFlushingQueue = true;
-
-    try {
-      while (this.pendingMovesQueue.length > 0) {
-        // Peek at the oldest move in the buffer
-        const nextMove = this.pendingMovesQueue[0];
-
-        // [INTEGRATION - HOOK for @tszyman (Database #64 / Move History #88)]
-        // TODO: Inject PrismaService / MatchHistoryService and persist `nextMove` here.
-        // Example: await this.prismaService.move.create({ data: nextMove });
-        await this.persistSingleMoveStub(nextMove);
-
-        // Remove the move from RAM immediately after successful DB confirmation
-        this.pendingMovesQueue.shift();
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to flush pending move to database. Record retained in buffer for retry: ${(error as Error).message}`,
-      );
-    } finally {
-      this.isFlushingQueue = false;
+  private clearFlushTimer(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
   }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
+
+  //Asynchronous Cold-Path worker: drains the buffer into PostgreSQL in batches.
+  //Concurrent callers share one in-flight drain, so awaiting it is always safe.
+  public flushPendingMoves(): Promise<void> {
+    if (!this.prisma || this.pendingMovesQueue.length === 0) {
+      return this.flushPromise ?? Promise.resolve();
+    }
+    if (!this.flushPromise) {
+      this.clearFlushTimer();
+      this.flushPromise = this.drainQueue().finally(() => {
+        this.flushPromise = null;
+        // A ply enqueued while the drain was finishing must not be stranded.
+        if (this.pendingMovesQueue.length > 0 && !this.retryTimer) {
+          this.scheduleFlush();
+        }
+      });
+    }
+    return this.flushPromise;
+  }
+
+  private async drainQueue(): Promise<void> {
+    while (this.pendingMovesQueue.length > 0) {
+      const batch = this.pendingMovesQueue.slice(0, MOVE_PERSISTENCE_CONFIG.batchSize);
+      const completed = await this.persistBatch(batch);
+      if (!completed) {
+        this.scheduleRetry();
+        return;
+      }
+      this.consecutiveFailures = 0;
+    }
+  }
+
+  /**
+   * Writes one batch. Returns true when every record of the batch was either
+   * stored or dead-lettered (and removed from RAM); false when a transient
+   * failure requires a later retry (unpersisted records stay at the queue head).
+   *
+   * Only this method removes records, and only from the head, so the
+   * records at index [0, n) always match the batch we just wrote.
+   */
+  private async persistBatch(batch: PendingMoveRecord[]): Promise<boolean> {
+    try {
+      await this.prisma!.gameMove.createMany({
+        data: batch.map(toGameMoveCreateInput),
+        // A retry after a lost acknowledgement must not fail on UNIQUE(game_id, ply).
+        skipDuplicates: true,
+      });
+      this.pendingMovesQueue.splice(0, batch.length);
+      return true;
+    } catch (error) {
+      if (classifyPersistenceError(error) === 'transient') {
+        this.consecutiveFailures += 1;
+        this.logger.error(
+          `Transient failure persisting ${batch.length} move(s); retrying with backoff (attempt ${this.consecutiveFailures}): ${describeError(error)}`,
+        );
+        return false;
+      }
+      this.logger.warn(
+        `Batch of ${batch.length} move(s) rejected permanently (${describeError(error)}). Isolating the bad record(s).`,
+      );
+      return this.persistRowByRow(batch);
+    }
+  }
+
+  //Fallback after a permanent batch error: one bad ply must not block the others.
+  private async persistRowByRow(batch: PendingMoveRecord[]): Promise<boolean> {
+    for (const record of batch) {
+      try {
+        await this.prisma!.gameMove.createMany({
+          data: [toGameMoveCreateInput(record)],
+          skipDuplicates: true,
+        });
+        this.pendingMovesQueue.shift();
+      } catch (error) {
+        if (classifyPersistenceError(error) === 'transient') {
+          this.consecutiveFailures += 1;
+          this.logger.error(
+            `Transient failure while isolating move [${record.gameId}#${record.ply}]; retrying with backoff: ${describeError(error)}`,
+          );
+          return false;
+        }
+        this.deadLetter(record, error);
+        this.pendingMovesQueue.shift();
+      }
+    }
+    return true;
+  }
+
+  private deadLetter(record: PendingMoveRecord, error: unknown): void {
+    this.logger.error(
+      `Dead-lettered move [game ${record.gameId}, ply ${record.ply}, ${record.san}]: ${describeError(error)}`,
+    );
+    this.deadLetterMoves.push({
+      record,
+      reason: describeError(error),
+      failedAt: new Date(),
+    });
+    if (this.deadLetterMoves.length > MOVE_PERSISTENCE_CONFIG.maxDeadLetters) {
+      this.deadLetterMoves.shift();
+    }
+  }
+
+  private scheduleRetry(): void {
+    if (this.retryTimer) {
+      return;
+    }
+    const delay = computeBackoffMs(this.consecutiveFailures);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.flushPendingMoves();
+    }, delay);
+    this.retryTimer.unref();
+  }
+
+  private hasPendingMovesFor(gameId: string): boolean {
+    return this.pendingMovesQueue.some((m) => m.gameId === gameId);
+  }
+
+  /**
+   * Waits (bounded) until the buffer holds no more plies of `gameId`
+   * (or, without gameId, no plies at all). Forces a flush attempt on each
+   * round so a pending backoff timer does not delay the caller.
+   * Returns false on timeout; the plies then stay buffered and keep retrying.
+   */
+  private async waitForPersistence(
+    timeoutMs: number,
+    gameId?: string,
+  ): Promise<boolean> {
+    if (!this.prisma) {
+      return false;
+    }
+    const pending = () =>
+      gameId ? this.hasPendingMovesFor(gameId) : this.pendingMovesQueue.length > 0;
+    const deadline = Date.now() + timeoutMs;
+    while (pending()) {
+      this.clearRetryTimer();
+      await this.flushPendingMoves();
+      if (!pending()) {
+        break;
+      }
+      // The attempt failed transiently: wait a little before trying again.
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      this.clearRetryTimer(); // drainQueue armed one; this loop drives retries now
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    }
+    return true;
+  }
+
   //INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)
   public async removeGame(gameId: string): Promise<boolean> {
     const session = this.activeGames.get(gameId);
     if (!session) {
       return false;
     }
-  // Ensure any queued moves are flushed before freeing the session memory
-  await this.flushPendingMoves();
-  //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
-  const deleted = this.activeGames.delete(gameId);
+    // Make sure every ply of this game reached the database before the game is
+    // freed (the ELO/results pipeline relies on a complete move history).
+    // On timeout the records stay in the buffer and keep retrying in the
+    // background, so releasing the session is still safe.
+    const persisted = await this.waitForPersistence(
+      MOVE_PERSISTENCE_CONFIG.removeGameWaitMs,
+      gameId,
+    );
+    if (!persisted && this.prisma) {
+      this.logger.error(
+        `Game [${gameId}] purged while some moves are still unpersisted; they remain buffered for retry.`,
+      );
+    }
+    //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
+    const deleted = this.activeGames.delete(gameId);
     if (deleted) {
       this.logger.log(`Purged game session [${gameId}] from server RAM.`);
     }
     return deleted;
+  }
+
+  //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
+  public async onModuleDestroy(): Promise<void> {
+    this.clearFlushTimer();
+    this.clearRetryTimer();
+    const drained = await this.waitForPersistence(MOVE_PERSISTENCE_CONFIG.shutdownWaitMs);
+    if (!drained && this.prisma) {
+      this.logger.error(
+        `Shutdown with ${this.pendingMovesQueue.length} unpersisted move(s) still in the buffer.`,
+      );
+    }
+    this.clearRetryTimer();
   }
 
   public verifyAndResyncState(
@@ -222,11 +452,6 @@ export class GameService
       winnerColor: session.winnerColor,
       gameOverReason: session.gameOverReason,
     };
-  }
-  //INTEGRATION - HOOK for @tszyman (Database #64 / Move History #88)]
-  //Temporary asynchronous stub simulating database write until Prisma schema for moves is merged.
-  private async persistSingleMoveStub(_move: PendingMoveRecord): Promise<void> {
-    return Promise.resolve();
   }
   public authorizeMove(
     gameId: string,
