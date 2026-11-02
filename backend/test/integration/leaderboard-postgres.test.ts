@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { requireTestDatabaseUrl } from '../test-database-url';
+import { resolveTestDatabaseUrl } from '../test-database-url';
 import { LeaderboardService } from '../../src/public-api/leaderboard/leaderboard.service';
 import { RatingService } from '../../src/rating/rating.service';
 import { ProfileService } from '../../src/profile/profile.service';
@@ -16,7 +16,7 @@ import { ProfileService } from '../../src/profile/profile.service';
  */
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
+  datasources: { db: { url: resolveTestDatabaseUrl() } },
 });
 const leaderboard = new LeaderboardService(prisma as any);
 const rating = new RatingService(prisma as any);
