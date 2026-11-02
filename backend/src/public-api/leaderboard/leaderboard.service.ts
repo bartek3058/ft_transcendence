@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import {
   GlobalStatsDto,
@@ -6,8 +6,8 @@ import {
   PaginatedLeaderboardDto,
   PlayerRankingDto,
 } from './dto/leaderboard-response.dto';
-
-const RATED_RESULTS = ['WHITE_WON', 'BLACK_WON', 'DRAW'] as const;
+import { RANKED_USER_WHERE, USERNAME_REGEX } from '../../rating/ranked-users';
+import { emptyRecord, FINISHED_RESULTS, loadPlayerRecords } from '../../rating/player-records';
 
 @Injectable()
 export class LeaderboardService {
@@ -19,8 +19,9 @@ export class LeaderboardService {
     const offset = (safePage - 1) * safeLimit;
 
     const [total, users] = await Promise.all([
-      this.prisma.user.count(),
+      this.prisma.user.count({ where: RANKED_USER_WHERE }),
       this.prisma.user.findMany({
+        where: RANKED_USER_WHERE,
         orderBy: [{ rating: 'desc' }, { username: 'asc' }],
         skip: offset,
         take: safeLimit,
@@ -28,44 +29,10 @@ export class LeaderboardService {
       }),
     ]);
 
-    const userIds = users.map((u) => u.id);
-    const matchTotals = userIds.length > 0
-      ? await this.prisma.game.findMany({
-          where: {
-            AND: [
-              { OR: [{ whiteId: { in: userIds } }, { blackId: { in: userIds } }] },
-              { result: { in: [...RATED_RESULTS] } },
-            ],
-          },
-          select: { whiteId: true, blackId: true, result: true },
-        })
-      : [];
-
-    const statsMap = new Map<string, { wins: number; losses: number; draws: number; games: number }>();
-    for (const id of userIds) {
-      statsMap.set(id, { wins: 0, losses: 0, draws: 0, games: 0 });
-    }
-
-    for (const match of matchTotals) {
-      if (match.whiteId && statsMap.has(match.whiteId)) {
-        const s = statsMap.get(match.whiteId)!;
-        s.games += 1;
-        if (match.result === 'WHITE_WON') s.wins += 1;
-        else if (match.result === 'DRAW') s.draws += 1;
-        else s.losses += 1;
-      }
-      if (match.blackId && statsMap.has(match.blackId)) {
-        const s = statsMap.get(match.blackId)!;
-        s.games += 1;
-        if (match.result === 'BLACK_WON') s.wins += 1;
-        else if (match.result === 'DRAW') s.draws += 1;
-        else s.losses += 1;
-      }
-    }
+    const records = await loadPlayerRecords(this.prisma, users.map((u) => u.id));
 
     const items: LeaderboardItemDto[] = users.map((u, i) => {
-      const s = statsMap.get(u.id) ?? { wins: 0, losses: 0, draws: 0, games: 0 };
-      const winRate = s.games > 0 ? Number(((s.wins / s.games) * 100).toFixed(1)) : 0;
+      const s = records.get(u.id) ?? emptyRecord();
       return {
         rank: offset + i + 1,
         userId: u.id,
@@ -75,7 +42,7 @@ export class LeaderboardService {
         wins: s.wins,
         losses: s.losses,
         draws: s.draws,
-        winRate,
+        winRate: s.winRate,
       };
     });
 
@@ -92,15 +59,17 @@ export class LeaderboardService {
 
   async getGlobalStats(): Promise<GlobalStatsDto> {
     const [totalPlayers, totalMatches, ratingAgg, topUser] = await Promise.all([
-      this.prisma.user.count(),
+      this.prisma.user.count({ where: RANKED_USER_WHERE }),
       this.prisma.game.count({
-        where: { result: { in: [...RATED_RESULTS] } },
+        where: { result: { in: [...FINISHED_RESULTS] } },
       }),
       this.prisma.user.aggregate({
+        where: RANKED_USER_WHERE,
         _avg: { rating: true },
         _max: { rating: true },
       }),
       this.prisma.user.findFirst({
+        where: RANKED_USER_WHERE,
         orderBy: [{ rating: 'desc' }, { username: 'asc' }],
         select: { username: true, rating: true },
       }),
@@ -116,78 +85,51 @@ export class LeaderboardService {
   }
 
   async getPlayerRanking(username: string): Promise<PlayerRankingDto> {
-    if (!username || !username.trim()) {
+    // Stage 1: zero-I/O format check. Usernames are stored lowercase (RegisterDto),
+    // so normalising here lets the unique index serve an exact lookup.
+    const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    if (!USERNAME_REGEX.test(normalized)) {
+      throw new BadRequestException({
+        error: { code: 'INVALID_USERNAME', message: 'Username must match ^[a-z0-9_]{3,20}$.' },
+      });
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { username: normalized, ...RANKED_USER_WHERE },
+      select: { id: true, username: true, rating: true },
+    });
+
+    // Fixed message: never echo caller input back.
+    if (!user) {
       throw new NotFoundException({
         error: { code: 'PLAYER_NOT_FOUND', message: 'Player not found.' },
       });
     }
 
-    const user = await this.prisma.user.findFirst({
-      where: {
-        username: {
-          equals: username.trim(),
-          mode: 'insensitive',
-        },
-      },
-      select: { id: true, username: true, rating: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException({
-        error: { code: 'PLAYER_NOT_FOUND', message: `Player "${username}" not found.` },
-      });
-    }
-
-    const [higherCount, matches] = await Promise.all([
+    const [higherCount, records] = await Promise.all([
       this.prisma.user.count({
         where: {
+          ...RANKED_USER_WHERE,
           OR: [
             { rating: { gt: user.rating } },
             { rating: user.rating, username: { lt: user.username } },
           ],
         },
       }),
-      this.prisma.game.findMany({
-        where: {
-          AND: [
-            { OR: [{ whiteId: user.id }, { blackId: user.id }] },
-            { result: { in: [...RATED_RESULTS] } },
-          ],
-        },
-        select: { whiteId: true, blackId: true, result: true },
-      }),
+      loadPlayerRecords(this.prisma, [user.id]),
     ]);
-
-    let wins = 0;
-    let losses = 0;
-    let draws = 0;
-    for (const m of matches) {
-      const isWhite = m.whiteId === user.id;
-      if (m.result === 'DRAW') {
-        draws += 1;
-      } else if (
-        (m.result === 'WHITE_WON' && isWhite) ||
-        (m.result === 'BLACK_WON' && !isWhite)
-      ) {
-        wins += 1;
-      } else {
-        losses += 1;
-      }
-    }
-
-    const gamesPlayed = matches.length;
-    const winRate = gamesPlayed > 0 ? Number(((wins / gamesPlayed) * 100).toFixed(1)) : 0;
+    const record = records.get(user.id) ?? emptyRecord();
 
     return {
       rank: higherCount + 1,
       userId: user.id,
       username: user.username,
       rating: user.rating,
-      gamesPlayed,
-      wins,
-      losses,
-      draws,
-      winRate,
+      gamesPlayed: record.games,
+      wins: record.wins,
+      losses: record.losses,
+      draws: record.draws,
+      winRate: record.winRate,
     };
   }
 }

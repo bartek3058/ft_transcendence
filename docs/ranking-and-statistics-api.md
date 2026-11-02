@@ -15,8 +15,13 @@ The statistics and ranking subsystem provides global and individual performance 
    - Provides rich statistical projections: total matches played, wins, losses, draws, and win percentages.
 
 2. **Web Frontend Endpoint (`/api/leaderboard`)**:
-   - Exposed by `RatingController` for browser clients (session-based or unauthenticated visitors).
+   - Exposed by `RatingController` for browser clients (no authentication required).
+   - Validated by `WebLeaderboardQueryDto` and limited to 60 req/min per client IP by `WebLeaderboardGuard` (sliding window, checked before any DB query).
    - Returns paginated ELO rankings with total counts for the `/ranking` view.
+
+**Who is ranked:** every ranking, count and statistic uses the shared filter `RANKED_USER_WHERE` (`backend/src/rating/ranked-users.ts`), which excludes accounts with `role = 'admin'`. Ties on rating are broken by username in byte order (`COLLATE "C"`), so the list position and the single-player rank always agree.
+
+**Records:** wins/losses/draws are aggregated in PostgreSQL by `loadPlayerRecords` (`backend/src/rating/player-records.ts`) with two `GROUP BY` queries; only `WHITE_WON`, `BLACK_WON` and `DRAW` count (`IN_PROGRESS` and `ABORTED` are ignored). Supporting indexes: `users(rating DESC, username)`, `games(white_id, result)`, `games(black_id, result)` (migration `20261102230000_add_leaderboard_indexes`).
 
 ```
 [ Frontend: RankingPage ] ----> GET /api/leaderboard?limit=50 ---------> [ RatingController / RatingService ]
@@ -74,14 +79,18 @@ The statistics and ranking subsystem provides global and individual performance 
 }
 ```
 
-### C. Individual Player Ranking (`GET /api/v1/leaderboard/:username`)
+### C. Individual Player Ranking (`GET /api/v1/leaderboard/players/:username`)
 * **Headers**: `X-API-Key: <high-entropy-key>`
-* **Behavior**: Case-insensitive username lookup. Returns exact global rank, rating, and match stats.
-* **Error**: Returns `404 Not Found` with `{ "error": { "code": "PLAYER_NOT_FOUND", "message": "Player not found." } }` if the user does not exist.
+* **Behavior**: The username is trimmed and lowercased, then checked against `^[a-z0-9_]{3,20}$` (the registration rule) before any DB access, and looked up by exact match on the unique index. Returns global rank, rating, and match stats.
+* **Errors**:
+  * `400 Bad Request` — `{ "error": { "code": "INVALID_USERNAME", ... } }` for malformed input.
+  * `404 Not Found` — `{ "error": { "code": "PLAYER_NOT_FOUND", "message": "Player not found." } }` if no ranked player has that username (admins included). The message never echoes the input.
+* The `players/` segment keeps `stats` usable as a username.
 
 ### D. Web Leaderboard (`GET /api/leaderboard`)
 * **Authentication**: None required (same-origin web consumption).
-* **Query Parameters**: `limit` (default: `20`, max: `100`), `offset` (default: `0`).
+* **Rate limit**: 60 req/min per client IP; `429` with `Retry-After` when exceeded.
+* **Query Parameters**: `limit` (integer 1–100, default `20`), `offset` (integer 0–10000, default `0`). Anything else returns `400 INVALID_INPUT`.
 * **Response Payload (`200 OK`)**:
 ```json
 {
@@ -90,8 +99,8 @@ The statistics and ranking subsystem provides global and individual performance 
     {
       "rank": 1,
       "id": "7f2eb46f-fda6-443e-9732-6f728b534fa7",
-      "username": "admin",
-      "rating": 1500
+      "username": "grandmaster_bob",
+      "rating": 1850
     }
   ]
 }
@@ -99,27 +108,34 @@ The statistics and ranking subsystem provides global and individual performance 
 
 ---
 
+### E. Web Match History (`GET /api/profile/me/games`)
+* **Authentication**: Session cookie (`SessionGuard`).
+* **Query Parameters**: `page` (integer 1–1000, default `1`), `limit` (integer 1–50, default `20`).
+* **Response**: `{ page, limit, total, totalPages, items[] }`, newest first; each item has `id`, `opponent`, `color`, `outcome` (`WIN`/`LOSS`/`DRAW`), `result`, `timeControl`, `ratingChange`, `playedAt`.
+
+---
+
 ## 3. Profile Statistics Enrichment
 
 In `backend/src/profile/profile.service.ts`:
-- `getMyProfile(userId)` now dynamically calculates:
-  - `user.rank`: Global position derived from users with strictly higher ratings (and lexicographical tiebreaker).
-  - `stats.rank`: Mirror of user rank.
-  - `stats.winRate`: Calculated as `(wins / games) * 100` rounded to one decimal place.
+- `getMyProfile(userId)` returns:
+  - `user.rank` / `stats.rank`: global position among ranked (non-admin) players, same tie-break as the leaderboard.
+  - `stats.games|wins|draws|losses|winRate`: from `loadPlayerRecords` (DB aggregation).
+  - `recentGames`: the 8 most recent finished games (used by the profile page).
   - Neutral fallback `"Unknown player"` for games where player accounts were deleted.
+- `getMyGames(userId, page, limit)` backs the full history endpoint above.
 
 ---
 
 ## 4. Frontend Integration
 
 1. **`frontend/src/pages/RankingPage.tsx`**:
-   - Replaced static `mockData` with live data fetched via `getLeaderboard(50, 0)` from `../services/leaderboard`.
+   - Fetches live data via `getLeaderboard(50, 0)` from `../services/leaderboard`.
    - Handles loading state, error display, and empty platform fallback.
-   - Shows user ranks, avatar initial, username, and rating.
 
 2. **`frontend/src/pages/HistoryPage.tsx`**:
-   - Replaced static `mockData` with `getMyProfile()` from `../services/profile`.
-   - Displays real current ELO, calculated win percentage, total completed games, and recent game cards with rating deltas.
+   - Stats cards from `getMyProfile()` (rating, rank, backend `winRate`, W/D/L).
+   - Match list from `getMyGames()` with date, opponent, time control, outcome label and rating delta, plus a "Load more" button.
 
 ---
 
@@ -127,8 +143,12 @@ In `backend/src/profile/profile.service.ts`:
 
 ### Running Tests in Docker
 ```bash
-# Leaderboard & Rating Controller Unit Tests
+# Leaderboard, validation, guard and history unit tests (no DB)
 docker compose run --rm backend npm run test:leaderboard:api
+
+# Real PostgreSQL checks (collation, GROUP BY, admin filter, indexes).
+# Requires a disposable *_test database with migrations applied (see docs/database-setup.md).
+docker compose run --rm -e TEST_DATABASE_URL='<application-role URL for chess_test>' backend npm run test:leaderboard:db
 
 # Public API & Security Guard Regressions
 docker compose run --rm backend npm run test:public-api

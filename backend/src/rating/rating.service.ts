@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { computeElo, EloOutcome, EloResult } from './elo';
+import { RANKED_USER_WHERE } from './ranked-users';
 
 const RATED_RESULTS: readonly EloResult[] = ['WHITE_WON', 'BLACK_WON', 'DRAW'];
 
@@ -15,12 +16,14 @@ export class RatingService {
   }
 
   async getLeaderboard(limit = 20, offset = 0) {
-    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
-    const safeOffset = Math.max(0, Number(offset) || 0);
+    // Bounds are enforced by WebLeaderboardQueryDto; clamp again as defence in depth.
+    const safeLimit = Math.min(100, Math.max(1, limit));
+    const safeOffset = Math.min(10000, Math.max(0, offset));
 
     const [total, users] = await Promise.all([
-      this.prisma.user.count(),
+      this.prisma.user.count({ where: RANKED_USER_WHERE }),
       this.prisma.user.findMany({
+        where: RANKED_USER_WHERE,
         orderBy: [{ rating: 'desc' }, { username: 'asc' }],
         skip: safeOffset,
         take: safeLimit,

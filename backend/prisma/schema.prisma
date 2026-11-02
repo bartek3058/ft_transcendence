@@ -25,6 +25,7 @@ model User {
   movesPlayed  GameMove[]
   apiKeys      ApiKey[]
 
+  @@index([rating(sort: Desc), username])
   @@map("users")
 }
 
@@ -65,6 +66,8 @@ model Game {
 
   @@index([whiteId])
   @@index([blackId])
+  @@index([whiteId, result])
+  @@index([blackId, result])
   @@index([gameStart])
   @@map("games")
 }

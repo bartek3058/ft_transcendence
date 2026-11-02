@@ -69,6 +69,8 @@ export function configureApp(app: NestExpressApplication): void {
     )
     .addTag('Matches', 'Match history, results, and ply-by-ply moves')
     .addTag('API Keys', 'Complete CRUD lifecycle for Public API Keys')
+    .addTag('Leaderboard', 'Global ELO ranking, player lookup and platform statistics (API key)')
+    .addTag('Web Leaderboard', 'Unauthenticated, IP rate-limited ranking used by the web frontend')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

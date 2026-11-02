@@ -1,7 +1,39 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../database/prisma.service";
+import { RANKED_USER_WHERE } from "../rating/ranked-users";
+import {
+  emptyRecord,
+  FINISHED_RESULTS,
+  loadPlayerRecords,
+} from "../rating/player-records";
 
-const FINISHED_RESULTS = ["WHITE_WON", "BLACK_WON", "DRAW"] as const;
+const RECENT_GAMES = 8;
+
+type HistoryGameRow = {
+  id: string;
+  whiteId: string | null;
+  result: string;
+  timeControl: string | null;
+  whiteRatingChange: number | null;
+  blackRatingChange: number | null;
+  gameStart: Date;
+  gameEnd: Date | null;
+  whitePlayer: { username: string } | null;
+  blackPlayer: { username: string } | null;
+};
+
+const HISTORY_SELECT = {
+  id: true,
+  whiteId: true,
+  result: true,
+  timeControl: true,
+  whiteRatingChange: true,
+  blackRatingChange: true,
+  gameStart: true,
+  gameEnd: true,
+  whitePlayer: { select: { username: true } },
+  blackPlayer: { select: { username: true } },
+} as const;
 
 @Injectable()
 export class ProfileService {
@@ -24,83 +56,93 @@ export class ProfileService {
         error: { code: "USER_NOT_FOUND", message: "User not found." },
       });
 
-    const games = await this.prisma.game.findMany({
-      where: {
-        AND: [
-          { OR: [{ whiteId: userId }, { blackId: userId }] },
-          { result: { in: [...FINISHED_RESULTS] } },
-        ],
-      },
-      include: {
-        whitePlayer: { select: { id: true, username: true } },
-        blackPlayer: { select: { id: true, username: true } },
-      },
-      orderBy: { gameEnd: "desc" },
-      take: 8,
-    });
-
-    const totals = await this.prisma.game.findMany({
-      where: {
-        AND: [
-          { OR: [{ whiteId: userId }, { blackId: userId }] },
-          { result: { in: [...FINISHED_RESULTS] } },
-        ],
-      },
-      select: { whiteId: true, blackId: true, result: true },
-    });
-
-    let wins = 0,
-      draws = 0,
-      losses = 0;
-    for (const game of totals) {
-      if (game.result === "DRAW") draws++;
-      else if (
-        (game.result === "WHITE_WON" && game.whiteId === userId) ||
-        (game.result === "BLACK_WON" && game.blackId === userId)
-      )
-        wins++;
-      else losses++;
-    }
-
-    const higherRankCount = await this.prisma.user.count({
-      where: {
-        OR: [
-          { rating: { gt: user.rating } },
-          { rating: user.rating, username: { lt: user.username } },
-        ],
-      },
-    });
+    const [games, records, higherRankCount] = await Promise.all([
+      this.prisma.game.findMany({
+        where: this.finishedGamesOf(userId),
+        select: HISTORY_SELECT,
+        orderBy: [{ gameEnd: "desc" }, { id: "desc" }],
+        take: RECENT_GAMES,
+      }),
+      loadPlayerRecords(this.prisma, [userId]),
+      this.prisma.user.count({
+        where: {
+          ...RANKED_USER_WHERE,
+          OR: [
+            { rating: { gt: user.rating } },
+            { rating: user.rating, username: { lt: user.username } },
+          ],
+        },
+      }),
+    ]);
+    const record = records.get(userId) ?? emptyRecord();
     const rank = higherRankCount + 1;
-    const totalGames = totals.length;
-    const winRate = totalGames > 0 ? Number(((wins / totalGames) * 100).toFixed(1)) : 0;
 
     return {
-      user: {
-        ...user,
+      user: { ...user, rank },
+      stats: {
+        games: record.games,
+        wins: record.wins,
+        draws: record.draws,
+        losses: record.losses,
+        winRate: record.winRate,
         rank,
       },
-      stats: { games: totalGames, wins, draws, losses, winRate, rank },
-      recentGames: games.map((game) => {
-        const isWhite = game.whiteId === userId;
-        const won =
-          (game.result === "WHITE_WON" && isWhite) ||
-          (game.result === "BLACK_WON" && !isWhite);
-        const outcome = game.result === "DRAW" ? "DRAW" : won ? "WIN" : "LOSS";
-        return {
-          id: game.id,
-          opponent: isWhite
-            ? (game.blackPlayer?.username ?? "Unknown player")
-            : (game.whitePlayer?.username ?? "Unknown player"),
-          color: isWhite ? "WHITE" : "BLACK",
-          outcome,
-          result: game.result,
-          timeControl: game.timeControl,
-          ratingChange: isWhite
-            ? game.whiteRatingChange
-            : game.blackRatingChange,
-          playedAt: game.gameEnd ?? game.gameStart,
-        };
+      recentGames: games.map((game) => this.toHistoryItem(game, userId)),
+    };
+  }
+
+  /** Full, paginated match history of the session user (newest first). */
+  async getMyGames(userId: string, page = 1, limit = 20) {
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(50, Math.max(1, limit));
+    const where = this.finishedGamesOf(userId);
+
+    const [total, games] = await Promise.all([
+      this.prisma.game.count({ where }),
+      this.prisma.game.findMany({
+        where,
+        select: HISTORY_SELECT,
+        orderBy: [{ gameEnd: "desc" }, { id: "desc" }],
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
       }),
+    ]);
+
+    return {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      totalPages: Math.ceil(total / safeLimit) || 1,
+      items: games.map((game) => this.toHistoryItem(game, userId)),
+    };
+  }
+
+  private finishedGamesOf(userId: string) {
+    return {
+      AND: [
+        { OR: [{ whiteId: userId }, { blackId: userId }] },
+        { result: { in: [...FINISHED_RESULTS] } },
+      ],
+    };
+  }
+
+  private toHistoryItem(game: HistoryGameRow, userId: string) {
+    const isWhite = game.whiteId === userId;
+    const won =
+      (game.result === "WHITE_WON" && isWhite) ||
+      (game.result === "BLACK_WON" && !isWhite);
+    const outcome = game.result === "DRAW" ? "DRAW" : won ? "WIN" : "LOSS";
+    return {
+      id: game.id,
+      opponent: isWhite
+        ? (game.blackPlayer?.username ?? "Unknown player")
+        : (game.whitePlayer?.username ?? "Unknown player"),
+      color: isWhite ? "WHITE" : "BLACK",
+      outcome,
+      result: game.result,
+      timeControl: game.timeControl,
+      ratingChange: isWhite ? game.whiteRatingChange : game.blackRatingChange,
+      playedAt: game.gameEnd ?? game.gameStart,
     };
   }
 }

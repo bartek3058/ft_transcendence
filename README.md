@@ -133,13 +133,15 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
     `tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef`
   - **Endpoints**:
     - Match History (Issue #90): `GET /api/v1/matches`, `GET /api/v1/matches/:id`
-    - Leaderboard & Statistics (Issue #146): `GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/:username`
+    - Leaderboard & Statistics (Issue #146): `GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/players/:username`
     - API Keys CRUD: `POST /api/v1/api-keys`, `GET /api/v1/api-keys`, `GET /api/v1/api-keys/:id`, `PUT /api/v1/api-keys/:id`, `DELETE /api/v1/api-keys/:id`
     - Web User API Keys (Session Auth): `POST /api/user/api-keys`, `GET /api/user/api-keys`, `DELETE /api/user/api-keys/:id`
-    - Web Leaderboard: `GET /api/leaderboard`
+    - Web Leaderboard (no auth, 60 req/min per IP): `GET /api/leaderboard`
+    - Web Match History (session auth): `GET /api/profile/me/games?page=&limit=`
   - **Verification Commands**:
     ```bash
     docker compose run --rm backend npm run test:leaderboard:api
+    docker compose run --rm -e TEST_DATABASE_URL='<application-role URL for chess_test>' backend npm run test:leaderboard:db
     docker compose run --rm backend npm run test:public-api
     docker compose run --rm backend npm run test:api-guard
     docker compose run --rm backend npm run test:apikey
@@ -158,7 +160,7 @@ Product Owner, Public API subsystem, API key security, sliding-window rate limit
 ### Main Contributions
 - Designed and built the machine-to-machine Public API under `/api/v1` with cryptographic API keys (`X-API-Key`), sliding-window rate limiting, and automated Swagger UI (`/api/docs`).
 - Implemented match history endpoints (`GET /api/v1/matches`, `GET /api/v1/matches/:id`) with player and outcome filtering, move ordering, and UUID validation guards.
-- Implemented public leaderboard and platform statistics (`GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/:username`) with win/loss aggregation and win percentage calculation.
+- Implemented public leaderboard and platform statistics (`GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/players/:username`) with win/loss aggregation and win percentage calculation.
 - Connected real backend APIs to frontend ranking (`/ranking`) and history (`/history`) views, eliminating static mock data.
 - Built test suites covering API security, rate limit headers, match queries, and leaderboard pagination.
 

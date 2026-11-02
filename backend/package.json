@@ -22,7 +22,8 @@
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
     "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts",
-    "test:leaderboard:api": "ts-node --project tsconfig.tools.json test/public-api-leaderboard.test.ts"
+    "test:leaderboard:api": "ts-node --project tsconfig.tools.json test/public-api-leaderboard.test.ts",
+    "test:leaderboard:db": "ts-node --project tsconfig.tools.json test/integration/leaderboard-postgres.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

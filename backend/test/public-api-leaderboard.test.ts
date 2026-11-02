@@ -1,313 +1,346 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import 'reflect-metadata';
+import { BadRequestException, ExecutionContext, HttpException, NotFoundException } from '@nestjs/common';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { LeaderboardService } from '../src/public-api/leaderboard/leaderboard.service';
 import { LeaderboardController } from '../src/public-api/leaderboard/leaderboard.controller';
+import { PublicLeaderboardQueryDto } from '../src/public-api/leaderboard/dto/leaderboard-query.dto';
 import { RatingService } from '../src/rating/rating.service';
 import { RatingController } from '../src/rating/rating.controller';
-import { NotFoundException } from '@nestjs/common';
+import { WebLeaderboardQueryDto } from '../src/rating/dto/web-leaderboard-query.dto';
+import { WebLeaderboardGuard } from '../src/rating/web-leaderboard.guard';
+import { ApiKeyRateLimiter } from '../src/public-api/common/api-key-rate-limiter';
+import { AuthValidationPipe } from '../src/auth/validation/auth-validation.pipe';
+import { ProfileService } from '../src/profile/profile.service';
+import { HistoryQueryDto } from '../src/profile/dto/history-query.dto';
+
+/*
+ * Unit tests with an in-memory Prisma double. They prove service logic only;
+ * SQL, collation and index behaviour are covered by
+ * test/integration/leaderboard-postgres.test.ts (run against a real *_test DB).
+ */
 
 interface MockUser {
   id: string;
   username: string;
   rating: number;
+  role: 'user' | 'admin';
 }
 
 interface MockGame {
   id: string;
-  whiteId: string;
-  blackId: string;
+  whiteId: string | null;
+  blackId: string | null;
   result: string;
+  gameEnd?: Date;
 }
 
+const FINISHED = ['WHITE_WON', 'BLACK_WON', 'DRAW'];
+
+/** Byte-order comparison, matching the users.username COLLATE "C" column. */
+const byteCompare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 function createMockPrisma(users: MockUser[] = [], games: MockGame[] = []) {
-  const usersStore = [...users];
-  const gamesStore = [...games];
+  const ranked = (where: any) =>
+    users.filter((u) => (where?.role?.not ? u.role !== where.role.not : true));
+
+  const sorted = (list: MockUser[]) =>
+    [...list].sort((a, b) => b.rating - a.rating || byteCompare(a.username, b.username));
+
+  const project = (u: MockUser) => ({ id: u.id, username: u.username, rating: u.rating });
 
   return {
     user: {
       count: async (args?: any) => {
-        if (!args?.where) return usersStore.length;
-        if (args.where.OR) {
-          const condition1 = args.where.OR[0];
-          const condition2 = args.where.OR[1];
-          const targetRating = condition1.rating.gt;
-          const targetUsername = condition2.username.lt;
-
-          return usersStore.filter((u) => {
-            if (u.rating > targetRating) return true;
-            if (u.rating === targetRating && u.username < targetUsername) return true;
-            return false;
-          }).length;
-        }
-        return usersStore.length;
+        const pool = ranked(args?.where);
+        if (!args?.where?.OR) return pool.length;
+        const target = args.where.OR[0].rating.gt;
+        const name = args.where.OR[1].username.lt;
+        return pool.filter((u) => u.rating > target || (u.rating === target && u.username < name)).length;
       },
-      findMany: async ({ orderBy, skip = 0, take = 20 }: any) => {
-        const sorted = [...usersStore].sort((a, b) => {
-          if (b.rating !== a.rating) return b.rating - a.rating;
-          return a.username.localeCompare(b.username);
-        });
-        return sorted.slice(skip, skip + take).map((u) => ({
-          id: u.id,
-          username: u.username,
-          rating: u.rating,
-        }));
-      },
-      findFirst: async (args?: any) => {
-        if (args?.where?.username?.equals) {
-          const target = args.where.username.equals.toLowerCase();
-          const found = usersStore.find((u) => u.username.toLowerCase() === target);
-          return found ? { id: found.id, username: found.username, rating: found.rating } : null;
+      findMany: async ({ where, skip = 0, take = 20 }: any) =>
+        sorted(ranked(where)).slice(skip, skip + take).map(project),
+      findFirst: async ({ where, orderBy }: any = {}) => {
+        const pool = ranked(where);
+        if (typeof where?.username === 'string') {
+          const found = pool.find((u) => u.username === where.username);
+          return found ? project(found) : null;
         }
-        if (args?.orderBy) {
-          const sorted = [...usersStore].sort((a, b) => {
-            if (b.rating !== a.rating) return b.rating - a.rating;
-            return a.username.localeCompare(b.username);
-          });
-          const top = sorted[0];
-          return top ? { id: top.id, username: top.username, rating: top.rating } : null;
+        if (orderBy) {
+          const top = sorted(pool)[0];
+          return top ? project(top) : null;
         }
         return null;
       },
-      aggregate: async (_args: any) => {
-        if (usersStore.length === 0) {
-          return { _avg: { rating: null }, _max: { rating: null } };
-        }
-        const total = usersStore.reduce((acc, u) => acc + u.rating, 0);
-        const max = Math.max(...usersStore.map((u) => u.rating));
+      findUnique: async ({ where }: any) => {
+        const found = users.find((u) => u.id === where.id);
+        return found
+          ? { ...project(found), email: `${found.username}@example.test`, status: 'offline', createdAt: new Date(0) }
+          : null;
+      },
+      aggregate: async ({ where }: any) => {
+        const pool = ranked(where);
+        if (pool.length === 0) return { _avg: { rating: null }, _max: { rating: null } };
         return {
-          _avg: { rating: total / usersStore.length },
-          _max: { rating: max },
+          _avg: { rating: pool.reduce((acc, u) => acc + u.rating, 0) / pool.length },
+          _max: { rating: Math.max(...pool.map((u) => u.rating)) },
         };
       },
     },
     game: {
       count: async ({ where }: any) => {
-        const results = where?.result?.in ?? [];
-        return gamesStore.filter((g) => results.includes(g.result)).length;
+        if (where?.result?.in) return games.filter((g) => where.result.in.includes(g.result)).length;
+        const userId = where?.AND?.[0]?.OR?.[0]?.whiteId;
+        return games.filter((g) => FINISHED.includes(g.result) && (g.whiteId === userId || g.blackId === userId)).length;
       },
-      findMany: async ({ where }: any) => {
-        const results = where?.AND?.find((cond: any) => cond.result)?.result?.in ?? [];
-        const orCond = where?.AND?.find((cond: any) => cond.OR)?.OR ?? [];
-        const whiteIn = orCond.find((c: any) => c.whiteId)?.whiteId;
-        const blackIn = orCond.find((c: any) => c.blackId)?.blackId;
-
-        const userIds = new Set<string>();
-        if (whiteIn?.in) whiteIn.in.forEach((id: string) => userIds.add(id));
-        if (blackIn?.in) blackIn.in.forEach((id: string) => userIds.add(id));
-        if (typeof whiteIn === 'string') userIds.add(whiteIn);
-        if (typeof blackIn === 'string') userIds.add(blackIn);
-
-        return gamesStore
-          .filter((g) => {
-            const matchesResult = results.length === 0 || results.includes(g.result);
-            const matchesUser = userIds.size === 0 || userIds.has(g.whiteId) || userIds.has(g.blackId);
-            return matchesResult && matchesUser;
-          })
+      groupBy: async ({ by, where }: any) => {
+        const column: 'whiteId' | 'blackId' = by[0];
+        const ids: string[] = where[column].in;
+        const buckets = new Map<string, { id: string | null; result: string; n: number }>();
+        for (const g of games) {
+          const id = g[column];
+          if (!id || !ids.includes(id) || !where.result.in.includes(g.result)) continue;
+          const key = `${id}|${g.result}`;
+          const bucket = buckets.get(key) ?? { id, result: g.result, n: 0 };
+          bucket.n += 1;
+          buckets.set(key, bucket);
+        }
+        return [...buckets.values()].map((b) => ({ [column]: b.id, result: b.result, _count: { _all: b.n } }));
+      },
+      findMany: async ({ where, skip = 0, take = 20 }: any) => {
+        const userId = where?.AND?.[0]?.OR?.[0]?.whiteId;
+        return games
+          .filter((g) => FINISHED.includes(g.result) && (g.whiteId === userId || g.blackId === userId))
+          .sort((a, b) => (b.gameEnd?.getTime() ?? 0) - (a.gameEnd?.getTime() ?? 0))
+          .slice(skip, skip + take)
           .map((g) => ({
+            id: g.id,
             whiteId: g.whiteId,
-            blackId: g.blackId,
             result: g.result,
+            timeControl: null,
+            whiteRatingChange: null,
+            blackRatingChange: null,
+            gameStart: new Date(0),
+            gameEnd: g.gameEnd ?? null,
+            whitePlayer: users.find((u) => u.id === g.whiteId) ?? null,
+            blackPlayer: users.find((u) => u.id === g.blackId) ?? null,
           }));
       },
     },
   };
 }
 
-describe('Public API Leaderboard & Stats Unit Tests', () => {
-  const mockUsers: MockUser[] = [
-    { id: 'u1', username: 'alice', rating: 1700 },
-    { id: 'u2', username: 'bob', rating: 1850 },
-    { id: 'u3', username: 'charlie', rating: 1600 },
-    { id: 'u4', username: 'dave', rating: 1850 },
-  ];
+const mockUsers: MockUser[] = [
+  { id: 'u0', username: 'root_admin', rating: 2500, role: 'admin' },
+  { id: 'u1', username: 'alice', rating: 1700, role: 'user' },
+  { id: 'u2', username: 'bob', rating: 1850, role: 'user' },
+  { id: 'u3', username: 'charlie', rating: 1600, role: 'user' },
+  { id: 'u4', username: 'dave', rating: 1850, role: 'user' },
+];
 
-  const mockGames: MockGame[] = [
-    { id: 'g1', whiteId: 'u2', blackId: 'u1', result: 'WHITE_WON' },
-    { id: 'g2', whiteId: 'u1', blackId: 'u3', result: 'DRAW' },
-    { id: 'g3', whiteId: 'u4', blackId: 'u2', result: 'BLACK_WON' },
-    { id: 'g4', whiteId: 'u3', blackId: 'u4', result: 'BLACK_WON' },
-    { id: 'g5', whiteId: 'u1', blackId: 'u4', result: 'IN_PROGRESS' }, // Unfinished, should not count
-  ];
+const mockGames: MockGame[] = [
+  { id: 'g1', whiteId: 'u2', blackId: 'u1', result: 'WHITE_WON', gameEnd: new Date(1000) },
+  { id: 'g2', whiteId: 'u1', blackId: 'u3', result: 'DRAW', gameEnd: new Date(2000) },
+  { id: 'g3', whiteId: 'u4', blackId: 'u2', result: 'BLACK_WON', gameEnd: new Date(3000) },
+  { id: 'g4', whiteId: 'u3', blackId: 'u4', result: 'BLACK_WON', gameEnd: new Date(4000) },
+  { id: 'g5', whiteId: 'u1', blackId: 'u4', result: 'IN_PROGRESS' },
+  { id: 'g6', whiteId: 'u1', blackId: 'u2', result: 'ABORTED' },
+];
 
+function service() {
+  return new LeaderboardService(createMockPrisma(mockUsers, mockGames) as any);
+}
+
+function contextFor(ip: string): ExecutionContext {
+  return {
+    switchToHttp: () => ({
+      getRequest: () => ({ ip, socket: { remoteAddress: ip } }),
+      getResponse: () => ({}),
+      getNext: () => () => {},
+    }),
+  } as any;
+}
+
+async function validateQuery(metatype: any, value: Record<string, string>) {
+  return new AuthValidationPipe().transform(value, { type: 'query', metatype, data: undefined });
+}
+
+describe('Public API Leaderboard & Stats (unit)', () => {
   describe('LeaderboardService.getLeaderboard', () => {
-    it('returns sorted leaderboard with correct ranking and stats', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      const res = await service.getLeaderboard(1, 10);
-      assert.equal(res.page, 1);
-      assert.equal(res.limit, 10);
+    it('returns ranked players with DB-aggregated records, excluding admins', async () => {
+      const res = await service().getLeaderboard(1, 10);
       assert.equal(res.total, 4);
       assert.equal(res.totalPages, 1);
-      assert.equal(res.items.length, 4);
+      assert.deepEqual(res.items.map((i) => i.username), ['bob', 'dave', 'alice', 'charlie']);
+      assert.ok(!res.items.some((i) => i.username === 'root_admin'));
 
-      // Rank order: bob (1850), dave (1850), alice (1700), charlie (1600)
-      assert.equal(res.items[0].username, 'bob');
-      assert.equal(res.items[0].rank, 1);
-      assert.equal(res.items[0].rating, 1850);
-      assert.equal(res.items[0].gamesPlayed, 2);
-      assert.equal(res.items[0].wins, 2); // won g1, won g3
-      assert.equal(res.items[0].winRate, 100);
-
-      assert.equal(res.items[1].username, 'dave');
-      assert.equal(res.items[1].rank, 2);
-      assert.equal(res.items[1].rating, 1850);
-      assert.equal(res.items[1].gamesPlayed, 2);
-      assert.equal(res.items[1].wins, 1); // lost g3, won g4
-      assert.equal(res.items[1].losses, 1);
-      assert.equal(res.items[1].winRate, 50);
-
-      assert.equal(res.items[2].username, 'alice');
-      assert.equal(res.items[2].rank, 3);
-      assert.equal(res.items[2].rating, 1700);
-      assert.equal(res.items[2].gamesPlayed, 2); // lost g1, drew g2 (g5 is in progress)
-      assert.equal(res.items[2].draws, 1);
-      assert.equal(res.items[2].losses, 1);
-      assert.equal(res.items[2].winRate, 0);
-
-      assert.equal(res.items[3].username, 'charlie');
-      assert.equal(res.items[3].rank, 4);
-      assert.equal(res.items[3].rating, 1600);
+      const [bob, dave, alice, charlie] = res.items;
+      assert.deepEqual([bob.rank, bob.gamesPlayed, bob.wins, bob.winRate], [1, 2, 2, 100]);
+      assert.deepEqual([dave.rank, dave.wins, dave.losses, dave.winRate], [2, 1, 1, 50]);
+      // IN_PROGRESS (g5) and ABORTED (g6) must not count.
+      assert.deepEqual([alice.rank, alice.gamesPlayed, alice.draws, alice.losses], [3, 2, 1, 1]);
+      assert.deepEqual([charlie.rank, charlie.gamesPlayed], [4, 2]);
     });
 
-    it('clamps pagination arguments (page min 1, limit 1..50)', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      const resUnder = await service.getLeaderboard(-5, -10);
-      assert.equal(resUnder.page, 1);
-      assert.equal(resUnder.limit, 1);
-
-      const resOver = await service.getLeaderboard(1, 100);
-      assert.equal(resOver.limit, 50);
+    it('clamps pagination arguments (page >= 1, limit 1..50)', async () => {
+      const under = await service().getLeaderboard(-5, -10);
+      assert.equal(under.page, 1);
+      assert.equal(under.limit, 1);
+      const over = await service().getLeaderboard(1, 100);
+      assert.equal(over.limit, 50);
     });
 
-    it('handles empty database gracefully', async () => {
-      const prisma = createMockPrisma([], []);
-      const service = new LeaderboardService(prisma as any);
-
-      const res = await service.getLeaderboard(1, 20);
-      assert.equal(res.total, 0);
-      assert.equal(res.totalPages, 1);
-      assert.equal(res.items.length, 0);
+    it('handles an empty database', async () => {
+      const res = await new LeaderboardService(createMockPrisma() as any).getLeaderboard(1, 20);
+      assert.deepEqual([res.total, res.totalPages, res.items.length], [0, 1, 0]);
     });
   });
 
   describe('LeaderboardService.getGlobalStats', () => {
-    it('aggregates total players, completed matches, average and top player', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      const stats = await service.getGlobalStats();
+    it('aggregates players and matches without admin accounts', async () => {
+      const stats = await service().getGlobalStats();
       assert.equal(stats.totalPlayers, 4);
-      assert.equal(stats.totalMatches, 4); // 4 completed rated matches, excluding g5
+      assert.equal(stats.totalMatches, 4);
       assert.equal(stats.highestRating, 1850);
-      assert.equal(stats.averageRating, Math.round((1700 + 1850 + 1600 + 1850) / 4)); // 1750
-      assert.ok(stats.topPlayer);
-      assert.equal(stats.topPlayer.username, 'bob');
-      assert.equal(stats.topPlayer.rating, 1850);
+      assert.equal(stats.averageRating, 1750);
+      assert.equal(stats.topPlayer?.username, 'bob');
     });
 
-    it('returns default fallback when no players exist', async () => {
-      const prisma = createMockPrisma([], []);
-      const service = new LeaderboardService(prisma as any);
-
-      const stats = await service.getGlobalStats();
-      assert.equal(stats.totalPlayers, 0);
-      assert.equal(stats.totalMatches, 0);
-      assert.equal(stats.averageRating, 1200);
-      assert.equal(stats.highestRating, 1200);
-      assert.equal(stats.topPlayer, null);
+    it('returns defaults when no players exist', async () => {
+      const stats = await new LeaderboardService(createMockPrisma() as any).getGlobalStats();
+      assert.deepEqual(
+        [stats.totalPlayers, stats.totalMatches, stats.averageRating, stats.highestRating, stats.topPlayer],
+        [0, 0, 1200, 1200, null],
+      );
     });
   });
 
   describe('LeaderboardService.getPlayerRanking', () => {
-    it('computes individual rank, win/loss stats and win rate', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      const ranking = await service.getPlayerRanking('dave');
-      assert.equal(ranking.username, 'dave');
-      assert.equal(ranking.rank, 2);
-      assert.equal(ranking.rating, 1850);
-      assert.equal(ranking.gamesPlayed, 2);
-      assert.equal(ranking.wins, 1);
-      assert.equal(ranking.losses, 1);
-      assert.equal(ranking.draws, 0);
-      assert.equal(ranking.winRate, 50);
+    it('matches the rank shown in the paginated list', async () => {
+      const list = await service().getLeaderboard(1, 50);
+      for (const item of list.items) {
+        const single = await service().getPlayerRanking(item.username);
+        assert.equal(single.rank, item.rank, `rank mismatch for ${item.username}`);
+        assert.equal(single.gamesPlayed, item.gamesPlayed);
+      }
     });
 
-    it('handles case-insensitive username lookup', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      const ranking = await service.getPlayerRanking('BOB');
+    it('normalises case before an exact lookup', async () => {
+      const ranking = await service().getPlayerRanking('  BOB ');
       assert.equal(ranking.username, 'bob');
       assert.equal(ranking.rank, 1);
-      assert.equal(ranking.winRate, 100);
     });
 
-    it('throws NotFoundException for non-existent player', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      await assert.rejects(
-        () => service.getPlayerRanking('unknown_grandmaster'),
-        (err: any) => err instanceof NotFoundException,
-      );
+    it('rejects malformed usernames with 400 before any DB access', async () => {
+      const throwingPrisma = new Proxy({}, { get: () => { throw new Error('DB must not be touched'); } });
+      const strict = new LeaderboardService(throwingPrisma as any);
+      for (const bad of ['', '   ', 'ab', 'a'.repeat(21), 'bob%', "bob' OR 1=1", '../etc']) {
+        await assert.rejects(() => strict.getPlayerRanking(bad), (err: any) => {
+          assert.ok(err instanceof BadRequestException, `expected 400 for ${JSON.stringify(bad)}`);
+          assert.equal((err.getResponse() as any).error.code, 'INVALID_USERNAME');
+          return true;
+        });
+      }
     });
 
-    it('throws NotFoundException for empty or whitespace username', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-
-      await assert.rejects(
-        () => service.getPlayerRanking('   '),
-        (err: any) => err instanceof NotFoundException,
-      );
-    });
-  });
-
-  describe('LeaderboardController', () => {
-    it('delegates to service correctly', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const service = new LeaderboardService(prisma as any);
-      const controller = new LeaderboardController(service);
-
-      const leaderboard = await controller.getLeaderboard({ page: 1, limit: 10 });
-      assert.equal(leaderboard.items.length, 4);
-
-      const stats = await controller.getStats();
-      assert.equal(stats.totalPlayers, 4);
-
-      const player = await controller.getPlayerRanking('alice');
-      assert.equal(player.rank, 3);
+    it('returns 404 with a fixed message for unknown players and admins', async () => {
+      for (const name of ['unknown_gm', 'root_admin']) {
+        await assert.rejects(() => service().getPlayerRanking(name), (err: any) => {
+          assert.ok(err instanceof NotFoundException);
+          assert.equal((err.getResponse() as any).error.message, 'Player not found.');
+          return true;
+        });
+      }
     });
   });
 
-  describe('Web Leaderboard (RatingService & RatingController)', () => {
-    it('RatingService.getLeaderboard returns formatted entries and total', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const ratingService = new RatingService(prisma as any);
-
-      const res = await ratingService.getLeaderboard(10, 0);
-      assert.equal(res.total, 4);
-      assert.equal(res.entries.length, 4);
-      assert.equal(res.entries[0].username, 'bob');
-      assert.equal(res.entries[0].rank, 1);
-      assert.equal(res.entries[0].rating, 1850);
-      assert.equal(res.entries[1].username, 'dave');
-      assert.equal(res.entries[1].rank, 2);
+  describe('LeaderboardController routing', () => {
+    it('serves the player lookup under players/:username so "stats" is a valid username', () => {
+      assert.equal(Reflect.getMetadata(PATH_METADATA, LeaderboardController.prototype.getPlayerRanking), 'players/:username');
+      assert.equal(Reflect.getMetadata(PATH_METADATA, LeaderboardController.prototype.getStats), 'stats');
     });
 
-    it('RatingController delegates to RatingService with query params', async () => {
-      const prisma = createMockPrisma(mockUsers, mockGames);
-      const ratingService = new RatingService(prisma as any);
-      const controller = new RatingController(ratingService);
+    it('delegates to the service', async () => {
+      const controller = new LeaderboardController(service());
+      assert.equal((await controller.getLeaderboard({ page: 1, limit: 10 })).items.length, 4);
+      assert.equal((await controller.getStats()).totalPlayers, 4);
+      assert.equal((await controller.getPlayerRanking('alice')).rank, 3);
+    });
+  });
 
-      const res = await controller.getLeaderboard(50, 0);
+  describe('Query validation through the global AuthValidationPipe', () => {
+    const rejects = async (metatype: any, value: Record<string, string>) =>
+      assert.rejects(() => validateQuery(metatype, value), BadRequestException);
+
+    it('public leaderboard: rejects limit > 50, page < 1, non-integers and unknown fields', async () => {
+      await rejects(PublicLeaderboardQueryDto, { limit: '51' });
+      await rejects(PublicLeaderboardQueryDto, { page: '0' });
+      await rejects(PublicLeaderboardQueryDto, { page: 'abc' });
+      await rejects(PublicLeaderboardQueryDto, { limit: '1.5' });
+      await rejects(PublicLeaderboardQueryDto, { sort: 'rating' });
+      const ok = await validateQuery(PublicLeaderboardQueryDto, { page: '2', limit: '50' });
+      assert.deepEqual([ok.page, ok.limit], [2, 50]);
+    });
+
+    it('web leaderboard: rejects Infinity, huge offsets and limit > 100', async () => {
+      await rejects(WebLeaderboardQueryDto, { offset: 'Infinity' });
+      await rejects(WebLeaderboardQueryDto, { offset: '1e30' });
+      await rejects(WebLeaderboardQueryDto, { offset: '10001' });
+      await rejects(WebLeaderboardQueryDto, { limit: '101' });
+      const ok = await validateQuery(WebLeaderboardQueryDto, {});
+      assert.deepEqual([ok.limit, ok.offset], [20, 0]);
+    });
+
+    it('match history: rejects limit > 50 and page > 1000', async () => {
+      await rejects(HistoryQueryDto, { limit: '51' });
+      await rejects(HistoryQueryDto, { page: '1001' });
+    });
+  });
+
+  describe('Web leaderboard (RatingService, RatingController, WebLeaderboardGuard)', () => {
+    it('RatingService excludes admins and ranks by rating then username', async () => {
+      const res = await new RatingService(createMockPrisma(mockUsers, mockGames) as any).getLeaderboard(10, 0);
       assert.equal(res.total, 4);
-      assert.equal(res.entries.length, 4);
+      assert.deepEqual(res.entries.map((e) => [e.rank, e.username]), [[1, 'bob'], [2, 'dave'], [3, 'alice'], [4, 'charlie']]);
+    });
+
+    it('RatingController passes the validated DTO through', async () => {
+      const controller = new RatingController(new RatingService(createMockPrisma(mockUsers, mockGames) as any));
+      const res = await controller.getLeaderboard({ limit: 2, offset: 1 });
+      assert.deepEqual(res.entries.map((e) => e.rank), [2, 3]);
+    });
+
+    it('WebLeaderboardGuard allows 60 req/min per IP, then 429 with an isolated bucket per IP', () => {
+      const guard = new WebLeaderboardGuard(new ApiKeyRateLimiter());
+      for (let i = 0; i < 60; i++) assert.equal(guard.canActivate(contextFor('10.0.0.1')), true);
+      assert.throws(() => guard.canActivate(contextFor('10.0.0.1')), (err: any) => {
+        assert.ok(err instanceof HttpException);
+        assert.equal(err.getStatus(), 429);
+        return true;
+      });
+      assert.equal(guard.canActivate(contextFor('10.0.0.2')), true);
+    });
+  });
+
+  describe('ProfileService history', () => {
+    it('getMyProfile uses aggregated records and ranks among non-admins', async () => {
+      const profile = await new ProfileService(createMockPrisma(mockUsers, mockGames) as any).getMyProfile('u4');
+      assert.deepEqual([profile.stats.games, profile.stats.wins, profile.stats.losses, profile.stats.winRate], [2, 1, 1, 50]);
+      assert.equal(profile.user.rank, 2);
+    });
+
+    it('getMyGames paginates newest first with dates and outcomes', async () => {
+      const svc = new ProfileService(createMockPrisma(mockUsers, mockGames) as any);
+      const first = await svc.getMyGames('u1', 1, 1);
+      assert.deepEqual([first.total, first.totalPages], [2, 2]);
+      assert.equal(first.items[0].id, 'g2');
+      assert.equal(first.items[0].outcome, 'DRAW');
+      assert.ok(first.items[0].playedAt instanceof Date);
+      const second = await svc.getMyGames('u1', 2, 1);
+      assert.equal(second.items[0].id, 'g1');
+      assert.equal(second.items[0].outcome, 'LOSS');
+      assert.equal(second.items[0].opponent, 'bob');
     });
   });
 });

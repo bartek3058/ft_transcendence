@@ -42,13 +42,14 @@ export class LeaderboardController {
     return this.leaderboardService.getGlobalStats();
   }
 
-  @Get(':username')
+  @Get('players/:username')
   @ApiOperation({
     summary: 'Get player ranking by username',
     description: 'Looks up a specific player by username and returns their current global ranking, ELO rating, games played, and win rate.',
   })
   @ApiParam({ name: 'username', description: 'Username of the player to look up' })
   @ApiResponse({ status: 200, description: 'Player ranking breakdown', type: PlayerRankingDto })
+  @ApiResponse({ status: 400, description: 'Invalid username format' })
   @ApiResponse({ status: 401, description: 'Missing or invalid API key' })
   @ApiResponse({ status: 404, description: 'Player not found' })
   @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
