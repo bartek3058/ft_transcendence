@@ -1,29 +1,50 @@
+import type { DragEventHandler } from "react";
 import type { Color, PieceSymbol } from "chess.js";
 
-type Props = { type: PieceSymbol; color: Color; className?: string };
+type Props = {
+  type: PieceSymbol;
+  color: Color;
+  className?: string;
+  draggable?: boolean;
+  onDragStart?: DragEventHandler<HTMLSpanElement>;
+  onDragEnd?: DragEventHandler<HTMLSpanElement>;
+};
 
 const pieceUrls: Record<Color, Record<PieceSymbol, string>> = {
   w: {
-    k: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_klt45.svg",
-    q: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_qlt45.svg",
-    r: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_rlt45.svg",
-    b: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_blt45.svg",
-    n: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_nlt45.svg",
-    p: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_plt45.svg",
+    k: "/pieces/white-king.svg",
+    q: "/pieces/white-queen.svg",
+    r: "/pieces/white-rook.svg",
+    b: "/pieces/white-bishop.svg",
+    n: "/pieces/white-knight.svg",
+    p: "/pieces/white-pawn.svg",
   },
   b: {
-    k: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_kdt45.svg",
-    q: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_qdt45.svg",
-    r: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_rdt45.svg",
-    b: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_bdt45.svg",
-    n: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_ndt45.svg",
-    p: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Chess_pdt45.svg",
+    k: "/pieces/black-king.svg",
+    q: "/pieces/black-queen.svg",
+    r: "/pieces/black-rook.svg",
+    b: "/pieces/black-bishop.svg",
+    n: "/pieces/black-knight.svg",
+    p: "/pieces/black-pawn.svg",
   },
 };
 
-export function ChessPiece({ type, color, className = "" }: Props) {
+export function ChessPiece({
+  type,
+  color,
+  className = "",
+  draggable = false,
+  onDragStart,
+  onDragEnd,
+}: Props) {
   return (
-    <span className={`pieceFrame ${className}`} aria-hidden="true">
+    <span
+      className={`pieceFrame ${className}`}
+      aria-hidden="true"
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <img
         className="pieceSvg"
         src={pieceUrls[color][type]}
