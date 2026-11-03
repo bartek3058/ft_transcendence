@@ -54,6 +54,7 @@ export function GamePage() {
             board={chess.board}
             selected={chess.selected}
             onSquareClick={chess.clickSquare}
+            onMove={chess.movePiece}
             orientation={matchmaking.game.color}
           />
 
