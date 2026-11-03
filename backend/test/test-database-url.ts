@@ -10,3 +10,16 @@ export function requireTestDatabaseUrl(value: string | undefined): string {
   }
   return value;
 }
+
+export function resolveTestDatabaseUrl(): string {
+  const explicit = process.env.TEST_DATABASE_URL;
+  if (explicit) {
+    return requireTestDatabaseUrl(explicit);
+  }
+  const base = process.env.DATABASE_URL;
+  if (base) {
+    const candidate = base.endsWith('_test') ? base : `${base}_test`;
+    return requireTestDatabaseUrl(candidate);
+  }
+  return requireTestDatabaseUrl(undefined);
+}

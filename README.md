@@ -14,7 +14,7 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
 - **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
-- **Public API & Match History** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), and match history endpoints.
+- **Public API, Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
 - **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
 - _TODO: tournaments, AI opponent, live chat, internationalization._
 
@@ -116,8 +116,8 @@ The DB roles are split: an owner role runs migrations and seeding, while the app
 | ELO rating system | astefans | Pure ELO engine (expected score + rating update, K-factor 32, rating floor) and a transactional, idempotent service that updates both players' ratings when a game ends. |
 | Player waiting queue | astefans | In-memory queue; one entry per authenticated user, holding their rating and chosen time control. |
 | Automated opponent matching | astefans | Pairs the closest-rated waiting players within a tolerance that widens the longer they wait; creates the game (RAM session + `IN_PROGRESS` row) and notifies both clients over Socket.IO. |
-| Ranking & statistics API | astefans, pmamala | Per-user profile and statistics (`GET /api/profile/me`); global leaderboard by rating (planned). |
-| Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90) and full API key CRUD with OpenAPI/Swagger docs at `/api/docs`. |
+| Ranking & statistics API | astefans, pmamala, tszymans | Per-user profile and statistics (`GET /api/profile/me`), public web leaderboard (`GET /api/leaderboard`), and machine-to-machine public ranking API (`GET /api/v1/leaderboard`). |
+| Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90), full API key CRUD, global ELO leaderboard & platform statistics (Issue #146) with OpenAPI/Swagger docs at `/api/docs`. |
 | Game conclusion & rating trigger | tszymans | Authoritative termination hook in `GameService.removeGame()` resolving final results (`WHITE_WON`, `BLACK_WON`, `DRAW`, `ABORTED`), persisting to PostgreSQL `games`, and triggering atomic Elo recalculations via `RatingService.applyGameResult()`. |
 
 ---
@@ -135,10 +135,15 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
     `tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef`
   - **Endpoints**:
     - Match History (Issue #90): `GET /api/v1/matches`, `GET /api/v1/matches/:id`
+    - Leaderboard & Statistics (Issue #146): `GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/players/:username`
     - API Keys CRUD: `POST /api/v1/api-keys`, `GET /api/v1/api-keys`, `GET /api/v1/api-keys/:id`, `PUT /api/v1/api-keys/:id`, `DELETE /api/v1/api-keys/:id`
     - Web User API Keys (Session Auth): `POST /api/user/api-keys`, `GET /api/user/api-keys`, `DELETE /api/user/api-keys/:id`
+    - Web Leaderboard (no auth, 60 req/min per IP): `GET /api/leaderboard`
+    - Web Match History (session auth): `GET /api/profile/me/games?page=&limit=`
   - **Verification Commands**:
     ```bash
+    docker compose run --rm backend npm run test:leaderboard:api
+    docker compose run --rm -e TEST_DATABASE_URL='<application-role URL for chess_test>' backend npm run test:leaderboard:db
     docker compose run --rm backend npm run test:public-api
     docker compose run --rm backend npm run test:api-guard
     docker compose run --rm backend npm run test:apikey
@@ -152,11 +157,18 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
 
 ## tszymans - Product Owner
 ### Responsibilities
-_TODO_
+Product Owner, Public API subsystem, API key security, sliding-window rate limiting, and public statistics.
+
 ### Main Contributions
-_TODO_
+- Designed and built the machine-to-machine Public API under `/api/v1` with cryptographic API keys (`X-API-Key`), sliding-window rate limiting, and automated Swagger UI (`/api/docs`).
+- Implemented match history endpoints (`GET /api/v1/matches`, `GET /api/v1/matches/:id`) with player and outcome filtering, move ordering, and UUID validation guards.
+- Implemented public leaderboard and platform statistics (`GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/players/:username`) with win/loss aggregation and win percentage calculation.
+- Connected real backend APIs to frontend ranking (`/ranking`) and history (`/history`) views, eliminating static mock data.
+- Built test suites covering API security, rate limit headers, match queries, and leaderboard pagination.
+
 ### Challenges
-_TODO_
+- Guaranteeing database protection against DoS by enforcing zero-I/O key validation and sliding-window rate limiting before database queries.
+- Designing consistent pagination and aggregation for player rankings while handling ties and case-insensitive lookups safely.
 
 ## pjedrycz - Tech Lead
 ### Responsibilities
@@ -210,6 +222,7 @@ ft_transcendence/
 │       ├── game/          # authoritative chess engine & state manager
 │       ├── matchmaking/   # waiting queue, pairing, Socket.IO gateway
 │       ├── profile/       # user profile & statistics
+│       ├── public-api/    # API keys, match history, leaderboard & platform stats
 │       ├── rating/        # ELO rating engine & service
 │       └── health/        # health check endpoint
 ├── nginx/                 # TLS termination & reverse proxy

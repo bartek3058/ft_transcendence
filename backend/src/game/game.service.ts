@@ -605,7 +605,7 @@ export class GameService implements OnModuleDestroy
       session.gameOverReason = 'STALEMATE';
       session.winnerColor = null;
     } else if (session.engine.isThreefoldRepetition()) {
-      session.gameOverReason = 'THREEFOLD_REPETITATION';
+      session.gameOverReason = 'THREEFOLD_REPETITION';
       session.winnerColor = null;
     } else if (session.engine.isInsufficientMaterial()) {
       session.gameOverReason = 'INSUFFICIENT_MATERIAL';
