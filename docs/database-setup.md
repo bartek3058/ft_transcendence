@@ -61,6 +61,7 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`white_rating_change` / `black_rating_change`**: Rating deltas applied after completion.
 - **`pgn`**: Full game PGN notation string.
 - **`game_start` / `game_end`**: Timestamps with check `game_end IS NULL OR game_end >= game_start`.
+- **`tournament_id` / `tournament_match_id`**: Foreign keys to `tournaments.id` and `tournament_matches.id` with `ON DELETE SET NULL` (links tournament matches to full game history and moves).
 
 ### Game Moves (`game_moves`)
 
@@ -75,6 +76,53 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`fen_after`**: FEN board state representation after this move.
 - **`time_spent_ms` / `time_remaining_ms`**: Clock timing tracking.
 - **Unique Constraint**: `(game_id, ply)` guarantees strict move sequencing per match.
+
+### Tournament (`tournaments`)
+
+- **`id`**: UUID primary key.
+- **`title`**: Tournament name (max 64 characters).
+- **`description`**: Optional tournament description (max 255 characters).
+- **`creator_id`**: Foreign key to `users.id` (`ON DELETE RESTRICT`).
+- **`max_participants`**: Capacity constrained to powers of 2: `2, 4, 8, 16, 32`.
+- **`current_participants`**: Number of currently registered players (enforced bound: `0 <= current <= max`).
+- **`status`**: `'OPEN_FOR_SIGNUP'`, `'REGISTRATION_CLOSED'`, `'IN_PROGRESS'`, `'FINISHED'`, `'CANCELLED'`.
+- **`registration_deadline`**: `TIMESTAMPTZ(3)` cutoff for player registrations.
+- **`started_at` / `completed_at`**: Lifecycle timestamps.
+- **`champion_id`**: Foreign key to `users.id` (`ON DELETE SET NULL`), populated on completion.
+
+### Tournament Participant (`tournament_participants`)
+
+- **`id`**: UUID primary key.
+- **`tournament_id`**: Foreign key to `tournaments.id` (`ON DELETE CASCADE`).
+- **`user_id`**: Foreign key to `users.id` (`ON DELETE CASCADE`).
+- **`seed`**: Integer seed assignment (1..N).
+- **`final_rank`**: Final placement (1 = Champion, 2 = Runner-up, etc.).
+- **`registered_at`**: Timestamp of sign-up.
+- **Unique Constraint**: `(tournament_id, user_id)` prevents duplicate registrations.
+
+### Tournament Match (`tournament_matches`)
+
+- **`id`**: UUID primary key.
+- **`tournament_id`**: Foreign key to `tournaments.id` (`ON DELETE CASCADE`).
+- **`round` / `match_index`**: Round number and match index within the round.
+- **`identifier`**: Readable match label (e.g., `'R1-M1'`, `'R2-M1'`).
+- **`player1_id` / `player2_id`**: Foreign keys to `users.id` (`ON DELETE SET NULL`).
+- **`winner_id`**: Foreign key to `users.id` (`ON DELETE SET NULL`).
+- **`status`**: `'PENDING'`, `'SCHEDULED'`, `'IN_PROGRESS'`, `'COMPLETED'`, `'WALKOVER'`.
+- **`is_bye`**: Boolean flag indicating automatic bye advance.
+- **`source_match_1_id` / `source_match_2_id`**: Self-referencing foreign keys to parent matches.
+- **`next_match_id` / `next_match_slot`**: Target match and slot (`'player1'` or `'player2'`) for winner advancement.
+- **Unique Constraint**: `(tournament_id, round, match_index)`.
+
+### Tournament Invitation (`tournament_invitations`)
+
+- **`id`**: UUID primary key.
+- **`tournament_id`**: Foreign key to `tournaments.id` (`ON DELETE CASCADE`).
+- **`sender_id`**: Foreign key to `users.id` (`ON DELETE CASCADE`).
+- **`recipient_id`**: Foreign key to `users.id` (`ON DELETE CASCADE`).
+- **`status`**: `'PENDING'`, `'ACCEPTED'`, `'DECLINED'`, `'EXPIRED'`.
+- **`created_at` / `expires_at`**: Timestamps with check `expires_at > created_at`.
+- **Unique Constraint**: `(tournament_id, recipient_id)`.
 
 ---
 
