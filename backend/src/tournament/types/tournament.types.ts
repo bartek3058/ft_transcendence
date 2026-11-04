@@ -27,6 +27,9 @@ export const INVITATION_STATUSES = [
 ] as const;
 export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 
+export const TOURNAMENT_MATCH_SLOTS = ['player1', 'player2'] as const;
+export type TournamentMatchSlot = (typeof TOURNAMENT_MATCH_SLOTS)[number];
+
 export interface TournamentPlayerProfile {
   id: string;
   username: string;
@@ -38,6 +41,7 @@ export interface TournamentParticipantDto {
   tournamentId: string;
   userId: string;
   seed: number | null;
+  seedRating: number | null; // rating snapshot frozen at registration close
   finalRank: number | null;
   registeredAt: Date;
   user?: TournamentPlayerProfile;
@@ -54,11 +58,10 @@ export interface TournamentMatchDto {
   winnerId: string | null;
   status: TournamentMatchStatus;
   isBye: boolean;
-  sourceMatch1Id: string | null;
-  sourceMatch2Id: string | null;
   nextMatchId: string | null;
-  nextMatchSlot: 'player1' | 'player2' | null;
-  gameId?: string | null;
+  nextMatchSlot: TournamentMatchSlot | null;
+  currentGameId: string | null; // live game, or the last game played for this match
+  gameIds: string[]; // all games for this match in play order (regular game + tiebreaks)
   player1?: TournamentPlayerProfile | null;
   player2?: TournamentPlayerProfile | null;
   winner?: TournamentPlayerProfile | null;

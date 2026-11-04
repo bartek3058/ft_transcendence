@@ -181,6 +181,7 @@ model TournamentParticipant {
   tournamentId String     @map("tournament_id") @db.Uuid
   userId       String     @map("user_id") @db.Uuid
   seed         Int?
+  seedRating   Int?       @map("seed_rating") // frozen users.rating snapshot taken at registration close
   finalRank    Int?       @map("final_rank")
   registeredAt DateTime   @default(now()) @map("registered_at") @db.Timestamptz(3)
 
@@ -188,7 +189,7 @@ model TournamentParticipant {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tournamentId, userId], map: "tournament_participants_user_unique")
-  @@index([tournamentId, seed])
+  @@unique([tournamentId, seed], map: "tournament_participants_seed_unique")
   @@index([userId])
   @@map("tournament_participants")
 }
@@ -205,8 +206,6 @@ model TournamentMatch {
   status         String                @default("PENDING") @db.VarChar(16)
   isBye          Boolean               @default(false) @map("is_bye")
 
-  sourceMatch1Id String?               @map("source_match_1_id") @db.Uuid
-  sourceMatch2Id String?               @map("source_match_2_id") @db.Uuid
   nextMatchId    String?               @map("next_match_id") @db.Uuid
   nextMatchSlot  String?               @map("next_match_slot") @db.VarChar(16)
 
@@ -214,19 +213,16 @@ model TournamentMatch {
   player1        User?                 @relation("TournamentMatchPlayer1", fields: [player1Id], references: [id], onDelete: SetNull)
   player2        User?                 @relation("TournamentMatchPlayer2", fields: [player2Id], references: [id], onDelete: SetNull)
   winner         User?                 @relation("TournamentMatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
-  sourceMatch1   TournamentMatch?      @relation("SourceMatch1", fields: [sourceMatch1Id], references: [id], onDelete: SetNull)
-  sourceMatch2   TournamentMatch?      @relation("SourceMatch2", fields: [sourceMatch2Id], references: [id], onDelete: SetNull)
   nextMatch      TournamentMatch?      @relation("NextMatch", fields: [nextMatchId], references: [id], onDelete: SetNull)
 
-  fedBySource1   TournamentMatch[]     @relation("SourceMatch1")
-  fedBySource2   TournamentMatch[]     @relation("SourceMatch2")
-  feedingMatches TournamentMatch[]     @relation("NextMatch")
-  games          Game[]                @relation("MatchChessGame")
+  feedingMatches TournamentMatch[]     @relation("NextMatch") // the (up to two) matches whose winners feed this one
+  games          Game[]                @relation("MatchChessGame") // regular game plus any tiebreak games
 
   @@unique([tournamentId, round, matchIndex], map: "tournament_matches_round_index_unique")
   @@index([tournamentId, round])
   @@index([player1Id])
   @@index([player2Id])
+  @@index([nextMatchId])
   @@map("tournament_matches")
 }
 

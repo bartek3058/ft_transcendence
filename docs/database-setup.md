@@ -61,7 +61,7 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`white_rating_change` / `black_rating_change`**: Rating deltas applied after completion.
 - **`pgn`**: Full game PGN notation string.
 - **`game_start` / `game_end`**: Timestamps with check `game_end IS NULL OR game_end >= game_start`.
-- **`tournament_id` / `tournament_match_id`**: Foreign keys to `tournaments.id` and `tournament_matches.id` with `ON DELETE SET NULL` (links tournament matches to full game history and moves).
+- **`tournament_id` / `tournament_match_id`**: Foreign keys to `tournaments.id` and `tournament_matches.id` with `ON DELETE SET NULL` (links tournament matches to full game history and moves). Both are set together, to ids of the same tournament, by the tournament service (not a CHECK, because both FKs are nulled one at a time on delete). A match can have several games (regular game plus tiebreaks); the partial unique index `games_tournament_match_active_key` allows at most one `IN_PROGRESS` game per match. Prisma cannot model partial indexes, so this index exists only in the migration SQL.
 
 ### Game Moves (`game_moves`)
 
@@ -80,14 +80,14 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 ### Tournament (`tournaments`)
 
 - **`id`**: UUID primary key.
-- **`title`**: Tournament name (max 64 characters).
+- **`title`**: Tournament name (3–64 characters after trimming).
 - **`description`**: Optional tournament description (max 255 characters).
 - **`creator_id`**: Foreign key to `users.id` (`ON DELETE RESTRICT`).
 - **`max_participants`**: Capacity constrained to powers of 2: `2, 4, 8, 16, 32`.
 - **`current_participants`**: Number of currently registered players (enforced bound: `0 <= current <= max`).
 - **`status`**: `'OPEN_FOR_SIGNUP'`, `'REGISTRATION_CLOSED'`, `'IN_PROGRESS'`, `'FINISHED'`, `'CANCELLED'`.
 - **`registration_deadline`**: `TIMESTAMPTZ(3)` cutoff for player registrations.
-- **`started_at` / `completed_at`**: Lifecycle timestamps.
+- **`started_at` / `completed_at`**: Lifecycle timestamps (check `completed_at >= started_at` when both are set).
 - **`champion_id`**: Foreign key to `users.id` (`ON DELETE SET NULL`), populated on completion.
 
 ### Tournament Participant (`tournament_participants`)
@@ -95,8 +95,9 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`id`**: UUID primary key.
 - **`tournament_id`**: Foreign key to `tournaments.id` (`ON DELETE CASCADE`).
 - **`user_id`**: Foreign key to `users.id` (`ON DELETE CASCADE`).
-- **`seed`**: Integer seed assignment (1..N).
-- **`final_rank`**: Final placement (1 = Champion, 2 = Runner-up, etc.).
+- **`seed`**: Integer seed assignment (1..N; check `seed >= 1`). Unique per tournament (`NULL` = not yet seeded).
+- **`seed_rating`**: Frozen snapshot of `users.rating` taken when registration closes; seeding and bracket display use this, never live `users.rating`.
+- **`final_rank`**: Final placement (1 = Champion, 2 = Runner-up, etc.; check `final_rank >= 1`). Not unique: both losing semifinalists share rank 3.
 - **`registered_at`**: Timestamp of sign-up.
 - **Unique Constraint**: `(tournament_id, user_id)` prevents duplicate registrations.
 
@@ -104,14 +105,14 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 
 - **`id`**: UUID primary key.
 - **`tournament_id`**: Foreign key to `tournaments.id` (`ON DELETE CASCADE`).
-- **`round` / `match_index`**: Round number and match index within the round.
+- **`round` / `match_index`**: Round number (`>= 1`) and match index within the round (`>= 0`).
 - **`identifier`**: Readable match label (e.g., `'R1-M1'`, `'R2-M1'`).
-- **`player1_id` / `player2_id`**: Foreign keys to `users.id` (`ON DELETE SET NULL`).
+- **`player1_id` / `player2_id`**: Foreign keys to `users.id` (`ON DELETE SET NULL`); check that they differ when both are set.
 - **`winner_id`**: Foreign key to `users.id` (`ON DELETE SET NULL`).
 - **`status`**: `'PENDING'`, `'SCHEDULED'`, `'IN_PROGRESS'`, `'COMPLETED'`, `'WALKOVER'`.
 - **`is_bye`**: Boolean flag indicating automatic bye advance.
-- **`source_match_1_id` / `source_match_2_id`**: Self-referencing foreign keys to parent matches.
-- **`next_match_id` / `next_match_slot`**: Target match and slot (`'player1'` or `'player2'`) for winner advancement.
+- **`next_match_id` / `next_match_slot`**: Self-referencing foreign key (`ON DELETE SET NULL`) to the match the winner advances to, and the target slot (`'player1'` or `'player2'`). This is the only stored bracket edge; the matches feeding a given match are found with `WHERE next_match_id = <id>`.
+- **Service-enforced invariants** (not CHECKs, because the referenced user columns use `ON DELETE SET NULL` and Postgres applies each SET NULL as a separate row update): `winner_id` is one of the two players; `next_match_id` and `next_match_slot` are set together.
 - **Unique Constraint**: `(tournament_id, round, match_index)`.
 
 ### Tournament Invitation (`tournament_invitations`)
@@ -122,7 +123,8 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 - **`recipient_id`**: Foreign key to `users.id` (`ON DELETE CASCADE`).
 - **`status`**: `'PENDING'`, `'ACCEPTED'`, `'DECLINED'`, `'EXPIRED'`.
 - **`created_at` / `expires_at`**: Timestamps with check `expires_at > created_at`.
-- **Unique Constraint**: `(tournament_id, recipient_id)`.
+- **Check**: `sender_id <> recipient_id`.
+- **Unique Constraint**: `(tournament_id, recipient_id)`. Re-inviting a user who declined or whose invitation expired must update the existing row (upsert), not insert a new one.
 
 ---
 
