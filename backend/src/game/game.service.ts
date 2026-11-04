@@ -69,6 +69,8 @@ export class GameService implements OnModuleDestroy
     private flushPromise: Promise<void> | null = null;
     private flushTimer: NodeJS.Timeout | null = null;
     private retryTimer: NodeJS.Timeout | null = null;
+    private clockTimer: NodeJS.Timeout | null = null;
+    private onTimeoutCallback?: (gameId: string, result: MoveExecutionResult) => void;
     private consecutiveFailures = 0;
     private queueCapWarned = false;
     private missingPrismaWarned = false;
@@ -82,10 +84,13 @@ export class GameService implements OnModuleDestroy
       gameId,
       whitePlayerId,
       blackPlayerId,
-      initialTimeMs = DEFAULT_INITIAL_TIME_MS,
       timeControl = null,
       initialFen,
     } = options;
+
+    const parsedClock = this.parseTimeControl(timeControl);
+    const initialTimeMs = options.initialTimeMs ?? parsedClock.initialTimeMs;
+    const incrementMs = options.incrementMs ?? parsedClock.incrementMs;
 
     if (!gameId || !whitePlayerId || !blackPlayerId)
     {
@@ -120,6 +125,7 @@ export class GameService implements OnModuleDestroy
       blackPlayerId,
       whiteTimeRemainingMs: initialTimeMs,
       blackTimeRemainingMs: initialTimeMs,
+      incrementMs,
       timeControl,
       lastMoveTimestamp: now,
       plyCount: 0,
@@ -129,6 +135,7 @@ export class GameService implements OnModuleDestroy
       createdAt: now,
     };
     this.activeGames.set(gameId, session);
+    this.ensureClockTickerRunning();
     this.logger.log(
       `Created in-memory game session [${gameId}]: White(${whitePlayerId}) vs Black(${blackPlayerId})`,
     );
@@ -546,6 +553,7 @@ export class GameService implements OnModuleDestroy
 
   //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
   public async onModuleDestroy(): Promise<void> {
+    this.stopClockTicker();
     this.clearFlushTimer();
     this.clearRetryTimer();
     const drained = await this.waitForPersistence(MOVE_PERSISTENCE_CONFIG.shutdownWaitMs);
@@ -790,6 +798,45 @@ export class GameService implements OnModuleDestroy
 
     const { session, playerColor, playerId } = auth;
     const fenBeforeMove = session.engine.fen();
+    const now = Date.now();
+    const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
+
+    // 1. (#108) Sprawdź, czy czas gracza nie wygasł przed wykonaniem ruchu
+    const currentRemainingMs =
+      playerColor === 'w'
+        ? session.whiteTimeRemainingMs
+        : session.blackTimeRemainingMs;
+
+    if (currentRemainingMs - timeSpentMs <= 0) {
+      if (playerColor === 'w') {
+        session.whiteTimeRemainingMs = 0;
+      } else {
+        session.blackTimeRemainingMs = 0;
+      }
+      session.lastMoveTimestamp = now;
+      session.isFinished = true;
+      session.gameOverReason = 'TIMEOUT';
+      session.winnerColor = playerColor === 'w' ? 'b' : 'w';
+
+      this.logger.log(
+        `Game [${dto.gameId}] ended by TIMEOUT on move attempt. Winner: ${session.winnerColor}.`,
+      );
+
+      return {
+        success: false,
+        currentFen: fenBeforeMove,
+        errorReason: 'TIMEOUT',
+        plyCount: session.plyCount,
+        moveNumber: Math.ceil(session.plyCount / 2),
+        isCheck: session.engine.inCheck(),
+        isGameOver: true,
+        gameOverReason: 'TIMEOUT',
+        winnerColor: session.winnerColor,
+        whiteTimeRemainingMs: session.whiteTimeRemainingMs,
+        blackTimeRemainingMs: session.blackTimeRemainingMs,
+      };
+    }
+
     let moveObj: ReturnType<Chess['move']>;
     try {
       moveObj = session.engine.move({
@@ -805,29 +852,41 @@ export class GameService implements OnModuleDestroy
         success: false,
         currentFen: fenBeforeMove,
         errorReason: 'ILLEGAL_MOVE',
+        whiteTimeRemainingMs: session.whiteTimeRemainingMs,
+        blackTimeRemainingMs: session.blackTimeRemainingMs,
       };
     }
+
     if (!moveObj) {
       return {
         success: false,
         currentFen: fenBeforeMove,
         errorReason: 'ILLEGAL_MOVE',
+        whiteTimeRemainingMs: session.whiteTimeRemainingMs,
+        blackTimeRemainingMs: session.blackTimeRemainingMs,
       };
     }
-    const now = Date.now();
-    const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
+
     session.lastMoveTimestamp = now;
     session.plyCount += 1;
-    this.evaluateGameOverState(session, playerColor); // chceck that this move is game over
+    this.evaluateGameOverState(session, playerColor);
+
+    const appliedIncrement = session.isFinished ? 0 : session.incrementMs;
+    const updatedRemainingMs = Math.max(
+      0,
+      currentRemainingMs - timeSpentMs + appliedIncrement,
+    );
+
+    if (playerColor === 'w') {
+      session.whiteTimeRemainingMs = updatedRemainingMs;
+    } else {
+      session.blackTimeRemainingMs = updatedRemainingMs;
+    }
 
     const currentFen = session.engine.fen();
     const moveNumber = Math.ceil(session.plyCount / 2);
     const uci = `${moveObj.from}${moveObj.to}${moveObj.promotion ?? ''}`;
-    const timeRemainingMs =
-      playerColor === 'w'
-        ? session.whiteTimeRemainingMs
-        : session.blackTimeRemainingMs;
-      
+
     const moveRecord: PendingMoveRecord = {
       gameId: session.gameId,
       ply: session.plyCount,
@@ -838,7 +897,7 @@ export class GameService implements OnModuleDestroy
       uci,
       fenAfter: currentFen,
       timeSpentMs,
-      timeRemainingMs,
+      timeRemainingMs: updatedRemainingMs,
       createdAt: new Date(now),
     };
     this.enqueueMoveForPersistence(moveRecord);
@@ -851,9 +910,11 @@ export class GameService implements OnModuleDestroy
       plyCount: session.plyCount,
       moveNumber,
       isCheck: session.engine.inCheck(),
-      isGameOver: session.engine.isGameOver(),
+      isGameOver: session.isFinished,
       gameOverReason: session.gameOverReason,
       winnerColor: session.winnerColor,
+      whiteTimeRemainingMs: session.whiteTimeRemainingMs,
+      blackTimeRemainingMs: session.blackTimeRemainingMs,
     };
   }
   public resignGame(
@@ -935,6 +996,126 @@ export class GameService implements OnModuleDestroy
       return 'b';
     }
     return null;
+  }
+  
+  public onGameTimeout(
+    callback: (gameId: string, result: MoveExecutionResult) => void,
+  ): void {
+    this.onTimeoutCallback = callback;
+  }
+
+  public checkGameTimeout(
+    gameId: string,
+    now: number = Date.now(),
+  ): MoveExecutionResult | null {
+    const session = this.activeGames.get(gameId);
+    if (!session || session.isFinished) {
+      return null;
+    }
+
+    const activeColor = session.engine.turn();
+    const elapsedMs = Math.max(0, now - session.lastMoveTimestamp);
+    const remainingMs =
+      activeColor === 'w'
+        ? session.whiteTimeRemainingMs
+        : session.blackTimeRemainingMs;
+
+    if (remainingMs - elapsedMs > 0) {
+      return null;
+    }
+
+    if (activeColor === 'w') {
+      session.whiteTimeRemainingMs = 0;
+    } else {
+      session.blackTimeRemainingMs = 0;
+    }
+
+    session.lastMoveTimestamp = now;
+    session.isFinished = true;
+    session.gameOverReason = 'TIMEOUT';
+    session.winnerColor = activeColor === 'w' ? 'b' : 'w';
+
+    this.logger.log(
+      `Game [${gameId}] ended by passive TIMEOUT. Winner: ${session.winnerColor}.`,
+    );
+
+    return {
+      success: true,
+      currentFen: session.engine.fen(),
+      plyCount: session.plyCount,
+      moveNumber: Math.ceil(session.plyCount / 2),
+      isCheck: session.engine.inCheck(),
+      isGameOver: true,
+      gameOverReason: 'TIMEOUT',
+      winnerColor: session.winnerColor,
+      whiteTimeRemainingMs: session.whiteTimeRemainingMs,
+      blackTimeRemainingMs: session.blackTimeRemainingMs,
+    };
+  }
+
+
+  private parseTimeControl(timeControl?: string | null): {
+    initialTimeMs: number;
+    incrementMs: number;
+  } {
+    if (!timeControl) {
+      return { initialTimeMs: DEFAULT_INITIAL_TIME_MS, incrementMs: 0 };
+    }
+
+    const underscoreMatch = /^[a-z]+_(\d{1,3})_(\d{1,3})$/i.exec(
+      timeControl.trim(),
+    );
+    if (underscoreMatch) {
+      const minutes = Number(underscoreMatch[1]);
+      const incrementSeconds = Number(underscoreMatch[2]);
+      if (minutes > 0) {
+        return {
+          initialTimeMs: minutes * 60 * 1000,
+          incrementMs: incrementSeconds * 1000,
+        };
+      }
+    }
+
+    const plusMatch = /^(\d{1,3})\+(\d{1,3})$/.exec(timeControl.trim());
+    if (plusMatch) {
+      const minutes = Number(plusMatch[1]);
+      const incrementSeconds = Number(plusMatch[2]);
+      if (minutes > 0) {
+        return {
+          initialTimeMs: minutes * 60 * 1000,
+          incrementMs: incrementSeconds * 1000,
+        };
+      }
+    }
+
+    return { initialTimeMs: DEFAULT_INITIAL_TIME_MS, incrementMs: 0 };
+  }
+
+  private ensureClockTickerRunning(): void {
+    if (this.clockTimer) {
+      return;
+    }
+    this.clockTimer = setInterval(() => {
+      if (this.activeGames.size === 0) {
+        this.stopClockTicker();
+        return;
+      }
+      const now = Date.now();
+      for (const gameId of this.activeGames.keys()) {
+        const timeoutResult = this.checkGameTimeout(gameId, now);
+        if (timeoutResult && this.onTimeoutCallback) {
+          this.onTimeoutCallback(gameId, timeoutResult);
+        }
+      }
+    }, 1000);
+    this.clockTimer.unref();
+  }
+
+  private stopClockTicker(): void {
+    if (this.clockTimer) {
+      clearInterval(this.clockTimer);
+      this.clockTimer = null;
+    }
   }
 }
 

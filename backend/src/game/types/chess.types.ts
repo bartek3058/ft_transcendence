@@ -60,7 +60,8 @@ export interface MoveExecutionResult
     | 'NOT_YOUR_TURN'
     | 'ILLEGAL_MOVE'
     | 'GAME_NOT_FOUND'
-    | 'GAME_ALREADY_FINISHED';
+    | 'GAME_ALREADY_FINISHED'
+    | 'TIMEOUT';
     //standard algebraic notation representation (e.g. 'e4')
     san?: string;
     // e.g. 'e2e4' 'e7e8q' for frontend board
@@ -74,6 +75,8 @@ export interface MoveExecutionResult
     //detailed reason why the game ended or null if still ongoing
     gameOverReason?: GameOverReason | null;
     winnerColor?: PlayerColor | null;
+    whiteTimeRemainingMs?: number;
+    blackTimeRemainingMs?: number;
 }
 
 export interface CreateGameOptions 
@@ -82,6 +85,7 @@ export interface CreateGameOptions
     whitePlayerId: string;
     blackPlayerId: string;
     initialTimeMs?: number;
+    incrementMs?: number;
     timeControl?: string;
     initialFen?: string;
 }
@@ -119,6 +123,7 @@ export interface GameSession
     blackPlayerId: string;
     whiteTimeRemainingMs: number;
     blackTimeRemainingMs: number;
+    incrementMs: number;
     timeControl: string | null;
     lastMoveTimestamp: number;
     plyCount: number;
