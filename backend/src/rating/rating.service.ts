@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { computeElo, EloOutcome, EloResult } from './elo';
 import { LeaderboardEntry } from './leaderboard.types';
+import { AI_BOT_ROLE } from '../ai/ai.constants';
 
 const RATED_RESULTS: readonly EloResult[] = ['WHITE_WON', 'BLACK_WON', 'DRAW'];
 
@@ -56,6 +57,12 @@ export class RatingService {
       ]);
       if (!white || !black) {
         this.logger.warn(`applyGameResult: player row missing for game ${gameId}`);
+        return null;
+      }
+
+      // Games against the AI bot are never rated: neither player's ELO moves.
+      if (white.role === AI_BOT_ROLE || black.role === AI_BOT_ROLE) {
+        this.logger.debug(`applyGameResult: game ${gameId} is vs the AI bot, not rated`);
         return null;
       }
 

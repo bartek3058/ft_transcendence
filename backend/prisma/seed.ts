@@ -2,6 +2,13 @@ import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { createHash } from 'node:crypto';
 import { isExistingAdmin, validateAdminPassword } from './admin-bootstrap';
+import {
+  AI_BOT_USER_ID,
+  AI_BOT_USERNAME,
+  AI_BOT_EMAIL,
+  AI_BOT_ROLE,
+  AI_BOT_DISPLAY_RATING,
+} from '../src/ai/ai.constants';
 
 const prisma = new PrismaClient();
 
@@ -93,6 +100,32 @@ async function main() {
       },
     });
     console.log(`[Seed] Seeded evaluator API key: ${EVALUATOR_RAW_KEY}`);
+  }
+
+  // --- Phase 3: AI opponent bootstrap (always runs) ---
+  // The Stockfish bot is a normal user row so games against it can use the usual
+  // white_id/black_id foreign keys. Its role is "bot" (RatingService uses that to
+  // keep AI games out of ELO) and its password hash is intentionally unusable, so
+  // nobody can log in as it. Fixed id, matched on, so re-seeding is idempotent.
+  const existingBot = await prisma.user.findUnique({
+    where: { id: AI_BOT_USER_ID },
+    select: { id: true },
+  });
+  if (!existingBot) {
+    await prisma.user.create({
+      data: {
+        id: AI_BOT_USER_ID,
+        email: AI_BOT_EMAIL,
+        username: AI_BOT_USERNAME,
+        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dW51c2FibGVfYWlfYm90$0000000000000000000000000000000000000000000',
+        role: AI_BOT_ROLE,
+        status: 'online',
+        rating: AI_BOT_DISPLAY_RATING,
+      },
+    });
+    console.log(`[Seed] Created AI bot user: ${AI_BOT_USERNAME} (${AI_BOT_USER_ID})`);
+  } else {
+    console.log('[Seed] AI bot user already exists. Skipping.');
   }
 }
 
