@@ -8,14 +8,15 @@ import { AI_BOT_USER_ID, AI_BOT_DISPLAY_RATING, AI_BOT_ROLE } from '../src/ai/ai
 
 const STARTPOS = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-// Fake Prisma for the AI game service: a stub bot row for the seed check and a
-// spy on game.create so we can inspect what gets persisted.
-function makeAiGameService() {
+// Fake Prisma for the AI game service: a stub bot row for the seed check, a spy
+// on game.create, and a no-op game_moves sink (executeMove queues moves for
+// persistence). `botMove` is the UCI move the stubbed engine will always reply.
+function makeAiGameService(botMove = 'e7e5') {
   const created: any[] = [];
   const prisma = {
     user: {
       async findUnique() {
-        return { id: AI_BOT_USER_ID };
+        return { id: AI_BOT_USER_ID, rating: 1200 };
       },
     },
     game: {
@@ -23,10 +24,26 @@ function makeAiGameService() {
         created.push(args.data);
         return args.data;
       },
+      async updateMany() {
+        return { count: 1 };
+      },
+    },
+    gameMove: {
+      async createMany() {
+        return { count: 1 };
+      },
+    },
+  };
+  const stockfish = {
+    async bestMove() {
+      return { bestMove: botMove, ponder: null, evaluation: { scoreCp: 20, mateIn: null, depth: 12 } };
+    },
+    async hint() {
+      return { bestMove: botMove, ponder: null, evaluation: { scoreCp: 20, mateIn: null, depth: 12 } };
     },
   };
   const game = new GameService(prisma as any, {} as any);
-  const service = new AiGameService(prisma as any, game);
+  const service = new AiGameService(prisma as any, game, stockfish as any);
   return { service, game, created };
 }
 
@@ -90,6 +107,53 @@ describe('AiGameService.createAiGame', () => {
     await assert.rejects(
       service.createAiGame({ humanId: 'h', humanRating: 1200, difficulty: 'insane' as any }),
     );
+  });
+});
+
+describe('AiGameService.submitHumanMove — the bot replies', () => {
+  it('applies the human move and has the bot answer', async () => {
+    const { service } = makeAiGameService('e7e5');
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'medium',
+      humanColor: 'w',
+    });
+    const turn = await service.submitHumanMove(created.gameId, 'human-1', { from: 'e2', to: 'e4' });
+
+    assert.equal(turn.humanMove.success, true);
+    assert.ok(turn.botMove);
+    assert.equal(turn.botMove?.success, true);
+    assert.equal(turn.botMove?.uci, 'e7e5');
+    assert.equal(turn.state.turn, 'w'); // back to the human
+    assert.equal(turn.state.plyCount, 2);
+    assert.equal(turn.gameOver, null);
+  });
+
+  it('rejects a move from someone who is not the human player', async () => {
+    const { service } = makeAiGameService();
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'easy',
+      humanColor: 'w',
+    });
+    await assert.rejects(
+      service.submitHumanMove(created.gameId, 'intruder', { from: 'e2', to: 'e4' }),
+    );
+  });
+
+  it('returns the move as unsuccessful and plays no bot reply when it is illegal', async () => {
+    const { service } = makeAiGameService();
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'easy',
+      humanColor: 'w',
+    });
+    const turn = await service.submitHumanMove(created.gameId, 'human-1', { from: 'e2', to: 'e5' });
+    assert.equal(turn.humanMove.success, false);
+    assert.equal(turn.botMove, null);
   });
 });
 
