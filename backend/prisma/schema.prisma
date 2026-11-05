@@ -29,6 +29,15 @@ model User {
   movesPlayed  GameMove[]
   apiKeys      ApiKey[]
 
+  createdTournaments Tournament[]          @relation("CreatedTournaments")
+  wonTournaments     Tournament[]          @relation("WonTournaments")
+  tournamentEntries  TournamentParticipant[]
+  matchPlayer1       TournamentMatch[]     @relation("TournamentMatchPlayer1")
+  matchPlayer2       TournamentMatch[]     @relation("TournamentMatchPlayer2")
+  matchWon           TournamentMatch[]     @relation("TournamentMatchWinner")
+  invitesSent        TournamentInvitation[] @relation("TournamentInvitesSent")
+  invitesReceived    TournamentInvitation[] @relation("TournamentInvitesReceived")
+
   @@index([rating(sort: Desc), username])
   @@map("users")
 }
@@ -58,6 +67,8 @@ model Game {
   blackRating       Int?       @map("black_rating")
   whiteRatingChange Int?       @map("white_rating_change")
   blackRatingChange Int?       @map("black_rating_change")
+  tournamentId      String?    @map("tournament_id") @db.Uuid
+  tournamentMatchId String?    @map("tournament_match_id") @db.Uuid
   pgn               String?    @db.Text
   gameStart         DateTime   @default(now()) @map("game_start") @db.Timestamptz(3)
   gameEnd           DateTime?  @map("game_end") @db.Timestamptz(3)
@@ -66,6 +77,8 @@ model Game {
 
   whitePlayer       User?      @relation("WhitePlayer", fields: [whiteId], references: [id], onDelete: SetNull)
   blackPlayer       User?      @relation("BlackPlayer", fields: [blackId], references: [id], onDelete: SetNull)
+  tournament        Tournament? @relation("TournamentGames", fields: [tournamentId], references: [id], onDelete: SetNull)
+  tournamentMatch   TournamentMatch? @relation("MatchChessGame", fields: [tournamentMatchId], references: [id], onDelete: SetNull)
   moves             GameMove[]
 
   @@index([whiteId])
@@ -73,6 +86,8 @@ model Game {
   @@index([whiteId, result])
   @@index([blackId, result])
   @@index([gameStart])
+  @@index([tournamentId])
+  @@index([tournamentMatchId])
   @@map("games")
 }
 
@@ -132,4 +147,100 @@ model ApiKey {
   @@index([userId])
   @@index([keyHash])
   @@map("api_keys")
+}
+
+model Tournament {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  title                String                  @db.VarChar(64)
+  description          String?                 @db.VarChar(255)
+  creatorId            String                  @map("creator_id") @db.Uuid
+  maxParticipants      Int                     @map("max_participants")
+  currentParticipants  Int                     @default(0) @map("current_participants")
+  status               String                  @default("OPEN_FOR_SIGNUP") @db.VarChar(24)
+  registrationDeadline DateTime                @map("registration_deadline") @db.Timestamptz(3)
+  startedAt            DateTime?               @map("started_at") @db.Timestamptz(3)
+  completedAt          DateTime?               @map("completed_at") @db.Timestamptz(3)
+  championId           String?                 @map("champion_id") @db.Uuid
+  createdAt            DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  creator              User                    @relation("CreatedTournaments", fields: [creatorId], references: [id], onDelete: Restrict)
+  champion             User?                   @relation("WonTournaments", fields: [championId], references: [id], onDelete: SetNull)
+  participants         TournamentParticipant[]
+  matches              TournamentMatch[]
+  invitations          TournamentInvitation[]
+  games                Game[]                  @relation("TournamentGames")
+
+  @@index([status, registrationDeadline])
+  @@index([creatorId])
+  @@map("tournaments")
+}
+
+model TournamentParticipant {
+  id           String     @id @default(uuid()) @db.Uuid
+  tournamentId String     @map("tournament_id") @db.Uuid
+  userId       String     @map("user_id") @db.Uuid
+  seed         Int?
+  seedRating   Int?       @map("seed_rating") // frozen users.rating snapshot taken at registration close
+  finalRank    Int?       @map("final_rank")
+  registeredAt DateTime   @default(now()) @map("registered_at") @db.Timestamptz(3)
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId], map: "tournament_participants_user_unique")
+  @@unique([tournamentId, seed], map: "tournament_participants_seed_unique")
+  @@index([userId])
+  @@map("tournament_participants")
+}
+
+model TournamentMatch {
+  id             String                @id @default(uuid()) @db.Uuid
+  tournamentId   String                @map("tournament_id") @db.Uuid
+  round          Int
+  matchIndex     Int                   @map("match_index")
+  identifier     String                @db.VarChar(16)
+  player1Id      String?               @map("player1_id") @db.Uuid
+  player2Id      String?               @map("player2_id") @db.Uuid
+  winnerId       String?               @map("winner_id") @db.Uuid
+  status         String                @default("PENDING") @db.VarChar(16)
+  isBye          Boolean               @default(false) @map("is_bye")
+
+  nextMatchId    String?               @map("next_match_id") @db.Uuid
+  nextMatchSlot  String?               @map("next_match_slot") @db.VarChar(16)
+
+  tournament     Tournament            @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  player1        User?                 @relation("TournamentMatchPlayer1", fields: [player1Id], references: [id], onDelete: SetNull)
+  player2        User?                 @relation("TournamentMatchPlayer2", fields: [player2Id], references: [id], onDelete: SetNull)
+  winner         User?                 @relation("TournamentMatchWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  nextMatch      TournamentMatch?      @relation("NextMatch", fields: [nextMatchId], references: [id], onDelete: SetNull)
+
+  feedingMatches TournamentMatch[]     @relation("NextMatch") // the (up to two) matches whose winners feed this one
+  games          Game[]                @relation("MatchChessGame") // regular game plus any tiebreak games
+
+  @@unique([tournamentId, round, matchIndex], map: "tournament_matches_round_index_unique")
+  @@index([tournamentId, round])
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([nextMatchId])
+  @@map("tournament_matches")
+}
+
+model TournamentInvitation {
+  id           String     @id @default(uuid()) @db.Uuid
+  tournamentId String     @map("tournament_id") @db.Uuid
+  senderId     String     @map("sender_id") @db.Uuid
+  recipientId  String     @map("recipient_id") @db.Uuid
+  status       String     @default("PENDING") @db.VarChar(16)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt    DateTime   @map("expires_at") @db.Timestamptz(3)
+
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  sender       User       @relation("TournamentInvitesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient    User       @relation("TournamentInvitesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, recipientId], map: "tournament_invitations_recipient_unique")
+  @@index([recipientId, status])
+  @@index([senderId])
+  @@map("tournament_invitations")
 }
