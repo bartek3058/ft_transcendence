@@ -157,6 +157,46 @@ describe('AiGameService.submitHumanMove — the bot replies', () => {
   });
 });
 
+describe('AiGameService.hint', () => {
+  it('suggests the full-strength move on the human\'s turn', async () => {
+    const { service } = makeAiGameService('e2e4');
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'easy',
+      humanColor: 'w',
+    });
+    const hint = await service.hint(created.gameId, 'human-1');
+    assert.equal(hint.uci, 'e2e4');
+    assert.equal(hint.from, 'e2');
+    assert.equal(hint.to, 'e4');
+    assert.equal(hint.promotion, null);
+    assert.equal(hint.evaluation.scoreCp, 20);
+  });
+
+  it('refuses a hint when it is not the human\'s turn', async () => {
+    const { service } = makeAiGameService();
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'easy',
+      humanColor: 'b', // bot (white) is to move first, so it is not the human's turn
+    });
+    await assert.rejects(service.hint(created.gameId, 'human-1'));
+  });
+
+  it('refuses a hint from a non-player', async () => {
+    const { service } = makeAiGameService();
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'easy',
+      humanColor: 'w',
+    });
+    await assert.rejects(service.hint(created.gameId, 'intruder'));
+  });
+});
+
 // RatingService must never move ELO for a game where one side is the AI bot.
 function makeRatingService(opts: { whiteRole: string; blackRole: string }) {
   const spies = { gameUpdateMany: 0, userUpdate: 0 };
