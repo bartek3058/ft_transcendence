@@ -58,6 +58,15 @@ export interface AiGameOver {
   reason: GameOverReason | null;
 }
 
+// A suggested move for the human to play, plus the engine's take on the position.
+export interface AiHint {
+  uci: string;
+  from: string;
+  to: string;
+  promotion: PromotionPiece | null;
+  evaluation: EngineEvaluation;
+}
+
 // Result of one human move: the human's move, the bot's reply (if any), the
 // resulting public state, and the game-over info when the game just ended.
 export interface AiTurnResult {
@@ -158,13 +167,7 @@ export class AiGameService {
     humanId: string,
     move: { from: string; to: string; promotion?: PromotionPiece },
   ): Promise<AiTurnResult> {
-    const meta = this.aiGames.get(gameId);
-    if (!meta) {
-      throw new NotFoundException(`Game ${gameId} is not an active AI game.`);
-    }
-    if (meta.humanId !== humanId) {
-      throw new ForbiddenException('You are not the human player in this AI game.');
-    }
+    this.requireHumanGame(gameId, humanId);
 
     const humanMove = this.game.executeMove(this.toMoveDto(gameId, move), humanId);
 
@@ -236,19 +239,42 @@ export class AiGameService {
 
   /** The human resigns: hand the game to the bot and close it out. */
   async resign(gameId: string, humanId: string): Promise<{ state: PublicGameState; gameOver: AiGameOver }> {
-    const meta = this.aiGames.get(gameId);
-    if (!meta) {
-      throw new NotFoundException(`Game ${gameId} is not an active AI game.`);
-    }
-    if (meta.humanId !== humanId) {
-      throw new ForbiddenException('You are not the human player in this AI game.');
-    }
+    this.requireHumanGame(gameId, humanId);
     const result = this.game.resignGame(gameId, humanId);
     if (!result.success) {
       throw new BadRequestException(result.errorReason ?? 'Could not resign this game.');
     }
     const over = await this.conclude(gameId, result);
     return { state: over.state, gameOver: over.info };
+  }
+
+  /**
+   * Suggests the strongest move for the human to play right now. Full engine
+   * strength regardless of the game's difficulty - a hint should be a good move.
+   * Only offered in AI games, and only when it is actually the human's turn.
+   */
+  async hint(gameId: string, humanId: string): Promise<AiHint> {
+    const meta = this.requireHumanGame(gameId, humanId);
+    const state = this.game.getPublicGameState(gameId);
+    if (state.isFinished) {
+      throw new BadRequestException('This game is already over.');
+    }
+    if (state.turn !== meta.humanColor) {
+      throw new BadRequestException('You can only ask for a hint on your own turn.');
+    }
+
+    const move = await this.stockfish.hint(state.fen);
+    if (!move.bestMove) {
+      throw new BadRequestException('No move is available in this position.');
+    }
+    const parsed = parseUci(move.bestMove);
+    return {
+      uci: move.bestMove,
+      from: parsed.from,
+      to: parsed.to,
+      promotion: parsed.promotion ?? null,
+      evaluation: move.evaluation,
+    };
   }
 
   getAiGame(gameId: string): AiGameState | undefined {
@@ -281,6 +307,18 @@ export class AiGameService {
         reason: result.gameOverReason ?? state.gameOverReason ?? null,
       },
     };
+  }
+
+  // Looks up the AI game and asserts the caller is its human player.
+  private requireHumanGame(gameId: string, humanId: string): AiGameState {
+    const meta = this.aiGames.get(gameId);
+    if (!meta) {
+      throw new NotFoundException(`Game ${gameId} is not an active AI game.`);
+    }
+    if (meta.humanId !== humanId) {
+      throw new ForbiddenException('You are not the human player in this AI game.');
+    }
+    return meta;
   }
 
   private toMoveDto(

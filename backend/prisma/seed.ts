@@ -132,7 +132,19 @@ async function main() {
 main()
   .catch((e) => {
     // Prisma errors can include query inputs; never log a credential/hash payload.
-    console.error('[Seed] Admin bootstrap failed:', e.constructor === Error ? e.message : 'Database operation failed. Check connectivity and bootstrap identity configuration.');
+    // The error code and the constraint it hit are safe, though, and tell us
+    // exactly what failed, so surface those.
+    const code = e && typeof e === 'object' && 'code' in e ? ` [${(e as any).code}]` : '';
+    const target =
+      e && typeof e === 'object' && (e as any).meta?.target
+        ? ` on ${JSON.stringify((e as any).meta.target)}`
+        : '';
+    const detail =
+      e && e.constructor === Error
+        ? e.message
+        : 'Database operation failed. Check connectivity and bootstrap identity configuration.';
+    const kind = e && typeof e === 'object' ? (e.constructor?.name ?? 'unknown') : typeof e;
+    console.error(`[Seed] Seeding failed (${kind})${code}${target}: ${detail}`);
     process.exitCode = 1;
   })
   .finally(async () => {

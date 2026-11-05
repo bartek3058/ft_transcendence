@@ -30,6 +30,10 @@ interface AiResignDto {
   gameId?: string;
 }
 
+interface AiHintDto {
+  gameId?: string;
+}
+
 /**
  * Transport for human-vs-AI games. Thin on purpose: it authenticates the socket,
  * then hands every request to AiGameService (which owns the game logic and the
@@ -171,6 +175,31 @@ export class AiGameGateway implements OnGatewayConnection {
     try {
       const { state, gameOver } = await this.aiGame.resign(gameId, userId);
       client.emit('ai:gameover', { ...gameOver, state });
+    } catch (error) {
+      this.emitError(client, error);
+    }
+  }
+
+  @SubscribeMessage('ai:hint')
+  async handleHint(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: AiHintDto,
+  ): Promise<void> {
+    const userId: string | undefined = client.data.userId;
+    if (!userId) {
+      client.emit('ai:error', { code: 'UNAUTHENTICATED' });
+      client.disconnect(true);
+      return;
+    }
+    const gameId = dto?.gameId?.trim();
+    if (!gameId) {
+      client.emit('ai:error', { code: 'BAD_REQUEST', message: 'gameId is required.' });
+      return;
+    }
+
+    try {
+      const hint = await this.aiGame.hint(gameId, userId);
+      client.emit('ai:hint', hint);
     } catch (error) {
       this.emitError(client, error);
     }
