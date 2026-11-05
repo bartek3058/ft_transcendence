@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Header } from "./components/layout/Header";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { GamePage } from "./pages/GamePage";
+import { AiGamePage } from "./pages/AiGamePage";
 import { TournamentsPage } from "./pages/TournamentsPage";
 import { RankingPage } from "./pages/RankingPage";
 import { HistoryPage } from "./pages/HistoryPage";
@@ -16,6 +17,7 @@ function AppLayout() {
       <main>
         <Routes>
           <Route path="/" element={<GamePage />} />
+          <Route path="/ai" element={<AiGamePage />} />
           <Route path="/tournaments" element={<TournamentsPage />} />
           <Route path="/ranking" element={<RankingPage />} />
           <Route path="/history" element={<HistoryPage />} />

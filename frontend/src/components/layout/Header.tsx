@@ -25,6 +25,7 @@ export function Header() {
         <NavLink to="/" end>
           Play
         </NavLink>
+        <NavLink to="/ai">vs AI</NavLink>
         <NavLink to="/tournaments">Tournaments</NavLink>
         <NavLink to="/ranking">Ranking</NavLink>
         <NavLink to="/history">History</NavLink>

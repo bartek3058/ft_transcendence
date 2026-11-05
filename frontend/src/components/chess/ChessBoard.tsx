@@ -8,6 +8,8 @@ type Props = {
   selected: Square | null;
   onSquareClick: (square: Square) => void;
   orientation?: Color;
+  // Two squares to highlight as a suggested move (the AI hint).
+  highlight?: { from: Square; to: Square } | null;
 };
 
 const files = "abcdefgh".split("");
@@ -18,6 +20,7 @@ export function ChessBoard({
   selected,
   onSquareClick,
   orientation = "w",
+  highlight = null,
 }: Props) {
   const isBlack = orientation === "b";
 
@@ -69,7 +72,7 @@ export function ChessBoard({
             onClick={() => onSquareClick(square)}
             className={`sq ${(row + col) % 2 ? "dark" : "light"} ${
               selected === square ? "selected" : ""
-            }`}
+            } ${highlight && (highlight.from === square || highlight.to === square) ? "hint" : ""}`}
           >
             {piece && <ChessPiece type={piece.type} color={piece.color} />}
           </button>
