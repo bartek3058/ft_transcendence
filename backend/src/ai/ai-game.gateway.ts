@@ -2,6 +2,7 @@ import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
+  OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
 } from '@nestjs/websockets';
@@ -43,7 +44,7 @@ interface AiHintDto {
  * Events out: ai:ready, ai:created, ai:moved, ai:rejected, ai:gameover, ai:error.
  */
 @WebSocketGateway({ namespace: '/ai-game' })
-export class AiGameGateway implements OnGatewayConnection {
+export class AiGameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(AiGameGateway.name);
 
   constructor(
@@ -77,12 +78,22 @@ export class AiGameGateway implements OnGatewayConnection {
     }
 
     try {
+      // Starting a new game abandons any previous one on this socket.
+      const previous: string | undefined = client.data.aiGameId;
+      if (previous) {
+        await this.aiGame.abort(previous).catch(() => undefined);
+        client.data.aiGameId = null;
+      }
+
       const created = await this.aiGame.createAiGame({
         humanId: userId,
         difficulty: dto?.difficulty as AiDifficulty,
         humanColor: this.toColor(dto?.color),
       });
       await client.join(created.gameId);
+      // Remember the active game on the socket so we can abort it if the player
+      // disconnects or starts a new one (prevents orphaned sessions / DB rows).
+      client.data.aiGameId = created.gameId;
       client.emit('ai:created', {
         gameId: created.gameId,
         humanColor: created.humanColor,
@@ -148,7 +159,15 @@ export class AiGameGateway implements OnGatewayConnection {
         gameOver: turn.gameOver,
       });
       if (turn.gameOver) {
+        client.data.aiGameId = null;
         client.emit('ai:gameover', { ...turn.gameOver, state: turn.state });
+      } else if (turn.botError) {
+        // Human move landed but the engine couldn't reply: tell the client so it
+        // doesn't sit locked on the bot's turn forever.
+        client.emit('ai:error', {
+          code: 'AI_MOVE_FAILED',
+          message: 'The AI could not make a move. Please start a new game.',
+        });
       }
     } catch (error) {
       this.emitError(client, error);
@@ -174,9 +193,34 @@ export class AiGameGateway implements OnGatewayConnection {
 
     try {
       const { state, gameOver } = await this.aiGame.resign(gameId, userId);
+      client.data.aiGameId = null;
       client.emit('ai:gameover', { ...gameOver, state });
     } catch (error) {
       this.emitError(client, error);
+    }
+  }
+
+  // The player left the game (closed the board / "New game") without finishing.
+  // Abandon it so it does not linger in memory or as an IN_PROGRESS row.
+  @SubscribeMessage('ai:leave')
+  async handleLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: AiResignDto,
+  ): Promise<void> {
+    const gameId = dto?.gameId?.trim() || client.data.aiGameId;
+    if (!gameId) {
+      return;
+    }
+    client.data.aiGameId = null;
+    await this.aiGame.abort(gameId).catch(() => undefined);
+  }
+
+  // Tab closed / connection dropped mid-game: abort the active game, if any.
+  async handleDisconnect(client: Socket): Promise<void> {
+    const gameId: string | undefined = client.data.aiGameId;
+    if (gameId) {
+      client.data.aiGameId = null;
+      await this.aiGame.abort(gameId).catch(() => undefined);
     }
   }
 
