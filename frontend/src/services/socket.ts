@@ -20,6 +20,15 @@ export interface PublicGameState {
   gameOverReason: string | null;
 }
 
+export interface GameClockSnapshot {
+  gameId: string;
+  whiteTimeRemainingMs: number;
+  blackTimeRemainingMs: number;
+  turn: PlayerColor;
+  plyCount: number;
+  isFinished: boolean;
+}
+
 export interface MatchFound {
   gameId: string;
   whitePlayerId: string;
