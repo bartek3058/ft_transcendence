@@ -26,6 +26,7 @@ export function useAiGame() {
   const [moves, setMoves] = useState<string[]>([]);
   const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null);
   const [hint, setHint] = useState<{ from: Square; to: Square } | null>(null);
+  const [hintPending, setHintPending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<GameResult>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +79,7 @@ export function useAiGame() {
 
     const onMoved = (payload: AiMoved) => {
       setThinking(false);
+      setHintPending(false);
       setHint(null);
       setGame(new Chess(payload.state.fen));
       setMoves((prev) => {
@@ -95,23 +97,35 @@ export function useAiGame() {
     const onRejected = (payload: { reason?: string; state: { fen: string } }) => {
       // Server refused the move: snap back to its authoritative position.
       setThinking(false);
+      setHintPending(false);
       setSelected(null);
       if (payload?.state?.fen) setGame(new Chess(payload.state.fen));
     };
 
-    const onGameOver = (payload: { winnerColor: PlayerColor | null; reason: string | null }) => {
+    const onGameOver = (payload: {
+      winnerColor: PlayerColor | null;
+      reason: string | null;
+      state?: { fen: string };
+    }) => {
       setResult(describeEnd(payload.winnerColor, payload.reason));
       setStatus("gameover");
       setThinking(false);
+      setHintPending(false);
+      // Resync to the authoritative final position (e.g. on resign/timeout).
+      if (payload.state?.fen) setGame(new Chess(payload.state.fen));
     };
 
     const onHint = (payload: AiHint) => {
+      setHintPending(false);
       setHint({ from: payload.from as Square, to: payload.to as Square });
     };
 
     const onError = (payload?: { code?: string; message?: string }) => {
       pendingStartRef.current = null;
       setError(payload?.message ?? payload?.code ?? "AI game error");
+      // Never leave the board locked: clear the waiting flags on any error.
+      setThinking(false);
+      setHintPending(false);
       setStatus((s) => (s === "connecting" ? "error" : s));
     };
 
@@ -223,9 +237,10 @@ export function useAiGame() {
 
   const requestHint = useCallback(() => {
     const id = gameIdRef.current;
-    if (!id) return;
+    if (!id || hintPending) return; // one hint at a time (don't spam the engine)
+    setHintPending(true);
     getAiGameSocket().emit("ai:hint", { gameId: id });
-  }, []);
+  }, [hintPending]);
 
   const resign = useCallback(() => {
     const id = gameIdRef.current;
@@ -234,12 +249,16 @@ export function useAiGame() {
   }, []);
 
   const leave = useCallback(() => {
+    // Tell the server to abandon the game so it isn't left orphaned in RAM / DB.
+    const id = gameIdRef.current;
+    if (id) getAiGameSocket().emit("ai:leave", { gameId: id });
     pendingStartRef.current = null;
     gameIdRef.current = null;
     setStatus("idle");
     setGameId(null);
     setSelected(null);
     setHint(null);
+    setHintPending(false);
     setResult(null);
     setThinking(false);
     setMoves([]);
@@ -259,6 +278,7 @@ export function useAiGame() {
     moves,
     pendingPromotion,
     hint,
+    hintPending,
     thinking,
     result,
     error,
