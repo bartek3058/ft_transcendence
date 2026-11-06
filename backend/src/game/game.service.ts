@@ -28,6 +28,8 @@ import {
   DatabaseMoveColor,
   DRAW_REASONS,
   GameConclusion,
+  GameConclusionEvent,
+  GameConclusionListener,
   GameOverReason,
   PersistedGameConclusion,
   GameSession,
@@ -72,6 +74,8 @@ export class GameService implements OnModuleDestroy
     private consecutiveFailures = 0;
     private queueCapWarned = false;
     private missingPrismaWarned = false;
+    /** Called after a game's result is persisted (see onGameConcluded). */
+    private readonly conclusionListeners: GameConclusionListener[] = [];
     constructor(
       private readonly prisma: PrismaService,
       private readonly ratingService: RatingService,
@@ -134,6 +138,14 @@ export class GameService implements OnModuleDestroy
     );
 
     return this.toPublicState(session);
+    }
+    /**
+     * Registers a callback fired exactly once per game, right after its result
+     * row was written by removeGame(). Listener errors are logged and never
+     * block the session purge.
+     */
+    public onGameConcluded(listener: GameConclusionListener): void {
+      this.conclusionListeners.push(listener);
     }
     //Internal lookup returning the mutable GameSession reference for engine tasks (#114-#118).
     public getGameSession(gameId: string): GameSession | undefined {
@@ -427,6 +439,13 @@ export class GameService implements OnModuleDestroy
       const concluded = await this.persistGameConclusion(gameId, final);
       if (concluded) {
         await this.triggerRatingUpdate(gameId);
+        await this.notifyConclusionListeners({
+          gameId,
+          result: final.result,
+          endReason: final.endReason,
+          whitePlayerId: session.whitePlayerId,
+          blackPlayerId: session.blackPlayerId,
+        });
       }
 
       const deleted = this.activeGames.delete(gameId);
@@ -541,6 +560,19 @@ export class GameService implements OnModuleDestroy
       this.logger.error(
         `Rating update failed for game [${gameId}] (result is saved, rating can be re-applied): ${(error as Error).message}`,
       );
+    }
+  }
+
+  // Listeners run sequentially; a failing listener is logged so the purge still happens.
+  private async notifyConclusionListeners(event: GameConclusionEvent): Promise<void> {
+    for (const listener of this.conclusionListeners) {
+      try {
+        await listener(event);
+      } catch (error) {
+        this.logger.error(
+          `Game conclusion listener failed for game [${event.gameId}]: ${(error as Error).message}`,
+        );
+      }
     }
   }
 

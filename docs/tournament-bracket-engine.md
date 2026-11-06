@@ -90,6 +90,15 @@ If a participant forfeits or fails to appear:
 - The match is marked `status = 'WALKOVER'`.
 - The opposing player is declared the winner and immediately advanced through the bracket.
 
+### 4. Game Integration (`TournamentGameService`)
+- `GameService.onGameConcluded(listener)` fires exactly once per game, right after `removeGame()` wrote its result row (and the rating update ran). GameService stays tournament-agnostic; the dependency is one-way (`TournamentModule -> GameModule`).
+- `TournamentGameService` registers as a listener and, for games linked to a `tournament_match_id`:
+  - `WHITE_WON` / `BLACK_WON` -> `advanceWinner()`.
+  - `DRAW` -> `handleMatchDraw()`; on `REPLAY` a new `games` row is created in the same transaction with colors swapped, then its in-memory session is started.
+  - `ABORTED` -> bracket unchanged (logged).
+  - A `409` from the bracket service means "already applied" and is logged as a no-op.
+- `startMatchGame(tournamentId, matchId)` starts game 1 of a `SCHEDULED` match (player1 plays White) and moves the match to `IN_PROGRESS`. It is meant to be called by the tournament lobby / ready flow (not yet implemented).
+
 ---
 
 ## 4. Developer Verification & Test Suites
@@ -100,8 +109,11 @@ All tests run inside the Docker container to ensure environment consistency:
 # 1. Run pure mathematical bracket generator tests (10 test cases):
 docker compose run --rm backend npm run test:tournament-bracket
 
-# 2. Run database-integrated bracket service tests (4 test cases):
+# 2. Run database-integrated bracket service tests:
 docker compose run --rm backend npm run test:tournament-bracket:service
+
+# 2b. Run game -> tournament integration tests:
+docker compose run --rm backend npm run test:tournament-games
 
 # 3. Run full backend regression suite (39 test cases):
 docker compose run --rm backend npm test

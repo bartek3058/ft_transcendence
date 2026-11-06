@@ -31,6 +31,7 @@
     "test:game-moves:db": "npm run build && node --test test/integration/game-moves-postgres.test.cjs",
     "test:tournament-bracket": "ts-node --project tsconfig.tools.json test/tournament-bracket-engine.test.ts",
     "test:tournament-bracket:service": "ts-node --project tsconfig.tools.json test/tournament-bracket-service.test.ts",
+    "test:tournament-games": "ts-node --project tsconfig.tools.json test/tournament-game-service.test.ts",
     "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts"
   },
   "dependencies": {

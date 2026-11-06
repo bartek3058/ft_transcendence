@@ -47,6 +47,22 @@ export interface PersistedGameConclusion
     winnerColor: PlayerColor | null;
 }
 
+/**
+ * Emitted once per game, after its result row was written (and rated).
+ * Lets other modules (e.g. tournaments, #68) react to a finished game without
+ * GameService depending on them.
+ */
+export interface GameConclusionEvent
+{
+    gameId: string;
+    result: PersistedGameConclusion['result'];
+    endReason: GameOverReason | null;
+    whitePlayerId: string;
+    blackPlayerId: string;
+}
+
+export type GameConclusionListener = (event: GameConclusionEvent) => Promise<void> | void;
+
 export interface MoveExecutionResult
 {
     // Indicates whether the move was legally verified and applied.
