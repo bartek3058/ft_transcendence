@@ -4,6 +4,7 @@ import {
   getGameSocket,
   type GameJoined,
   type PublicGameState,
+  type GameClockSnapshot,
 } from "../services/socket";
 
 export type PromotionPiece = Extract<PieceSymbol, "q" | "r" | "b" | "n">;
@@ -68,10 +69,25 @@ export function useChessGame(joined: GameJoined) {
       setWaiting(false);
     };
 
+    const onClock = (snapshot: GameClockSnapshot) => {
+      if (snapshot.gameId !== joined.gameId) return;
+      const now = performance.now();
+      setClockSnapshot({
+        whiteMs: snapshot.whiteTimeRemainingMs,
+        blackMs: snapshot.blackTimeRemainingMs,
+        turn: snapshot.turn,
+        isFinished: snapshot.isFinished,
+        receivedAt: now,
+      });
+      setClockNow(now);
+    };
+
+    socket.on("game:clock", onClock);
     socket.on("game:state", onState);
     socket.on("game:error", onError);
 
     return () => {
+      socket.off("game:clock", onClock);
       socket.off("game:state", onState);
       socket.off("game:error", onError);
     };
