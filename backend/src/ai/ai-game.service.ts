@@ -74,6 +74,9 @@ export interface AiTurnResult {
   botMove: MoveExecutionResult | null;
   state: PublicGameState;
   gameOver: AiGameOver | null;
+  // True when the human move was accepted but the engine failed to reply, so the
+  // caller can tell the client instead of leaving it silently stuck on bot's turn.
+  botError?: boolean;
 }
 
 /**
@@ -186,15 +189,26 @@ export class AiGameService {
       return { humanMove, botMove: null, state: over.state, gameOver: over.info };
     }
 
-    const bot = await this.playBotMoveIfDue(gameId);
-    const botMove = bot?.result ?? null;
-
-    if (botMove?.isGameOver) {
-      const over = await this.conclude(gameId, botMove);
-      return { humanMove, botMove, state: over.state, gameOver: over.info };
+    // The human move flipped the turn, so the bot is now to move. If the engine
+    // throws or can't produce a legal move, flag it rather than silently leaving
+    // the client stuck waiting for a reply that never comes.
+    let botMove: MoveExecutionResult | null = null;
+    let botError = false;
+    try {
+      const bot = await this.playBotMoveIfDue(gameId);
+      botMove = bot?.result ?? null;
+      if (!botMove || !botMove.success) {
+        botError = true;
+      } else if (botMove.isGameOver) {
+        const over = await this.conclude(gameId, botMove);
+        return { humanMove, botMove, state: over.state, gameOver: over.info };
+      }
+    } catch (error) {
+      this.logger.error(`Bot move failed in game ${gameId}: ${(error as Error).message}`);
+      botError = true;
     }
 
-    return { humanMove, botMove, state: this.game.getPublicGameState(gameId), gameOver: null };
+    return { humanMove, botMove, state: this.game.getPublicGameState(gameId), gameOver: null, botError };
   }
 
   /**
@@ -288,6 +302,25 @@ export class AiGameService {
   // Drop the AI metadata once a game is over (GameService purges its own session).
   forget(gameId: string): void {
     this.aiGames.delete(gameId);
+  }
+
+  /**
+   * Abandons a live AI game (player left, disconnected, or started a new one):
+   * closes it out as ABORTED (no winner, never rated) and frees both the
+   * in-memory session and the AI metadata. No-op if it is not a live AI game.
+   */
+  async abort(gameId: string): Promise<void> {
+    if (!this.aiGames.has(gameId)) {
+      return;
+    }
+    try {
+      // No conclusion passed -> GameService resolves an in-progress game to ABORTED.
+      await this.game.removeGame(gameId);
+    } catch (error) {
+      this.logger.warn(`Failed to abort AI game ${gameId}: ${(error as Error).message}`);
+    } finally {
+      this.forget(gameId);
+    }
   }
 
   // Persists the conclusion (rating is skipped because the bot's role is "bot")
