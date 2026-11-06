@@ -11,7 +11,7 @@ const STARTPOS = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 // Fake Prisma for the AI game service: a stub bot row for the seed check, a spy
 // on game.create, and a no-op game_moves sink (executeMove queues moves for
 // persistence). `botMove` is the UCI move the stubbed engine will always reply.
-function makeAiGameService(botMove = 'e7e5') {
+function makeAiGameService(botMove = 'e7e5', stockfishOverride?: any) {
   const created: any[] = [];
   const prisma = {
     user: {
@@ -43,7 +43,7 @@ function makeAiGameService(botMove = 'e7e5') {
     },
   };
   const game = new GameService(prisma as any, {} as any);
-  const service = new AiGameService(prisma as any, game, stockfish as any);
+  const service = new AiGameService(prisma as any, game, (stockfishOverride ?? stockfish) as any);
   return { service, game, created };
 }
 
@@ -154,6 +154,55 @@ describe('AiGameService.submitHumanMove — the bot replies', () => {
     const turn = await service.submitHumanMove(created.gameId, 'human-1', { from: 'e2', to: 'e5' });
     assert.equal(turn.humanMove.success, false);
     assert.equal(turn.botMove, null);
+  });
+});
+
+describe('AiGameService.abort', () => {
+  it('abandons a live AI game and frees it', async () => {
+    const { service, game } = makeAiGameService();
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'medium',
+      humanColor: 'w',
+    });
+    assert.ok(service.isAiGame(created.gameId));
+
+    await service.abort(created.gameId);
+
+    assert.equal(service.isAiGame(created.gameId), false);
+    assert.equal(game.hasActiveGame(created.gameId), false);
+  });
+
+  it('is a no-op for an unknown game', async () => {
+    const { service } = makeAiGameService();
+    await service.abort('not-a-real-game'); // must not throw
+  });
+});
+
+describe('AiGameService.submitHumanMove — engine failure', () => {
+  it('flags botError (and does not throw) when the engine fails', async () => {
+    const failingEngine = {
+      async bestMove() {
+        throw new Error('engine down');
+      },
+      async hint() {
+        throw new Error('engine down');
+      },
+    };
+    const { service } = makeAiGameService('e7e5', failingEngine);
+    const created = await service.createAiGame({
+      humanId: 'human-1',
+      humanRating: 1200,
+      difficulty: 'medium',
+      humanColor: 'w',
+    });
+
+    const turn = await service.submitHumanMove(created.gameId, 'human-1', { from: 'e2', to: 'e4' });
+    assert.equal(turn.humanMove.success, true); // human move still applied
+    assert.equal(turn.botMove, null);
+    assert.equal(turn.botError, true);
+    assert.equal(turn.gameOver, null);
   });
 });
 
