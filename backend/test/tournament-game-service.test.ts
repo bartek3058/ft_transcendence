@@ -89,6 +89,8 @@ function makeTournamentGameService(opts: {
   const calls = {
     advanceWinner: [] as any[],
     handleMatchDraw: [] as any[],
+    handleWalkover: [] as any[],
+    handleDoubleForfeit: [] as any[],
     gameCreate: [] as any[],
     matchUpdates: [] as any[],
     sessions: [] as any[],
@@ -154,6 +156,14 @@ function makeTournamentGameService(opts: {
       calls.advanceWinner.push({ tournamentId, matchId, winnerId });
       if (opts.advanceError) throw opts.advanceError;
       return { completedMatchId: matchId, winnerId, nextMatchId: null, championId: null };
+    },
+    async handleWalkover(_tx: any, tournamentId: string, matchId: string, forfeitedUserId: string) {
+      calls.handleWalkover.push({ tournamentId, matchId, forfeitedUserId });
+      return { completedMatchId: matchId, winnerId: null, nextMatchId: null, championId: null };
+    },
+    async handleDoubleForfeit(_tx: any, tournamentId: string, matchId: string) {
+      calls.handleDoubleForfeit.push({ tournamentId, matchId });
+      return { completedMatchId: matchId, winnerId: null, nextMatchId: null, championId: null };
     },
     async handleMatchDraw(_tx: any, tournamentId: string, matchId: string) {
       calls.handleMatchDraw.push({ tournamentId, matchId });
@@ -263,5 +273,22 @@ describe('TournamentGameService', () => {
     );
     assert.equal(calls.gameCreate.length, 0);
     assert.equal(calls.sessions.length, 0);
+  });
+
+  it('ABANDONMENT with a winner is a walkover for the absent player', async () => {
+    const { service, calls } = makeTournamentGameService();
+    await service.handleGameConcluded({ ...event('WHITE_WON'), endReason: 'ABANDONMENT' });
+    assert.deepEqual(calls.handleWalkover, [
+      { tournamentId: 'tour-1', matchId: 'match-1', forfeitedUserId: 'p2' },
+    ]);
+    assert.equal(calls.advanceWinner.length, 0);
+  });
+
+  it('ABANDONMENT without a winner is a double forfeit (no replay)', async () => {
+    const { service, calls } = makeTournamentGameService();
+    await service.handleGameConcluded({ ...event('DRAW'), endReason: 'ABANDONMENT' });
+    assert.deepEqual(calls.handleDoubleForfeit, [{ tournamentId: 'tour-1', matchId: 'match-1' }]);
+    assert.equal(calls.handleMatchDraw.length, 0);
+    assert.equal(calls.gameCreate.length, 0);
   });
 });

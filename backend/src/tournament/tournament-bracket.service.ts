@@ -22,8 +22,10 @@ import {
 
 export interface AdvanceWinnerResult {
   completedMatchId: string;
-  winnerId: string;
+  /** null when both players forfeited (nobody advances). */
+  winnerId: string | null;
   nextMatchId: string | null;
+  /** Set when this call (or a cascade it triggered) finished the tournament with a champion. */
   championId: string | null;
 }
 
@@ -42,6 +44,9 @@ const PLAYABLE_MATCH_STATUSES: TournamentMatchStatus[] = [
   'SCHEDULED',
   'IN_PROGRESS',
 ];
+
+/** Match statuses after which a match never changes again. */
+const CONCLUDED_MATCH_STATUSES: TournamentMatchStatus[] = ['COMPLETED', 'WALKOVER'];
 
 /** A match that passed the playable checks: both players are known. */
 type PlayableMatch = TournamentMatch & { player1Id: string; player2Id: string };
@@ -314,6 +319,23 @@ export class TournamentBracketService {
     return this.completeMatch(tx, match, winnerId, 'WALKOVER');
   }
 
+  /**
+   * Both players failed to show up / abandoned: both lose, nobody advances.
+   * The match is closed as WALKOVER without a winner; the opponent waiting in
+   * the next round then advances without playing (see feedNextMatch).
+   */
+  async handleDoubleForfeit(
+    tx: Prisma.TransactionClient,
+    tournamentId: string,
+    matchId: string,
+  ): Promise<AdvanceWinnerResult> {
+    await this.assertTournamentInProgress(tx, tournamentId);
+    const match = await this.loadPlayableMatch(tx, tournamentId, matchId);
+
+    this.logger.log(`Match ${matchId}: double forfeit, no player advances.`);
+    return this.completeMatch(tx, match, null, 'WALKOVER');
+  }
+
   // ---------------------------------------------------------------------------
   // Internal state-machine helpers
   // ---------------------------------------------------------------------------
@@ -371,7 +393,9 @@ export class TournamentBracketService {
   }
 
   /**
-   * Single guarded path for concluding a match (win, seed tiebreak, walkover).
+   * Single guarded path for concluding a match (win, seed tiebreak, walkover,
+   * double forfeit, or automatic resolution of a match that can no longer be
+   * played).
    *
    * Every write is a conditional UPDATE whose WHERE clause re-checks the
    * expected state, so under READ COMMITTED a concurrent caller that read the
@@ -379,16 +403,17 @@ export class TournamentBracketService {
    */
   private async completeMatch(
     tx: Prisma.TransactionClient,
-    match: PlayableMatch,
-    winnerId: string,
+    match: TournamentMatch,
+    winnerId: string | null,
     finalStatus: 'COMPLETED' | 'WALKOVER',
+    allowedFrom: TournamentMatchStatus[] = PLAYABLE_MATCH_STATUSES,
   ): Promise<AdvanceWinnerResult> {
     // 1. Close the match only if it is still open.
     const closed = await tx.tournamentMatch.updateMany({
       where: {
         id: match.id,
         tournamentId: match.tournamentId,
-        status: { in: PLAYABLE_MATCH_STATUSES },
+        status: { in: allowedFrom },
         winnerId: null,
       },
       data: {
@@ -413,61 +438,113 @@ export class TournamentBracketService {
       };
     }
 
-    // 2. Fill the parent slot only if it is still empty.
-    if (match.nextMatchSlot !== 'player1' && match.nextMatchSlot !== 'player2') {
-      throw new ConflictException(
-        `Match ${match.id} has an invalid next match slot (${match.nextMatchSlot}).`,
-      );
-    }
-
-    const isPlayer1Slot = match.nextMatchSlot === 'player1';
-    const emptySlot = isPlayer1Slot ? { player1Id: null } : { player2Id: null };
-    const slotUpdate = isPlayer1Slot
-      ? { player1Id: winnerId }
-      : { player2Id: winnerId };
-
-    const filled = await tx.tournamentMatch.updateMany({
-      where: {
-        id: match.nextMatchId,
-        tournamentId: match.tournamentId,
-        status: 'PENDING',
-        ...emptySlot,
-      },
-      data: slotUpdate,
-    });
-
-    if (filled.count !== 1) {
-      throw new ConflictException(
-        `Next match ${match.nextMatchId} slot ${match.nextMatchSlot} is not available.`,
-      );
-    }
-
-    // 3. Promote the parent to SCHEDULED once both players are known.
-    //    The slot UPDATE above holds the row lock, so a sibling feeder that
-    //    fills the other slot waits for this transaction and then sees both.
-    await tx.tournamentMatch.updateMany({
-      where: {
-        id: match.nextMatchId,
-        status: 'PENDING',
-        player1Id: { not: null },
-        player2Id: { not: null },
-      },
-      data: { status: 'SCHEDULED' },
-    });
+    const cascade = await this.feedNextMatch(tx, match, winnerId);
 
     return {
       completedMatchId: match.id,
       winnerId,
       nextMatchId: match.nextMatchId,
-      championId: null,
+      championId: cascade?.championId ?? null,
     };
   }
 
-  /** Crowns the Champion and assigns final ranks 1 / 2 / 3. */
+  /**
+   * Pushes the result of a concluded match into its parent match:
+   * - a winner fills the parent slot; with both players known the parent
+   *   becomes SCHEDULED;
+   * - once both feeders are concluded and the parent still lacks a player
+   *   (double forfeit upstream), it is resolved without a game: the lone
+   *   player advances by WALKOVER, or with no player it is a double forfeit
+   *   too. This cascades up to the Final.
+   *
+   * The parent row is locked first (SELECT ... FOR UPDATE), so two sibling
+   * feeders concluding concurrently are serialized and the second one always
+   * sees the first one's committed result.
+   */
+  private async feedNextMatch(
+    tx: Prisma.TransactionClient,
+    match: TournamentMatch,
+    winnerId: string | null,
+  ): Promise<AdvanceWinnerResult | null> {
+    if (match.nextMatchSlot !== 'player1' && match.nextMatchSlot !== 'player2') {
+      throw new ConflictException(
+        `Match ${match.id} has an invalid next match slot (${match.nextMatchSlot}).`,
+      );
+    }
+    const nextMatchId = match.nextMatchId as string;
+
+    await tx.$queryRaw`SELECT id FROM "tournament_matches" WHERE id = ${nextMatchId}::uuid FOR UPDATE`;
+
+    if (winnerId) {
+      const isPlayer1Slot = match.nextMatchSlot === 'player1';
+      const emptySlot = isPlayer1Slot ? { player1Id: null } : { player2Id: null };
+      const slotUpdate = isPlayer1Slot
+        ? { player1Id: winnerId }
+        : { player2Id: winnerId };
+
+      const filled = await tx.tournamentMatch.updateMany({
+        where: {
+          id: nextMatchId,
+          tournamentId: match.tournamentId,
+          status: 'PENDING',
+          ...emptySlot,
+        },
+        data: slotUpdate,
+      });
+
+      if (filled.count !== 1) {
+        throw new ConflictException(
+          `Next match ${nextMatchId} slot ${match.nextMatchSlot} is not available.`,
+        );
+      }
+    }
+
+    const next = await tx.tournamentMatch.findUnique({ where: { id: nextMatchId } });
+    if (!next) {
+      throw new NotFoundException(`Next match ${nextMatchId} not found.`);
+    }
+    if (next.status !== 'PENDING') {
+      return null;
+    }
+
+    if (next.player1Id && next.player2Id) {
+      await tx.tournamentMatch.updateMany({
+        where: { id: next.id, status: 'PENDING' },
+        data: { status: 'SCHEDULED' },
+      });
+      return null;
+    }
+
+    const feeders = await tx.tournamentMatch.findMany({
+      where: { nextMatchId: next.id },
+    });
+    const allFeedersConcluded = feeders.every((f) =>
+      CONCLUDED_MATCH_STATUSES.includes(f.status as TournamentMatchStatus),
+    );
+    if (!allFeedersConcluded) {
+      return null; // The other side is still being played.
+    }
+
+    // The parent can no longer get a second player: resolve it without a game.
+    const lonePlayer = next.player1Id ?? next.player2Id ?? null;
+    this.logger.log(
+      lonePlayer
+        ? `Match ${next.id}: opponent slot can never be filled, ${lonePlayer} advances by walkover.`
+        : `Match ${next.id}: no players left after double forfeits, nobody advances.`,
+    );
+    return this.completeMatch(tx, next, lonePlayer, 'WALKOVER', ['PENDING']);
+  }
+
+  /**
+   * Finishes the tournament after the Final and assigns final ranks:
+   * - winner: Champion (1), the other finalist (if any): 2;
+   * - double forfeit in the Final: no champion, both finalists get 2;
+   * - semifinal losers share 3 (both players of a double-forfeited semifinal too).
+   */
   private async concludeTournament(
     tx: Prisma.TransactionClient,
-    finalMatch: PlayableMatch,
-    winnerId: string,
+    finalMatch: TournamentMatch,
+    winnerId: string | null,
   ): Promise<void> {
     const tournamentId = finalMatch.tournamentId;
 
@@ -486,37 +563,37 @@ export class TournamentBracketService {
       );
     }
 
-    await tx.tournamentParticipant.updateMany({
-      where: { tournamentId, userId: winnerId },
-      data: { finalRank: 1 },
-    });
+    const setRank = (userId: string | null, finalRank: number) =>
+      userId
+        ? tx.tournamentParticipant.updateMany({
+            where: { tournamentId, userId },
+            data: { finalRank },
+          })
+        : Promise.resolve();
 
-    const runnerUpId =
-      winnerId === finalMatch.player1Id
-        ? finalMatch.player2Id
-        : finalMatch.player1Id;
-    await tx.tournamentParticipant.updateMany({
-      where: { tournamentId, userId: runnerUpId },
-      data: { finalRank: 2 },
-    });
+    const finalists = [finalMatch.player1Id, finalMatch.player2Id];
+    for (const player of finalists) {
+      await setRank(player, player === winnerId ? 1 : 2);
+    }
 
-    // Losing semifinalists share rank 3 (bye matches have no loser).
     if (finalMatch.round > 1) {
       const semifinals = await tx.tournamentMatch.findMany({
         where: { tournamentId, round: finalMatch.round - 1 },
       });
       for (const sf of semifinals) {
-        if (sf.isBye || !sf.winnerId) continue;
-        const loser = sf.winnerId === sf.player1Id ? sf.player2Id : sf.player1Id;
-        if (loser) {
-          await tx.tournamentParticipant.updateMany({
-            where: { tournamentId, userId: loser },
-            data: { finalRank: 3 },
-          });
+        if (sf.isBye) continue;
+        for (const player of [sf.player1Id, sf.player2Id]) {
+          if (player && player !== sf.winnerId) {
+            await setRank(player, 3);
+          }
         }
       }
     }
 
-    this.logger.log(`Tournament ${tournamentId} finished! Champion: ${winnerId}`);
+    this.logger.log(
+      winnerId
+        ? `Tournament ${tournamentId} finished! Champion: ${winnerId}`
+        : `Tournament ${tournamentId} finished without a champion (double forfeit in the Final).`,
+    );
   }
 }

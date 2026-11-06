@@ -90,11 +90,19 @@ If a participant forfeits or fails to appear:
 - The match is marked `status = 'WALKOVER'`.
 - The opposing player is declared the winner and immediately advanced through the bracket.
 
+### Double Forfeit (`handleDoubleForfeit`)
+If both players are absent, both lose and nobody advances:
+- The match is closed as `WALKOVER` with `winnerId = null`.
+- When a next-round match can no longer get a second player (its other feeder ended in a double forfeit), it is resolved without a game: the lone player advances by `WALKOVER`; with no player left it is a double forfeit too. This cascades up to the Final.
+- Double forfeit in the Final: tournament `FINISHED` with `championId = null`; both finalists get rank 2, semifinal losers rank 3.
+- Sibling feeders concluding concurrently are serialized by a `SELECT ... FOR UPDATE` on the parent match.
+
 ### 4. Game Integration (`TournamentGameService`)
 - `GameService.onGameConcluded(listener)` fires exactly once per game, right after `removeGame()` wrote its result row (and the rating update ran). GameService stays tournament-agnostic; the dependency is one-way (`TournamentModule -> GameModule`).
 - `TournamentGameService` registers as a listener and, for games linked to a `tournament_match_id`:
   - `WHITE_WON` / `BLACK_WON` -> `advanceWinner()`.
   - `DRAW` -> `handleMatchDraw()`; on `REPLAY` a new `games` row is created in the same transaction with colors swapped, then its in-memory session is started.
+  - `ABANDONMENT` with a winner -> `handleWalkover()` for the absent player; `ABANDONMENT` without a winner -> `handleDoubleForfeit()` (no replay).
   - `ABORTED` -> bracket unchanged (logged).
   - A `409` from the bracket service means "already applied" and is logged as a no-op.
 - `startMatchGame(tournamentId, matchId)` starts game 1 of a `SCHEDULED` match (player1 plays White) and moves the match to `IN_PROGRESS`. It is meant to be called by the tournament lobby / ready flow (not yet implemented).

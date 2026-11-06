@@ -26,6 +26,9 @@ export interface TournamentGameCreated {
  * - Registers itself as a GameService conclusion listener, so a finished
  *   tournament game advances the bracket (win) or triggers a replay with
  *   swapped colors / the seed tiebreak (draw).
+ * - An ABANDONMENT ending is a forfeit: with a winner it is a WALKOVER for the
+ *   absent player; without a winner (removeGame(id, { winnerColor: null,
+ *   gameOverReason: 'ABANDONMENT' })) both players lose and nobody advances.
  * - Creates tournament games (`games` row + in-memory session) for a match.
  *
  * Dependency direction is one-way: TournamentModule -> GameModule.
@@ -101,6 +104,19 @@ export class TournamentGameService implements OnModuleInit {
     let replay: TournamentGameCreated | null = null;
     try {
       replay = await this.prisma.$transaction(async (tx) => {
+        if (event.endReason === 'ABANDONMENT') {
+          // No-show / abandonment is a forfeit, not a played result.
+          if (event.result === 'DRAW') {
+            // Nobody showed up: both lose, nobody advances.
+            await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId);
+          } else {
+            const forfeitedUserId =
+              event.result === 'WHITE_WON' ? event.blackPlayerId : event.whitePlayerId;
+            await this.bracket.handleWalkover(tx, tournamentId, matchId, forfeitedUserId);
+          }
+          return null;
+        }
+
         if (event.result === 'DRAW') {
           const draw = await this.bracket.handleMatchDraw(tx, tournamentId, matchId);
           if (draw.action !== 'REPLAY') {

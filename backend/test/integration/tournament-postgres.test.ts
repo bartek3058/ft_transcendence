@@ -261,4 +261,46 @@ describe('Tournament engine against PostgreSQL (#68)', () => {
     const done = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
     assert.equal(done.championId, players[0].id, 'first result stands');
   });
+
+  it('concurrent double forfeit and win in the semifinals still resolve the Final (row lock)', async () => {
+    const { tournamentId, players } = await createTournament(4);
+    await start(tournamentId);
+    const sf1 = await matchByIdentifier(tournamentId, 'R1-M1'); // seed 1 vs seed 4
+    const sf2 = await matchByIdentifier(tournamentId, 'R1-M2'); // seed 2 vs seed 3
+
+    await Promise.all([
+      prisma.$transaction((tx) => bracket.handleDoubleForfeit(tx, tournamentId, sf1.id)),
+      prisma.$transaction((tx) => bracket.advanceWinner(tx, tournamentId, sf2.id, players[1].id)),
+    ]);
+
+    const final = await matchByIdentifier(tournamentId, 'R2-M1');
+    assert.equal(final.status, 'WALKOVER');
+    assert.equal(final.winnerId, players[1].id);
+    const done = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    assert.equal(done.status, 'FINISHED');
+    assert.equal(done.championId, players[1].id);
+  });
+
+  it('end to end: both players abandon the Final -> no champion', async () => {
+    const { tournamentId, players } = await createTournament(2);
+    await start(tournamentId);
+    const games = new GameService(prisma, rating);
+    const tournamentGames = new TournamentGameService(prisma, games, bracket);
+    tournamentGames.onModuleInit();
+    const final = await matchByIdentifier(tournamentId, 'R1-M1');
+
+    const g = await tournamentGames.startMatchGame(tournamentId, final.id);
+    assert.equal(
+      await games.removeGame(g.gameId, { winnerColor: null, gameOverReason: 'ABANDONMENT' }),
+      true,
+    );
+
+    const closed = await prisma.tournamentMatch.findUniqueOrThrow({ where: { id: final.id } });
+    assert.equal(closed.status, 'WALKOVER');
+    assert.equal(closed.winnerId, null);
+    const done = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    assert.equal(done.status, 'FINISHED');
+    assert.equal(done.championId, null);
+    assert.equal(await prisma.game.count({ where: { tournamentMatchId: final.id } }), 1, 'no replay');
+  });
 });

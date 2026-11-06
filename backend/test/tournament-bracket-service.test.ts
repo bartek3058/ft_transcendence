@@ -33,6 +33,8 @@ function createMockPrisma() {
   const games = new Map<string, any>();
 
   const tx: any = {
+    // Row lock (SELECT ... FOR UPDATE) is a no-op in memory.
+    $queryRaw: async () => [],
     tournament: {
       findUnique: async ({ where }: any) => {
         const t = tournaments.get(where.id);
@@ -80,14 +82,8 @@ function createMockPrisma() {
       findUnique: async ({ where }: any) => {
         return matches.get(where.id) ?? null;
       },
-      findMany: async ({ where }: any) => {
-        return Array.from(matches.values()).filter((m) => {
-          if (where.tournamentId && m.tournamentId !== where.tournamentId)
-            return false;
-          if (where.round && m.round !== where.round) return false;
-          return true;
-        });
-      },
+      findMany: async ({ where }: any) =>
+        Array.from(matches.values()).filter((m) => matchesWhere(m, where)),
       update: async ({ where, data }: any) => {
         const m = matches.get(where.id);
         const updated = { ...m, ...data };
@@ -546,5 +542,113 @@ describe('TournamentBracketService (Database Service)', () => {
     assert.equal(mock.participants.get('tp-u2').finalRank, 2);
     assert.equal(mock.participants.get('tp-u3').finalRank, 3);
     assert.equal(mock.participants.get('tp-u4').finalRank, 3);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Double forfeit: both players absent -> both lose, nobody advances
+  // ---------------------------------------------------------------------------
+
+  it('double forfeit in a semifinal: the other finalist wins the Final by walkover', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+
+    const df = await service.handleDoubleForfeit(mock.tx, tournamentId, byId('R1-M1').id);
+    assert.equal(df.winnerId, null);
+    assert.equal(df.championId, null);
+    const sf1 = mock.matches.get(byId('R1-M1').id);
+    assert.equal(sf1.status, 'WALKOVER');
+    assert.equal(sf1.winnerId, null);
+    // Final still waits for the other semifinal.
+    assert.equal(mock.matches.get(byId('R2-M1').id).status, 'PENDING');
+
+    const sf2 = await service.advanceWinner(mock.tx, tournamentId, byId('R1-M2').id, 'u2');
+    assert.equal(sf2.championId, 'u2', 'cascade crowns the lone finalist');
+
+    const final = mock.matches.get(byId('R2-M1').id);
+    assert.equal(final.status, 'WALKOVER');
+    assert.equal(final.winnerId, 'u2');
+    assert.equal(final.player1Id, null);
+    const tourney = mock.tournaments.get(tournamentId);
+    assert.equal(tourney.status, 'FINISHED');
+    assert.equal(tourney.championId, 'u2');
+    assert.equal(mock.participants.get('tp-u2').finalRank, 1);
+    assert.equal(mock.participants.get('tp-u1').finalRank, 3);
+    assert.equal(mock.participants.get('tp-u4').finalRank, 3);
+    assert.equal(mock.participants.get('tp-u3').finalRank, 3);
+  });
+
+  it('double forfeit after the other semifinal is done resolves the Final immediately', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M2').id, 'u3');
+    const df = await service.handleDoubleForfeit(mock.tx, tournamentId, byId('R1-M1').id);
+
+    assert.equal(df.championId, 'u3');
+    assert.equal(mock.tournaments.get(tournamentId).championId, 'u3');
+    assert.equal(mock.matches.get(byId('R2-M1').id).status, 'WALKOVER');
+  });
+
+  it('double forfeit in the Final: tournament finishes without a champion', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M1').id, 'u1');
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M2').id, 'u2');
+
+    const df = await service.handleDoubleForfeit(mock.tx, tournamentId, byId('R2-M1').id);
+
+    assert.equal(df.championId, null);
+    const tourney = mock.tournaments.get(tournamentId);
+    assert.equal(tourney.status, 'FINISHED');
+    assert.equal(tourney.championId, null);
+    assert.equal(mock.participants.get('tp-u1').finalRank, 2);
+    assert.equal(mock.participants.get('tp-u2').finalRank, 2);
+    assert.equal(mock.participants.get('tp-u3').finalRank, 3);
+    assert.equal(mock.participants.get('tp-u4').finalRank, 3);
+  });
+
+  it('double forfeits in both semifinals cascade: Final has no players, no champion', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+
+    await service.handleDoubleForfeit(mock.tx, tournamentId, byId('R1-M1').id);
+    await service.handleDoubleForfeit(mock.tx, tournamentId, byId('R1-M2').id);
+
+    const final = mock.matches.get(byId('R2-M1').id);
+    assert.equal(final.status, 'WALKOVER');
+    assert.equal(final.winnerId, null);
+    const tourney = mock.tournaments.get(tournamentId);
+    assert.equal(tourney.status, 'FINISHED');
+    assert.equal(tourney.championId, null);
+    for (const u of ['u1', 'u2', 'u3', 'u4']) {
+      assert.equal(mock.participants.get(`tp-${u}`).finalRank, 3);
+    }
+  });
+
+  it('8 players: an R1 double forfeit gives the waiting R2 player a walkover into the semifinal', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(8);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    // R1-M1 (1 v 8) and R1-M4 (4 v 5) feed R2-M1.
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M1').id, 'u1');
+    await service.handleDoubleForfeit(mock.tx, tournamentId, byId('R1-M4').id);
+
+    const r2m1 = mock.matches.get(byId('R2-M1').id);
+    assert.equal(r2m1.status, 'WALKOVER');
+    assert.equal(r2m1.winnerId, 'u1');
+    const final = mock.matches.get(byId('R3-M1').id);
+    assert.equal(final.player1Id, 'u1');
+    assert.equal(final.status, 'PENDING');
+    assert.equal(mock.tournaments.get(tournamentId).status, 'IN_PROGRESS');
+  });
+
+  it('rejects a double forfeit on a concluded match', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M1').id, 'u1');
+    await assert.rejects(
+      service.handleDoubleForfeit(mock.tx, tournamentId, byId('R1-M1').id),
+      (err: any) => err.status === 409,
+    );
+    assert.equal(mock.matches.get(byId('R1-M1').id).winnerId, 'u1');
   });
 });
