@@ -56,8 +56,12 @@ export function AiGamePage() {
           </div>
 
           <div className="actions aiActions">
-            <button onClick={ai.requestHint} disabled={!ai.myTurn} title="Suggest a move">
-              💡 Hint
+            <button
+              onClick={ai.requestHint}
+              disabled={!ai.myTurn || ai.hintPending}
+              title="Suggest a move"
+            >
+              {ai.hintPending ? "💡 Thinking…" : "💡 Hint"}
             </button>
           </div>
         </section>
