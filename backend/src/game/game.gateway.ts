@@ -181,21 +181,18 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     }
 
     const result = this.game.executeMove(dto, userId);
-
-if (!result.success) {
-  if (result.errorReason === 'TIMEOUT') {
-    void this.finishTimedOutGame(dto.gameId);
-  }
-
-  client.emit('game:error', {
-    code: result.errorReason ?? 'ILLEGAL_MOVE',
-    state: this.game.hasActiveGame(dto.gameId)
-      ? this.game.getPublicGameState(dto.gameId)
-      : undefined,
-  });
-
-  return;
-}
+    if (!result.success) {
+      if (result.errorReason === 'TIMEOUT') {
+        void this.finishTimedOutGame(dto.gameId);
+      }
+      client.emit('game:error', {
+        code: result.errorReason ?? 'ILLEGAL_MOVE',
+        state: this.game.hasActiveGame(dto.gameId)
+          ? this.game.getPublicGameState(dto.gameId)
+          : undefined,
+      });
+      return;
+    }
 
     this.server.to(dto.gameId).emit('game:state',
       this.game.getPublicGameState(dto.gameId));
