@@ -36,10 +36,23 @@ export function useChessGame(joined: GameJoined) {
     useState<PendingPromotion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
+  const [connected, setConnected] = useState(() => getGameSocket().connected);
   const [clockSnapshot, setClockSnapshot] = useState<ClockSnapshot>(() =>
     createClockSnapshot(joined.state),
   );
   const [clockNow, setClockNow] = useState(() => performance.now());
+
+  // game:joined carries the authoritative state after every reconnect.
+  useEffect(() => {
+    const now = performance.now();
+    setState(joined.state);
+    setClockSnapshot(createClockSnapshot(joined.state));
+    setClockNow(now);
+    setSelected(null);
+    setPendingPromotion(null);
+    setWaiting(false);
+    setError(null);
+  }, [joined.state]);
 
   useEffect(() => {
     const socket = getGameSocket();
@@ -82,11 +95,20 @@ export function useChessGame(joined: GameJoined) {
       setClockNow(now);
     };
 
+    const onDisconnect = () => {
+      setConnected(false);
+      setWaiting(false);
+    };
+    const onConnect = () => setConnected(true);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect", onConnect);
     socket.on("game:clock", onClock);
     socket.on("game:state", onState);
     socket.on("game:error", onError);
 
     return () => {
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect", onConnect);
       socket.off("game:clock", onClock);
       socket.off("game:state", onState);
       socket.off("game:error", onError);
@@ -119,7 +141,8 @@ export function useChessGame(joined: GameJoined) {
 
   const game = useMemo(() => new Chess(state.fen), [state.fen]);
   const board = useMemo(() => game.board(), [game]);
-  const canMove = !state.isFinished && !waiting && game.turn() === joined.color;
+  const canMove =
+    connected && !state.isFinished && !waiting && game.turn() === joined.color;
 
   const sendMove = useCallback(
     (from: Square, to: Square, promotion?: PromotionPiece) => {
@@ -234,6 +257,7 @@ export function useChessGame(joined: GameJoined) {
     result,
     error,
     waiting,
+    connected,
     clickSquare,
     movePiece,
     promote,
