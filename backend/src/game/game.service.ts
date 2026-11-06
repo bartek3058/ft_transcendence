@@ -69,8 +69,6 @@ export class GameService implements OnModuleDestroy
     private flushPromise: Promise<void> | null = null;
     private flushTimer: NodeJS.Timeout | null = null;
     private retryTimer: NodeJS.Timeout | null = null;
-    private clockTimer: NodeJS.Timeout | null = null;
-    private onTimeoutCallback?: (gameId: string, result: MoveExecutionResult) => void;
     private consecutiveFailures = 0;
     private queueCapWarned = false;
     private missingPrismaWarned = false;
@@ -84,13 +82,10 @@ export class GameService implements OnModuleDestroy
       gameId,
       whitePlayerId,
       blackPlayerId,
+      initialTimeMs = DEFAULT_INITIAL_TIME_MS,
       timeControl = null,
       initialFen,
     } = options;
-
-    const parsedClock = this.parseTimeControl(timeControl);
-    const initialTimeMs = options.initialTimeMs ?? parsedClock.initialTimeMs;
-    const incrementMs = options.incrementMs ?? parsedClock.incrementMs;
 
     if (!gameId || !whitePlayerId || !blackPlayerId)
     {
@@ -125,7 +120,6 @@ export class GameService implements OnModuleDestroy
       blackPlayerId,
       whiteTimeRemainingMs: initialTimeMs,
       blackTimeRemainingMs: initialTimeMs,
-      incrementMs,
       timeControl,
       lastMoveTimestamp: now,
       plyCount: 0,
@@ -135,13 +129,48 @@ export class GameService implements OnModuleDestroy
       createdAt: now,
     };
     this.activeGames.set(gameId, session);
-    this.ensureClockTickerRunning();
     this.logger.log(
       `Created in-memory game session [${gameId}]: White(${whitePlayerId}) vs Black(${blackPlayerId})`,
     );
 
     return this.toPublicState(session);
     }
+
+    public getActiveGameIds(): string[] {
+      return [...this.activeGames.keys()];
+    }
+
+    public getClockSnapshot(gameId: string, now = Date.now()) {
+      const session = this.activeGames.get(gameId);
+      if (!session) return null;
+      const elapsed = session.isFinished || session.plyCount === 0
+        ? 0 : Math.max(0, now - session.lastMoveTimestamp);
+      return {
+        gameId,
+        whiteTimeRemainingMs: Math.max(0, session.whiteTimeRemainingMs - (session.engine.turn() === 'w' ? elapsed : 0)),
+        blackTimeRemainingMs: Math.max(0, session.blackTimeRemainingMs - (session.engine.turn() === 'b' ? elapsed : 0)),
+        turn: session.engine.turn(),
+        plyCount: session.plyCount,
+        isFinished: session.isFinished,
+      };
+    }
+
+    public checkGameTimeout(gameId: string, now = Date.now()): boolean {
+      const session = this.activeGames.get(gameId);
+      if (!session || session.isFinished || session.plyCount === 0) return false;
+      const turn = session.engine.turn();
+      const remaining = turn === 'w' ? session.whiteTimeRemainingMs : session.blackTimeRemainingMs;
+      if (remaining > Math.max(0, now - session.lastMoveTimestamp)) return false;
+      if (turn === 'w') session.whiteTimeRemainingMs = 0;
+      else session.blackTimeRemainingMs = 0;
+      session.lastMoveTimestamp = now;
+      session.isFinished = true;
+      session.gameOverReason = 'TIMEOUT';
+      session.winnerColor = turn === 'w' ? 'b' : 'w';
+      this.logger.log(`Game [${gameId}] ended by TIMEOUT.`);
+      return true;
+    }
+
     //Internal lookup returning the mutable GameSession reference for engine tasks (#114-#118).
     public getGameSession(gameId: string): GameSession | undefined {
       return this.activeGames.get(gameId);
@@ -432,9 +461,11 @@ export class GameService implements OnModuleDestroy
 
       //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
       const concluded = await this.persistGameConclusion(gameId, final);
-      if (concluded) {
-        await this.triggerRatingUpdate(gameId);
+      if (!concluded) {
+        this.logger.error(`Could not persist conclusion of game [${gameId}]; retaining session for retry.`);
+        return false;
       }
+      await this.triggerRatingUpdate(gameId);
 
       const deleted = this.activeGames.delete(gameId);
       if (deleted) {
@@ -553,7 +584,6 @@ export class GameService implements OnModuleDestroy
 
   //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
   public async onModuleDestroy(): Promise<void> {
-    this.stopClockTicker();
     this.clearFlushTimer();
     this.clearRetryTimer();
     const drained = await this.waitForPersistence(MOVE_PERSISTENCE_CONFIG.shutdownWaitMs);
@@ -646,6 +676,7 @@ export class GameService implements OnModuleDestroy
     return {
       gameId: session.gameId,
       fen: session.engine.fen(),
+      moves: session.engine.history(),
       turn: session.engine.turn(),
       whitePlayerId: session.whitePlayerId,
       blackPlayerId: session.blackPlayerId,
@@ -798,45 +829,11 @@ export class GameService implements OnModuleDestroy
 
     const { session, playerColor, playerId } = auth;
     const fenBeforeMove = session.engine.fen();
-    const now = Date.now();
-    const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
-
-    // 1. (#108) Sprawdź, czy czas gracza nie wygasł przed wykonaniem ruchu
-    const currentRemainingMs =
-      playerColor === 'w'
-        ? session.whiteTimeRemainingMs
-        : session.blackTimeRemainingMs;
-
-    if (currentRemainingMs - timeSpentMs <= 0) {
-      if (playerColor === 'w') {
-        session.whiteTimeRemainingMs = 0;
-      } else {
-        session.blackTimeRemainingMs = 0;
-      }
-      session.lastMoveTimestamp = now;
-      session.isFinished = true;
-      session.gameOverReason = 'TIMEOUT';
-      session.winnerColor = playerColor === 'w' ? 'b' : 'w';
-
-      this.logger.log(
-        `Game [${dto.gameId}] ended by TIMEOUT on move attempt. Winner: ${session.winnerColor}.`,
-      );
-
-      return {
-        success: false,
-        currentFen: fenBeforeMove,
-        errorReason: 'TIMEOUT',
-        plyCount: session.plyCount,
-        moveNumber: Math.ceil(session.plyCount / 2),
-        isCheck: session.engine.inCheck(),
-        isGameOver: true,
-        gameOverReason: 'TIMEOUT',
-        winnerColor: session.winnerColor,
-        whiteTimeRemainingMs: session.whiteTimeRemainingMs,
-        blackTimeRemainingMs: session.blackTimeRemainingMs,
-      };
+    // Check the server deadline BEFORE applying the move.
+    if (this.checkGameTimeout(dto.gameId)) {
+      return { success: false, currentFen: fenBeforeMove, errorReason: 'TIMEOUT',
+        isGameOver: true, gameOverReason: 'TIMEOUT', winnerColor: session.winnerColor };
     }
-
     let moveObj: ReturnType<Chess['move']>;
     try {
       moveObj = session.engine.move({
@@ -852,41 +849,36 @@ export class GameService implements OnModuleDestroy
         success: false,
         currentFen: fenBeforeMove,
         errorReason: 'ILLEGAL_MOVE',
-        whiteTimeRemainingMs: session.whiteTimeRemainingMs,
-        blackTimeRemainingMs: session.blackTimeRemainingMs,
       };
     }
-
     if (!moveObj) {
       return {
         success: false,
         currentFen: fenBeforeMove,
         errorReason: 'ILLEGAL_MOVE',
-        whiteTimeRemainingMs: session.whiteTimeRemainingMs,
-        blackTimeRemainingMs: session.blackTimeRemainingMs,
       };
     }
-
+    const now = Date.now();
+    const timeSpentMs = session.plyCount === 0
+      ? 0
+      : Math.max(0, now - session.lastMoveTimestamp);
+    if (playerColor === 'w') {
+      session.whiteTimeRemainingMs = Math.max(0, session.whiteTimeRemainingMs - timeSpentMs);
+    } else {
+      session.blackTimeRemainingMs = Math.max(0, session.blackTimeRemainingMs - timeSpentMs);
+    }
     session.lastMoveTimestamp = now;
     session.plyCount += 1;
-    this.evaluateGameOverState(session, playerColor);
-
-    const appliedIncrement = session.isFinished ? 0 : session.incrementMs;
-    const updatedRemainingMs = Math.max(
-      0,
-      currentRemainingMs - timeSpentMs + appliedIncrement,
-    );
-
-    if (playerColor === 'w') {
-      session.whiteTimeRemainingMs = updatedRemainingMs;
-    } else {
-      session.blackTimeRemainingMs = updatedRemainingMs;
-    }
+    this.evaluateGameOverState(session, playerColor); // chceck that this move is game over
 
     const currentFen = session.engine.fen();
     const moveNumber = Math.ceil(session.plyCount / 2);
     const uci = `${moveObj.from}${moveObj.to}${moveObj.promotion ?? ''}`;
-
+    const timeRemainingMs =
+      playerColor === 'w'
+        ? session.whiteTimeRemainingMs
+        : session.blackTimeRemainingMs;
+      
     const moveRecord: PendingMoveRecord = {
       gameId: session.gameId,
       ply: session.plyCount,
@@ -897,7 +889,7 @@ export class GameService implements OnModuleDestroy
       uci,
       fenAfter: currentFen,
       timeSpentMs,
-      timeRemainingMs: updatedRemainingMs,
+      timeRemainingMs,
       createdAt: new Date(now),
     };
     this.enqueueMoveForPersistence(moveRecord);
@@ -910,11 +902,9 @@ export class GameService implements OnModuleDestroy
       plyCount: session.plyCount,
       moveNumber,
       isCheck: session.engine.inCheck(),
-      isGameOver: session.isFinished,
+      isGameOver: session.engine.isGameOver(),
       gameOverReason: session.gameOverReason,
       winnerColor: session.winnerColor,
-      whiteTimeRemainingMs: session.whiteTimeRemainingMs,
-      blackTimeRemainingMs: session.blackTimeRemainingMs,
     };
   }
   public resignGame(
@@ -996,126 +986,6 @@ export class GameService implements OnModuleDestroy
       return 'b';
     }
     return null;
-  }
-  
-  public onGameTimeout(
-    callback: (gameId: string, result: MoveExecutionResult) => void,
-  ): void {
-    this.onTimeoutCallback = callback;
-  }
-
-  public checkGameTimeout(
-    gameId: string,
-    now: number = Date.now(),
-  ): MoveExecutionResult | null {
-    const session = this.activeGames.get(gameId);
-    if (!session || session.isFinished) {
-      return null;
-    }
-
-    const activeColor = session.engine.turn();
-    const elapsedMs = Math.max(0, now - session.lastMoveTimestamp);
-    const remainingMs =
-      activeColor === 'w'
-        ? session.whiteTimeRemainingMs
-        : session.blackTimeRemainingMs;
-
-    if (remainingMs - elapsedMs > 0) {
-      return null;
-    }
-
-    if (activeColor === 'w') {
-      session.whiteTimeRemainingMs = 0;
-    } else {
-      session.blackTimeRemainingMs = 0;
-    }
-
-    session.lastMoveTimestamp = now;
-    session.isFinished = true;
-    session.gameOverReason = 'TIMEOUT';
-    session.winnerColor = activeColor === 'w' ? 'b' : 'w';
-
-    this.logger.log(
-      `Game [${gameId}] ended by passive TIMEOUT. Winner: ${session.winnerColor}.`,
-    );
-
-    return {
-      success: true,
-      currentFen: session.engine.fen(),
-      plyCount: session.plyCount,
-      moveNumber: Math.ceil(session.plyCount / 2),
-      isCheck: session.engine.inCheck(),
-      isGameOver: true,
-      gameOverReason: 'TIMEOUT',
-      winnerColor: session.winnerColor,
-      whiteTimeRemainingMs: session.whiteTimeRemainingMs,
-      blackTimeRemainingMs: session.blackTimeRemainingMs,
-    };
-  }
-
-
-  private parseTimeControl(timeControl?: string | null): {
-    initialTimeMs: number;
-    incrementMs: number;
-  } {
-    if (!timeControl) {
-      return { initialTimeMs: DEFAULT_INITIAL_TIME_MS, incrementMs: 0 };
-    }
-
-    const underscoreMatch = /^[a-z]+_(\d{1,3})_(\d{1,3})$/i.exec(
-      timeControl.trim(),
-    );
-    if (underscoreMatch) {
-      const minutes = Number(underscoreMatch[1]);
-      const incrementSeconds = Number(underscoreMatch[2]);
-      if (minutes > 0) {
-        return {
-          initialTimeMs: minutes * 60 * 1000,
-          incrementMs: incrementSeconds * 1000,
-        };
-      }
-    }
-
-    const plusMatch = /^(\d{1,3})\+(\d{1,3})$/.exec(timeControl.trim());
-    if (plusMatch) {
-      const minutes = Number(plusMatch[1]);
-      const incrementSeconds = Number(plusMatch[2]);
-      if (minutes > 0) {
-        return {
-          initialTimeMs: minutes * 60 * 1000,
-          incrementMs: incrementSeconds * 1000,
-        };
-      }
-    }
-
-    return { initialTimeMs: DEFAULT_INITIAL_TIME_MS, incrementMs: 0 };
-  }
-
-  private ensureClockTickerRunning(): void {
-    if (this.clockTimer) {
-      return;
-    }
-    this.clockTimer = setInterval(() => {
-      if (this.activeGames.size === 0) {
-        this.stopClockTicker();
-        return;
-      }
-      const now = Date.now();
-      for (const gameId of this.activeGames.keys()) {
-        const timeoutResult = this.checkGameTimeout(gameId, now);
-        if (timeoutResult && this.onTimeoutCallback) {
-          this.onTimeoutCallback(gameId, timeoutResult);
-        }
-      }
-    }, 1000);
-    this.clockTimer.unref();
-  }
-
-  private stopClockTicker(): void {
-    if (this.clockTimer) {
-      clearInterval(this.clockTimer);
-      this.clockTimer = null;
-    }
   }
 }
 
