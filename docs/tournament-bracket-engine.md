@@ -116,8 +116,14 @@ docker compose run --rm backend npm run test:tournament-bracket:service
 docker compose run --rm backend npm run test:tournament-games
 
 # 2c. Run real PostgreSQL tests (concurrency, unique indexes, end-to-end game flow).
-#     Needs the dedicated *_test database and the application role:
+#     The compose `migration` service only migrates the main database, so first apply
+#     all migrations (incl. 20261104210000_tournament_system) to chess_test with the
+#     OWNER role (same credentials as MIGRATION_DATABASE_URL, database name chess_test).
+#     Rebuild the image after code changes: docker compose build backend
+docker compose run --rm -e DATABASE_URL="postgresql://<owner-user>:<owner-secret>@postgres:5432/chess_test" backend npx prisma migrate deploy
+#     Then run the suite with the APPLICATION role (never owner credentials):
 docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-with-app-secret@postgres:5432/chess_test" backend npm run test:tournament:db
+#     P2021 "table public.tournaments does not exist" = migrations not applied to chess_test.
 
 # 3. Run full backend regression suite (39 test cases):
 docker compose run --rm backend npm test
