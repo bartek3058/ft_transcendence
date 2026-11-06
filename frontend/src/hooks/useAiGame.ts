@@ -225,6 +225,30 @@ export function useAiGame() {
     submitMove(selected, square);
   }
 
+  // Drag-and-drop entry point: given a from/to, behaves like a click-move
+  // (turn/ownership checks + promotion dialog), then submits.
+  function movePiece(from: Square, to: Square) {
+    if (status !== "playing" || thinking || pendingPromotion || result) return;
+    if (game.turn() !== humanColor) return;
+
+    const piece = game.get(from);
+    if (!piece || piece.color !== humanColor) return;
+
+    const promoting =
+      piece.type === "p" &&
+      ((piece.color === "w" && to.endsWith("8")) ||
+        (piece.color === "b" && to.endsWith("1")));
+    if (
+      promoting &&
+      game.moves({ square: from, verbose: true }).some((m) => m.to === to && Boolean(m.promotion))
+    ) {
+      setPendingPromotion({ from, to, color: piece.color });
+      setSelected(null);
+      return;
+    }
+    submitMove(from, to);
+  }
+
   function promote(piece: PromotionPiece) {
     if (!pendingPromotion) return;
     submitMove(pendingPromotion.from, pendingPromotion.to, piece);
@@ -285,6 +309,7 @@ export function useAiGame() {
     myTurn,
     start,
     clickSquare,
+    movePiece,
     promote,
     cancelPromotion,
     requestHint,

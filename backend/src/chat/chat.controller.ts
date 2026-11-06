@@ -18,7 +18,7 @@ export class ChatController {
   constructor(private readonly chat: ChatService) {}
 
   @Post('chat')
-  async chat(@Body() body: ChatBody): Promise<{ reply: string }> {
+  async sendMessage(@Body() body: ChatBody): Promise<{ reply: string }> {
     const reply = await this.chat.reply({
       mode: body?.mode as ChatMode,
       message: body?.message as string,

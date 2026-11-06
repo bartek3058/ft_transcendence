@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { computeElo, EloOutcome, EloResult } from './elo';
+import { RANKED_USER_WHERE } from './ranked-users';
 import { LeaderboardEntry } from './leaderboard.types';
 import { AI_BOT_ROLE } from '../ai/ai.constants';
 
@@ -16,14 +17,30 @@ export class RatingService {
     return computeElo({ whiteRating, blackRating, result });
   }
 
-  async getLeaderboard(limit = 20, offset = 0): Promise<LeaderboardEntry[]> {
-    const users = await this.prisma.user.findMany({
-      orderBy: [{ rating: 'desc' }, { username: 'asc' }],
-      skip: offset,
-      take: limit,
-      select: { id: true, username: true, rating: true },
-    });
-    return users.map((user, i) => ({ rank: offset + i + 1, ...user }));
+  async getLeaderboard(limit = 20, offset = 0) {
+    // Bounds are enforced by WebLeaderboardQueryDto; clamp again as defence in depth.
+    const safeLimit = Math.min(100, Math.max(1, limit));
+    const safeOffset = Math.min(10000, Math.max(0, offset));
+
+    const [total, users] = await Promise.all([
+      this.prisma.user.count({ where: RANKED_USER_WHERE }),
+      this.prisma.user.findMany({
+        where: RANKED_USER_WHERE,
+        orderBy: [{ rating: 'desc' }, { username: 'asc' }],
+        skip: safeOffset,
+        take: safeLimit,
+        select: { id: true, username: true, rating: true },
+      }),
+    ]);
+
+    const entries = users.map((u, i) => ({
+      rank: safeOffset + i + 1,
+      id: u.id,
+      username: u.username,
+      rating: u.rating,
+    }));
+
+    return { total, entries };
   }
 
   

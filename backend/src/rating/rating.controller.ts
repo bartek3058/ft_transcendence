@@ -1,15 +1,26 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseFilters, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RatingService } from './rating.service';
-import { LeaderboardQueryDto } from './dto/leaderboard-query.dto';
+import { WebLeaderboardQueryDto } from './dto/web-leaderboard-query.dto';
+import { WebLeaderboardGuard } from './web-leaderboard.guard';
+import { PublicApiExceptionFilter } from '../public-api/common/public-api-exception.filter';
 
-// Public ranking endpoints. The leaderboard is open - no login needed to see it.
+@ApiTags('Web Leaderboard')
+@UseGuards(WebLeaderboardGuard)
+@UseFilters(PublicApiExceptionFilter)
 @Controller('leaderboard')
 export class RatingController {
-  constructor(private readonly rating: RatingService) {}
+  constructor(private readonly ratingService: RatingService) {}
 
   @Get()
-  async leaderboard(@Query() query: LeaderboardQueryDto) {
-    const entries = await this.rating.getLeaderboard(query.limit, query.offset);
-    return { entries };
+  @ApiOperation({
+    summary: 'Get web leaderboard entries',
+    description: 'Returns players ordered by ELO rating for the frontend leaderboard view. Rate limited to 60 req/min per IP.',
+  })
+  @ApiResponse({ status: 200, description: 'Leaderboard entries list' })
+  @ApiResponse({ status: 400, description: 'Invalid limit or offset' })
+  @ApiResponse({ status: 429, description: 'Rate limit exceeded' })
+  async getLeaderboard(@Query() query: WebLeaderboardQueryDto) {
+    return this.ratingService.getLeaderboard(query.limit, query.offset);
   }
 }

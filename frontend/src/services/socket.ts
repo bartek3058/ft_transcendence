@@ -5,6 +5,7 @@ export type PlayerColor = "w" | "b";
 export interface PublicGameState {
   gameId: string;
   fen: string;
+  moves: string[];
   turn: PlayerColor;
   whitePlayerId: string;
   blackPlayerId: string;
@@ -14,9 +15,18 @@ export interface PublicGameState {
   plyCount: number;
   moveNumber: number;
   isFinished: boolean;
-  // Present once a game ends (the AI gateway includes them).
-  winnerColor?: PlayerColor | null;
-  gameOverReason?: string | null;
+  isCheck: boolean;
+  winnerColor: PlayerColor | null;
+  gameOverReason: string | null;
+}
+
+export interface GameClockSnapshot {
+  gameId: string;
+  whiteTimeRemainingMs: number;
+  blackTimeRemainingMs: number;
+  turn: PlayerColor;
+  plyCount: number;
+  isFinished: boolean;
 }
 
 // --- AI game (/ai-game) payloads ---
@@ -112,14 +122,12 @@ export function getAiGameSocket(): Socket {
 
 export function joinGameRoom(gameId: string): void {
   const socket = getGameSocket();
+  const join = () => socket.emit("game:join", { gameId });
 
-  const join = () => {
-    socket.emit("game:join", { gameId });
-  };
-
-  socket.once("game:ready", join);
-
-  if (!socket.connected) {
+  if (socket.connected) {
+    join();
+  } else {
+    socket.once("game:ready", join);
     socket.connect();
   }
 }

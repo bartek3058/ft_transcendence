@@ -22,6 +22,8 @@
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
     "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts",
+    "test:leaderboard:api": "ts-node --project tsconfig.tools.json test/public-api-leaderboard.test.ts",
+    "test:leaderboard:db": "ts-node --project tsconfig.tools.json test/integration/leaderboard-postgres.test.ts",
     "test:friends:db": "npm run build && node --test test/integration/friends-postgres.test.cjs",
     "test:game-conclusion": "ts-node --project tsconfig.tools.json test/game-conclusion.test.ts",
     "test:game-conclusion:db": "ts-node --project tsconfig.tools.json test/integration/game-conclusion-postgres.test.ts",

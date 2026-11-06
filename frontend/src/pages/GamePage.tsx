@@ -6,16 +6,14 @@ import { useAuth } from "../context/AuthContext";
 import { useChat } from "../hooks/useChat";
 import { useChessGame } from "../hooks/useChessGame";
 import { useMatchmaking } from "../hooks/useMatchmaking";
+import type { GameJoined } from "../services/socket";
 
 const fmt = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
 export function GamePage() {
   const { user } = useAuth();
-  const chess = useChessGame();
-  const chat = useChat();
   const matchmaking = useMatchmaking();
-  const turn = chess.game.turn();
 
   if (matchmaking.status !== "matched" || !matchmaking.game) {
     return (
@@ -31,7 +29,54 @@ export function GamePage() {
     );
   }
 
-  const myColor = matchmaking.game.color === "w" ? "White" : "Black";
+  return (
+    <OnlineGame
+      key={matchmaking.game.gameId}
+      joined={matchmaking.game}
+      username={user?.username ?? "Player"}
+      onNewGame={matchmaking.search}
+    />
+  );
+}
+
+function OnlineGame({
+  joined,
+  username,
+  onNewGame,
+}: {
+  joined: GameJoined;
+  username: string;
+  onNewGame: () => void;
+}) {
+  const chess = useChessGame(joined);
+  const chat = useChat();
+
+  const handleResign = async () => {
+    if (chess.isFinished || chess.waiting) return;
+    if (!window.confirm("Are you sure you want to resign?")) return;
+    await chess.resign();
+  };
+
+  const handleNewGame = async () => {
+    if (chess.waiting) return;
+    if (!chess.isFinished) {
+      if (
+        !window.confirm(
+          "Leaving this game will count as a resignation. Continue?",
+        )
+      )
+        return;
+      const resigned = await chess.resign();
+      if (!resigned) return;
+    }
+    onNewGame();
+  };
+  const turn = chess.game.turn();
+  const myColor = joined.color === "w" ? "White" : "Black";
+  const opponentColor = joined.color === "w" ? "b" : "w";
+  const opponentTime =
+    opponentColor === "w" ? chess.whiteTime : chess.blackTime;
+  const myTime = joined.color === "w" ? chess.whiteTime : chess.blackTime;
 
   return (
     <>
@@ -44,9 +89,9 @@ export function GamePage() {
               <small>Connected</small>
             </div>
             <div
-              className={`clock ${turn === "b" && !chess.result ? "activeClock" : ""}`}
+              className={`clock ${turn === opponentColor && !chess.result ? "activeClock" : ""}`}
             >
-              {fmt(chess.blackTime)}
+              {fmt(opponentTime)}
             </div>
           </div>
 
@@ -54,33 +99,40 @@ export function GamePage() {
             board={chess.board}
             selected={chess.selected}
             onSquareClick={chess.clickSquare}
-            orientation={matchmaking.game.color}
+            onMove={chess.movePiece}
+            orientation={joined.color}
           />
 
           <div className="player">
             <div className="avatar me">
-              {(user?.username?.[0] ?? "P").toUpperCase()}
+              {(username[0] ?? "P").toUpperCase()}
             </div>
             <div>
-              <b>{user?.username ?? "Player"}</b>
+              <b>{username}</b>
               <small>Playing as: {myColor}</small>
             </div>
             <div
-              className={`clock mine ${turn === "w" && !chess.result ? "activeClock" : ""}`}
+              className={`clock mine ${turn === joined.color && !chess.result ? "activeClock" : ""}`}
             >
-              {fmt(chess.whiteTime)}
+              {fmt(myTime)}
             </div>
           </div>
         </section>
 
         <GameSidebar
-          gameId={matchmaking.game.gameId}
+          gameId={joined.gameId}
           moves={chess.moves}
-          onNewGame={chess.reset}
-          onResign={chess.resign}
+          onNewGame={handleNewGame}
+          onResign={handleResign}
           {...chat}
         />
       </div>
+
+      {chess.error && (
+        <p role="alert" className="muted">
+          {chess.error}
+        </p>
+      )}
 
       {chess.pendingPromotion && (
         <PromotionDialog
@@ -96,7 +148,7 @@ export function GamePage() {
             <div className="resultIcon">♛</div>
             <h2>{chess.result.title}</h2>
             <p>{chess.result.message}</p>
-            <button className="primary resultButton" onClick={chess.reset}>
+            <button className="primary resultButton" onClick={handleNewGame}>
               Play again
             </button>
           </div>

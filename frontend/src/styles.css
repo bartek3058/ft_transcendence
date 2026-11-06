@@ -555,9 +555,15 @@ aside {
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: grab;
   line-height: 0;
 }
+
+.pieceFrame:active {
+  cursor: grabbing;
+}
+
 .pieceFrame .pieceSvg {
   display: block;
   width: 100%;
@@ -1548,4 +1554,9 @@ header nav a.active {
   padding: 3px 6px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.sq.dragOver {
+  outline: 3px solid rgba(143, 196, 95, 0.8);
+  outline-offset: -3px;
 }

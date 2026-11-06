@@ -41,6 +41,7 @@ export function AiGamePage() {
             board={ai.board}
             selected={ai.selected}
             onSquareClick={ai.clickSquare}
+            onMove={ai.movePiece}
             orientation={ai.humanColor}
             highlight={ai.hint}
           />

@@ -60,7 +60,8 @@ export interface MoveExecutionResult
     | 'NOT_YOUR_TURN'
     | 'ILLEGAL_MOVE'
     | 'GAME_NOT_FOUND'
-    | 'GAME_ALREADY_FINISHED';
+    | 'GAME_ALREADY_FINISHED'
+    | 'TIMEOUT';
     //standard algebraic notation representation (e.g. 'e4')
     san?: string;
     // e.g. 'e2e4' 'e7e8q' for frontend board
@@ -138,6 +139,7 @@ export interface PublicGameState
 {
     gameId: string;
     fen: string;
+    moves: string[];
     turn: PlayerColor;
     whitePlayerId: string;
     blackPlayerId: string;
