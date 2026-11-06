@@ -115,6 +115,10 @@ docker compose run --rm backend npm run test:tournament-bracket:service
 # 2b. Run game -> tournament integration tests:
 docker compose run --rm backend npm run test:tournament-games
 
+# 2c. Run real PostgreSQL tests (concurrency, unique indexes, end-to-end game flow).
+#     Needs the dedicated *_test database and the application role:
+docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-with-app-secret@postgres:5432/chess_test" backend npm run test:tournament:db
+
 # 3. Run full backend regression suite (39 test cases):
 docker compose run --rm backend npm test
 
