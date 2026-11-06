@@ -138,6 +138,7 @@ export interface PublicGameState
 {
     gameId: string;
     fen: string;
+    moves: string[];
     turn: PlayerColor;
     whitePlayerId: string;
     blackPlayerId: string;

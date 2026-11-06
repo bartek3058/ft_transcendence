@@ -425,9 +425,11 @@ export class GameService implements OnModuleDestroy
 
       //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
       const concluded = await this.persistGameConclusion(gameId, final);
-      if (concluded) {
-        await this.triggerRatingUpdate(gameId);
+      if (!concluded) {
+        this.logger.error(`Could not persist conclusion of game [${gameId}]; retaining session for retry.`);
+        return false;
       }
+      await this.triggerRatingUpdate(gameId);
 
       const deleted = this.activeGames.delete(gameId);
       if (deleted) {
@@ -638,6 +640,7 @@ export class GameService implements OnModuleDestroy
     return {
       gameId: session.gameId,
       fen: session.engine.fen(),
+      moves: session.engine.history(),
       turn: session.engine.turn(),
       whitePlayerId: session.whitePlayerId,
       blackPlayerId: session.blackPlayerId,
@@ -815,7 +818,14 @@ export class GameService implements OnModuleDestroy
       };
     }
     const now = Date.now();
-    const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
+    const timeSpentMs = session.plyCount === 0
+      ? 0
+      : Math.max(0, now - session.lastMoveTimestamp);
+    if (playerColor === 'w') {
+      session.whiteTimeRemainingMs = Math.max(0, session.whiteTimeRemainingMs - timeSpentMs);
+    } else {
+      session.blackTimeRemainingMs = Math.max(0, session.blackTimeRemainingMs - timeSpentMs);
+    }
     session.lastMoveTimestamp = now;
     session.plyCount += 1;
     this.evaluateGameOverState(session, playerColor); // chceck that this move is game over
