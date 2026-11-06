@@ -5,6 +5,7 @@ export type PlayerColor = "w" | "b";
 export interface PublicGameState {
   gameId: string;
   fen: string;
+  moves: string[];
   turn: PlayerColor;
   whitePlayerId: string;
   blackPlayerId: string;
@@ -13,6 +14,18 @@ export interface PublicGameState {
   timeControl: string | null;
   plyCount: number;
   moveNumber: number;
+  isFinished: boolean;
+  isCheck: boolean;
+  winnerColor: PlayerColor | null;
+  gameOverReason: string | null;
+}
+
+export interface GameClockSnapshot {
+  gameId: string;
+  whiteTimeRemainingMs: number;
+  blackTimeRemainingMs: number;
+  turn: PlayerColor;
+  plyCount: number;
   isFinished: boolean;
 }
 
@@ -55,14 +68,12 @@ export function getGameSocket(): Socket {
 
 export function joinGameRoom(gameId: string): void {
   const socket = getGameSocket();
+  const join = () => socket.emit("game:join", { gameId });
 
-  const join = () => {
-    socket.emit("game:join", { gameId });
-  };
-
-  socket.once("game:ready", join);
-
-  if (!socket.connected) {
+  if (socket.connected) {
+    join();
+  } else {
+    socket.once("game:ready", join);
     socket.connect();
   }
 }
