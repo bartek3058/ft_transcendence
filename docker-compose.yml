@@ -54,6 +54,12 @@ services:
       - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-604800}
       - TRUSTED_PROXY_IP=${TRUSTED_PROXY_IP:-}
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in the project .env file}
+      # AI chat (LLM). Optional: leave blank to disable the chat. OpenAI-compatible,
+      # so works with OpenAI or Gemini's OpenAI endpoint - see .env.example.
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TIMEOUT_MS=${LLM_TIMEOUT_MS:-}
     depends_on:
       postgres:
         condition: service_healthy
