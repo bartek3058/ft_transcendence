@@ -29,7 +29,10 @@
     "test:game-conclusion:db": "ts-node --project tsconfig.tools.json test/integration/game-conclusion-postgres.test.ts",
     "test:game-moves": "ts-node --project tsconfig.tools.json test/game-move-persistence.test.ts",
     "test:game-moves:db": "npm run build && node --test test/integration/game-moves-postgres.test.cjs",
-    "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts"
+    "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts",
+    "test:ai": "ts-node --project tsconfig.tools.json test/ai-stockfish.test.ts",
+    "test:ai-game": "ts-node --project tsconfig.tools.json test/ai-game.test.ts",
+    "test:chat": "ts-node --project tsconfig.tools.json test/chat.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

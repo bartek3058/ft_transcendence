@@ -17,6 +17,12 @@ type Props = {
   send: () => void;
   onNewGame: () => void;
   onResign: () => void;
+  // Optional AI-chat controls. When onModeChange is given, a persona selector is
+  // shown above the chat; `sending` disables input while the AI is replying.
+  mode?: string;
+  modes?: { value: string; label: string }[];
+  onModeChange?: (mode: string) => void;
+  sending?: boolean;
 };
 
 export function GameSidebar({
@@ -28,6 +34,10 @@ export function GameSidebar({
   send,
   onNewGame,
   onResign,
+  mode,
+  modes,
+  onModeChange,
+  sending = false,
 }: Props) {
   return (
     <aside>
@@ -64,10 +74,26 @@ export function GameSidebar({
       <div className="card chat">
         <div className="cardTitle">
           <MessageCircle size={18} /> Chat
+          {onModeChange && (
+            <select
+              className="chatMode"
+              value={mode}
+              onChange={(e) => onModeChange(e.target.value)}
+            >
+              {(modes ?? []).map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="chatBody">
           {messages.map((m) => (
-            <div key={m.id} className={m.user === "Ty" ? "msg mineMsg" : "msg"}>
+            <div
+              key={m.id}
+              className={m.user === "You" || m.user === "Ty" ? "msg mineMsg" : "msg"}
+            >
               <b>{m.user}</b>
               <span>{m.text}</span>
             </div>
@@ -79,9 +105,10 @@ export function GameSidebar({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Write a message…"
+            placeholder={sending ? "AI is replying…" : "Write a message…"}
+            disabled={sending}
           />
-          <button onClick={send} aria-label="Send">
+          <button onClick={send} aria-label="Send" disabled={sending}>
             <Send size={17} />
           </button>
         </div>
