@@ -3,13 +3,17 @@ import { GameSidebar } from "../components/chess/GameSidebar";
 import { PromotionDialog } from "../components/chess/PromotionDialog";
 import { AiLobby } from "../components/chess/AiLobby";
 import { useAuth } from "../context/AuthContext";
-import { useChat } from "../hooks/useChat";
+import { useAiChat, CHAT_MODES, type ChatMode } from "../hooks/useAiChat";
 import { useAiGame } from "../hooks/useAiGame";
 
 export function AiGamePage() {
   const { user } = useAuth();
   const ai = useAiGame();
-  const chat = useChat();
+  const chat = useAiChat(() => ({
+    fen: ai.game.fen(),
+    moves: ai.moves,
+    turn: ai.game.turn(),
+  }));
 
   if (ai.status === "idle" || ai.status === "connecting" || ai.status === "error") {
     return (
@@ -61,9 +65,16 @@ export function AiGamePage() {
         <GameSidebar
           gameId={ai.gameId ?? ""}
           moves={ai.moves}
+          messages={chat.messages}
+          draft={chat.draft}
+          setDraft={chat.setDraft}
+          send={chat.send}
           onNewGame={ai.leave}
           onResign={ai.resign}
-          {...chat}
+          mode={chat.mode}
+          modes={CHAT_MODES}
+          onModeChange={(m) => chat.setMode(m as ChatMode)}
+          sending={chat.sending}
         />
       </div>
 
