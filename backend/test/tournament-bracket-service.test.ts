@@ -2,6 +2,30 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TournamentBracketService } from '../src/tournament/tournament-bracket.service';
 
+/** Minimal Prisma `where` evaluator: equality, null, { in }, { not: null }. */
+function matchesWhere(row: any, where: any = {}): boolean {
+  return Object.entries(where).every(([key, cond]: [string, any]) => {
+    const value = row[key] ?? null;
+    if (cond === null) return value === null;
+    if (typeof cond === 'object' && !(cond instanceof Date)) {
+      if ('in' in cond) return cond.in.includes(value);
+      if ('not' in cond) return cond.not === null ? value !== null : value !== cond.not;
+    }
+    return value === cond;
+  });
+}
+
+function updateManyIn(store: Map<string, any>, where: any, data: any) {
+  let count = 0;
+  for (const [id, row] of store.entries()) {
+    if (matchesWhere(row, where)) {
+      store.set(id, { ...row, ...data });
+      count++;
+    }
+  }
+  return { count };
+}
+
 function createMockPrisma() {
   const tournaments = new Map<string, any>();
   const participants = new Map<string, any>();
@@ -24,6 +48,8 @@ function createMockPrisma() {
         tournaments.set(where.id, updated);
         return updated;
       },
+      updateMany: async ({ where, data }: any) =>
+        updateManyIn(tournaments, where, data),
     },
     tournamentParticipant: {
       update: async ({ where, data }: any) => {
@@ -32,19 +58,8 @@ function createMockPrisma() {
         participants.set(where.id, updated);
         return updated;
       },
-      updateMany: async ({ where, data }: any) => {
-        let count = 0;
-        for (const [id, p] of participants.entries()) {
-          if (
-            (!where.tournamentId || p.tournamentId === where.tournamentId) &&
-            (!where.userId || p.userId === where.userId)
-          ) {
-            participants.set(id, { ...p, ...data });
-            count++;
-          }
-        }
-        return { count };
-      },
+      updateMany: async ({ where, data }: any) =>
+        updateManyIn(participants, where, data),
       findMany: async ({ where }: any) => {
         return Array.from(participants.values()).filter((p) => {
           if (where.tournamentId && p.tournamentId !== where.tournamentId)
@@ -79,6 +94,10 @@ function createMockPrisma() {
         matches.set(where.id, updated);
         return updated;
       },
+      updateMany: async ({ where, data }: any) =>
+        updateManyIn(matches, where, data),
+      count: async ({ where }: any) =>
+        Array.from(matches.values()).filter((m) => matchesWhere(m, where)).length,
     },
     game: {
       count: async ({ where }: any) => {
@@ -371,5 +390,161 @@ describe('TournamentBracketService (Database Service)', () => {
     assert.equal(tourney.championId, 'p1');
     assert.equal(mock.participants.get('tp-p1').finalRank, 1);
     assert.equal(mock.participants.get('tp-p2').finalRank, 2);
+  });
+
+  // ---------------------------------------------------------------------------
+  // State-machine guards (H3) and bracket start idempotency (M1)
+  // ---------------------------------------------------------------------------
+
+  async function setupBracket(playerCount: number, status = 'REGISTRATION_CLOSED') {
+    const mock = createMockPrisma();
+    const service = new TournamentBracketService({} as any);
+    const tournamentId = `tourney-guard-${playerCount}`;
+    mock.tournaments.set(tournamentId, { id: tournamentId, status });
+    for (let i = 0; i < playerCount; i++) {
+      const userId = `u${i + 1}`;
+      mock.participants.set(`tp-${userId}`, {
+        id: `tp-${userId}`,
+        tournamentId,
+        userId,
+        seed: null,
+        seedRating: null,
+        registeredAt: new Date(1000 + i),
+        user: { id: userId, rating: 2000 - i * 100 }, // u1 = seed 1, u2 = seed 2, ...
+      });
+    }
+    const byId = (identifier: string) =>
+      Array.from(mock.matches.values()).find((m) => m.identifier === identifier)!;
+    return { mock, service, tournamentId, byId };
+  }
+
+  it('rejects starting a tournament twice (409, no duplicate matches)', async () => {
+    const { mock, service, tournamentId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    const matchCount = mock.matches.size;
+
+    await assert.rejects(
+      service.generateAndSaveBracket(mock.tx, tournamentId),
+      (err: any) => err.status === 409,
+    );
+    assert.equal(mock.matches.size, matchCount);
+  });
+
+  it('rejects starting a tournament that is not REGISTRATION_CLOSED', async () => {
+    for (const status of ['OPEN_FOR_SIGNUP', 'IN_PROGRESS', 'FINISHED', 'CANCELLED']) {
+      const { mock, service, tournamentId } = await setupBracket(4, status);
+      await assert.rejects(
+        service.generateAndSaveBracket(mock.tx, tournamentId),
+        (err: any) => err.status === 409,
+        `status ${status} must be rejected`,
+      );
+      assert.equal(mock.matches.size, 0);
+      assert.equal(mock.tournaments.get(tournamentId).status, status);
+    }
+  });
+
+  it('returns 404 when starting an unknown tournament', async () => {
+    const { mock, service } = await setupBracket(2);
+    await assert.rejects(
+      service.generateAndSaveBracket(mock.tx, 'missing'),
+      (err: any) => err.status === 404,
+    );
+  });
+
+  it('rejects advancing a PENDING match where only one player is known (bye side)', async () => {
+    // 3 players -> u1 has a bye and already sits in the Final as player1.
+    const { mock, service, tournamentId, byId } = await setupBracket(3);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    const final = byId('R2-M1');
+    assert.equal(final.player1Id, 'u1');
+    assert.equal(final.status, 'PENDING');
+
+    await assert.rejects(
+      service.advanceWinner(mock.tx, tournamentId, final.id, 'u1'),
+      (err: any) => err.status === 409,
+    );
+    assert.equal(mock.tournaments.get(tournamentId).status, 'IN_PROGRESS');
+    assert.equal(mock.matches.get(final.id).winnerId, null);
+  });
+
+  it('rejects advancing the same match twice', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    const sf1 = byId('R1-M1');
+
+    await service.advanceWinner(mock.tx, tournamentId, sf1.id, 'u1');
+    await assert.rejects(
+      service.advanceWinner(mock.tx, tournamentId, sf1.id, 'u4'),
+      (err: any) => err.status === 409,
+    );
+    assert.equal(mock.matches.get(sf1.id).winnerId, 'u1');
+    assert.equal(mock.matches.get(byId('R2-M1').id).player1Id, 'u1');
+  });
+
+  it('rejects a walkover on an already completed match (winner is not overwritten)', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    const sf1 = byId('R1-M1');
+
+    await service.advanceWinner(mock.tx, tournamentId, sf1.id, 'u1');
+    await assert.rejects(
+      service.handleWalkover(mock.tx, tournamentId, sf1.id, 'u1'),
+      (err: any) => err.status === 409,
+    );
+    assert.equal(mock.matches.get(sf1.id).status, 'COMPLETED');
+    assert.equal(mock.matches.get(sf1.id).winnerId, 'u1');
+    assert.equal(mock.matches.get(byId('R2-M1').id).player1Id, 'u1');
+  });
+
+  it('rejects any result while the tournament is not IN_PROGRESS', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    const sf1 = byId('R1-M1');
+    mock.tournaments.set(tournamentId, {
+      ...mock.tournaments.get(tournamentId),
+      status: 'CANCELLED',
+    });
+
+    await assert.rejects(
+      service.advanceWinner(mock.tx, tournamentId, sf1.id, 'u1'),
+      (err: any) => err.status === 409,
+    );
+    await assert.rejects(
+      service.handleWalkover(mock.tx, tournamentId, sf1.id, 'u4'),
+      (err: any) => err.status === 409,
+    );
+    await assert.rejects(
+      service.handleMatchDraw(mock.tx, tournamentId, sf1.id),
+      (err: any) => err.status === 409,
+    );
+    assert.equal(mock.matches.get(sf1.id).status, 'SCHEDULED');
+  });
+
+  it('rejects a draw on a match without both players (no crash on null ids)', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(3);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    await assert.rejects(
+      service.handleMatchDraw(mock.tx, tournamentId, byId('R2-M1').id),
+      (err: any) => err.status === 409,
+    );
+  });
+
+  it('final won by walkover also assigns rank 3 to losing semifinalists', async () => {
+    const { mock, service, tournamentId, byId } = await setupBracket(4);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M1').id, 'u1');
+    await service.advanceWinner(mock.tx, tournamentId, byId('R1-M2').id, 'u2');
+    const result = await service.handleWalkover(
+      mock.tx,
+      tournamentId,
+      byId('R2-M1').id,
+      'u2',
+    );
+
+    assert.equal(result.championId, 'u1');
+    assert.equal(mock.participants.get('tp-u1').finalRank, 1);
+    assert.equal(mock.participants.get('tp-u2').finalRank, 2);
+    assert.equal(mock.participants.get('tp-u3').finalRank, 3);
+    assert.equal(mock.participants.get('tp-u4').finalRank, 3);
   });
 });
