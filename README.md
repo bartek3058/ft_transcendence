@@ -16,7 +16,8 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
 - **Public API, Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
 - **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
-- _TODO: tournaments, AI opponent, live chat, internationalization._
+- **Tournament bracket & progression engine** - automated single-elimination tournament generator with balanced seed-fold pairing, Round 1 Bye resolution, match progression to champion, and knockout draw tiebreak handling.
+- _TODO: tournament registration API / lobby UI, AI opponent, live chat, internationalization._
 
 ---
 
