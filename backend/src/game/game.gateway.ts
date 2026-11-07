@@ -1,7 +1,9 @@
+import { OnModuleDestroy } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketServer,
   WebSocketGateway,
@@ -17,7 +19,10 @@ interface JoinGameRoomDto {
 }
 
 @WebSocketGateway({ namespace: '/game' })
-export class GameGateway implements OnGatewayConnection {
+export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModuleDestroy {
+  private clockTimer: NodeJS.Timeout | null = null;
+  private lastClockBroadcast = 0;
+  private readonly concludingTimeouts = new Set<string>();
   @WebSocketServer()
   server: Server;
 
@@ -25,6 +30,46 @@ export class GameGateway implements OnGatewayConnection {
     private readonly sessions: SessionService,
     private readonly game: GameService,
   ) {}
+
+  onModuleDestroy(): void {
+    if (this.clockTimer) clearInterval(this.clockTimer);
+    this.clockTimer = null;
+  }
+
+  afterInit(): void {
+    // One timer per gateway, not one per game or connected client.
+    this.clockTimer = setInterval(() => {
+      const now = Date.now();
+      const shouldBroadcast = now - this.lastClockBroadcast >= 5000;
+      if (shouldBroadcast) this.lastClockBroadcast = now;
+      for (const gameId of this.game.getActiveGameIds()) {
+        if (this.concludingTimeouts.has(gameId)) continue;
+        if (this.game.checkGameTimeout(gameId, now)) {
+          void this.finishTimedOutGame(gameId);
+          continue;
+        }
+        if (shouldBroadcast) {
+          const snapshot = this.game.getClockSnapshot(gameId, now);
+          if (snapshot && !snapshot.isFinished) {
+            this.server.to(gameId).emit('game:clock', snapshot);
+          }
+        }
+      }
+    }, 250);
+    this.clockTimer.unref();
+  }
+
+  private async finishTimedOutGame(gameId: string): Promise<void> {
+    if (this.concludingTimeouts.has(gameId)) return;
+    this.concludingTimeouts.add(gameId);
+    try {
+      if (!this.game.hasActiveGame(gameId)) return;
+      this.server.to(gameId).emit('game:state', this.game.getPublicGameState(gameId));
+      await this.game.removeGame(gameId);
+    } finally {
+      this.concludingTimeouts.delete(gameId);
+    }
+  }
 
   async handleConnection(client: Socket): Promise<void> {
     try {
@@ -48,6 +93,23 @@ export class GameGateway implements OnGatewayConnection {
 
       client.disconnect(true);
     }
+  }
+
+  // Discover an ongoing match using the authenticated server-side identity.
+  // Never trust a player ID supplied by the browser.
+  @SubscribeMessage('game:resume')
+  async handleResume(@ConnectedSocket() client: Socket): Promise<void> {
+    const userId: string | undefined = client.data.userId;
+    if (!userId) {
+      client.emit('game:error', { code: 'UNAUTHENTICATED' });
+      return;
+    }
+    const gameId = this.game.findActiveGameForPlayer(userId);
+    if (!gameId) {
+      client.emit('game:no-active');
+      return;
+    }
+    await this.handleJoinRoom(client, { gameId });
   }
 
   @SubscribeMessage('game:join')
@@ -99,7 +161,13 @@ export class GameGateway implements OnGatewayConnection {
 
     await client.join(gameId);
 
+    // Include elapsed time since the last move, not the stored base clock.
     const state = this.game.getPublicGameState(gameId);
+    const clock = this.game.getClockSnapshot(gameId);
+    if (clock) {
+      state.whiteTimeRemainingMs = clock.whiteTimeRemainingMs;
+      state.blackTimeRemainingMs = clock.blackTimeRemainingMs;
+    }
 
     client.emit('game:joined', {
       gameId,
@@ -136,15 +204,21 @@ export class GameGateway implements OnGatewayConnection {
     }
 
     const result = this.game.executeMove(dto, userId);
-    if (!result.success) {
-      client.emit('game:error', {
-        code: result.errorReason ?? 'ILLEGAL_MOVE',
-        state: this.game.hasActiveGame(dto.gameId)
-          ? this.game.getPublicGameState(dto.gameId)
-          : undefined,
-      });
-      return;
-    }
+
+if (!result.success) {
+  if (result.errorReason === 'TIMEOUT') {
+    void this.finishTimedOutGame(dto.gameId);
+  }
+
+  client.emit('game:error', {
+    code: result.errorReason ?? 'ILLEGAL_MOVE',
+    state: this.game.hasActiveGame(dto.gameId)
+      ? this.game.getPublicGameState(dto.gameId)
+      : undefined,
+  });
+
+  return;
+}
 
     this.server.to(dto.gameId).emit('game:state',
       this.game.getPublicGameState(dto.gameId));
