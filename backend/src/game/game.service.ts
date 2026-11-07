@@ -148,6 +148,7 @@ export class GameService implements OnModuleDestroy
         }
       }
       return null;
+	}
     /**
      * Registers a callback fired exactly once per game, right after its result
      * row was written by removeGame(). Listener errors are logged and never
