@@ -3,7 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { GameModule } from '../game/game.module';
 import { TournamentRateLimiter } from './http/tournament-rate-limiter';
-import { TournamentRequestGuard, TournamentUserLimitGuard } from './http/tournaments-http';
+import { TournamentRequestGuard, TournamentsExceptionFilter, TournamentUserLimitGuard } from './http/tournaments-http';
 import { TournamentBracketService } from './tournament-bracket.service';
 import { TournamentGameService } from './tournament-game.service';
 import { TournamentDeadlineScheduler } from './tournament-deadline.scheduler';
@@ -19,7 +19,8 @@ import { TournamentsService } from './tournaments.service';
   controllers: [TournamentsController],
   providers: [
     TournamentBracketService, TournamentGameService, TournamentLifecycleService, TournamentsService,
-    TournamentEventsPublisher, TournamentDeadlineScheduler, TournamentRateLimiter, TournamentRequestGuard, TournamentUserLimitGuard,
+    TournamentEventsPublisher, TournamentDeadlineScheduler, TournamentRateLimiter,
+    TournamentRequestGuard, TournamentUserLimitGuard, TournamentsExceptionFilter,
   ],
   exports: [TournamentBracketService, TournamentGameService, TournamentLifecycleService, TournamentEventsPublisher],
 })
