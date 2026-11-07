@@ -31,6 +31,10 @@ export function configureApp(app: NestExpressApplication): void {
     res.setHeader('Cache-Control', 'no-store');
     next();
   });
+  app.use('/api/tournaments', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(json({ limit: '16kb', strict: true }));
   app.use((error: { type?: string }, _req: Request, res: Response, next: NextFunction) => {
     let response: HttpException;

@@ -20,6 +20,7 @@
     "test:apikey": "ts-node --project tsconfig.tools.json test/api-key.service.test.ts",
     "test:api-guard": "ts-node --project tsconfig.tools.json test/public-api-guard-and-limiter.test.ts",
     "test:sliding-limiter": "ts-node --project tsconfig.tools.json test/sliding-window-limiter.test.ts",
+    "test:tournaments:http": "ts-node --project tsconfig.tools.json test/tournaments-http.test.ts",
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
     "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts",
