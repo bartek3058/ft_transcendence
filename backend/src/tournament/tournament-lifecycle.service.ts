@@ -63,6 +63,28 @@ export class TournamentLifecycleService {
     return outcome;
   }
 
+  /**
+   * Gives up on a tournament whose bracket start keeps failing: CANCELLED, only if it is
+   * still expired-open or REGISTRATION_CLOSED (never one that started meanwhile).
+   * Returns false when the tournament was already handled elsewhere.
+   */
+  async cancelUnstartable(tournamentId: string): Promise<boolean> {
+    const cancelled = await this.prisma.tournament.updateMany({
+      where: {
+        id: tournamentId,
+        OR: [
+          { status: 'OPEN_FOR_SIGNUP', registrationDeadline: { lte: new Date() } },
+          { status: 'REGISTRATION_CLOSED' },
+        ],
+      },
+      data: { status: 'CANCELLED' },
+    });
+    if (cancelled.count !== 1) return false;
+    this.logger.warn(`Tournament ${tournamentId} cancelled: bracket start kept failing.`);
+    this.events.registrationClosed({ tournamentId, outcome: 'CANCELLED', reason: 'SCHEDULER', at: new Date() });
+    return true;
+  }
+
   /** Counter read from the locked row; join/leave keep it equal to the participant rows. */
   private async startOrCancel(tx: Prisma.TransactionClient, tournamentId: string,
     participants: number): Promise<CloseOutcome> {

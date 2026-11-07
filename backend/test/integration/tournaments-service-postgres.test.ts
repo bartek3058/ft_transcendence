@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/database/prisma.service';
 import { TournamentHttpError } from '../../src/tournament/http/tournament.errors';
 import { TournamentBracketService } from '../../src/tournament/tournament-bracket.service';
-import { TournamentDeadlineScheduler } from '../../src/tournament/tournament-deadline.scheduler';
+import { MAX_START_ATTEMPTS, TournamentDeadlineScheduler } from '../../src/tournament/tournament-deadline.scheduler';
 import { RegistrationClosedEvent, TournamentEventsPublisher } from '../../src/tournament/tournament-events.publisher';
 import { TournamentLifecycleService } from '../../src/tournament/tournament-lifecycle.service';
 import { TournamentsService } from '../../src/tournament/tournaments.service';
@@ -459,6 +459,41 @@ describe('Tournaments service against PostgreSQL (#102)', () => {
       } finally {
         rec.unsubscribe();
       }
+    });
+
+    it(`cancels a tournament after ${MAX_START_ATTEMPTS} failed bracket starts, never a started one`, async () => {
+      class FailingBracket extends TournamentBracketService {
+        override async generateAndSaveBracket(): Promise<never> { throw new Error('bracket failure'); }
+      }
+      const failing = new TournamentLifecycleService(prisma, new FailingBracket(prisma), publisher);
+      const scheduler = new TournamentDeadlineScheduler(prisma, failing);
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 4);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      await expire(t.id);
+      const rec = recordEvents(t.id);
+      try {
+        for (let i = 1; i < MAX_START_ATTEMPTS; i++) {
+          await scheduler.tick();
+          assert.equal((await counterAndRows(t.id)).status, 'OPEN_FOR_SIGNUP'); // each failure rolled back
+        }
+        await scheduler.tick();
+        await settle();
+        assert.equal((await counterAndRows(t.id)).status, 'CANCELLED');
+        assert.equal(await prisma.tournamentMatch.count({ where: { tournamentId: t.id } }), 0);
+        assert.deepEqual(rec.seen.map((e) => [e.outcome, e.reason]), [['CANCELLED', 'SCHEDULER']]);
+      } finally {
+        rec.unsubscribe();
+      }
+
+      // The give-up cancel never touches a tournament that is running or still before its deadline.
+      const running = await createTournament(creator.id, 2);
+      const open = await createTournament(creator.id, 2);
+      await prisma.tournament.update({ where: { id: running.id }, data: { status: 'IN_PROGRESS' } });
+      assert.equal(await failing.cancelUnstartable(running.id), false);
+      assert.equal(await failing.cancelUnstartable(open.id), false);
+      assert.equal((await counterAndRows(running.id)).status, 'IN_PROGRESS');
+      assert.equal((await counterAndRows(open.id)).status, 'OPEN_FOR_SIGNUP');
     });
 
     it('a concurrent retry of the same stuck tournament starts it once', async () => {

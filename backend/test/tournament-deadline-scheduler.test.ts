@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../src/database/prisma.service';
 import { TournamentHttpError } from '../src/tournament/http/tournament.errors';
-import { TournamentDeadlineScheduler } from '../src/tournament/tournament-deadline.scheduler';
+import { MAX_START_ATTEMPTS, TournamentDeadlineScheduler } from '../src/tournament/tournament-deadline.scheduler';
 import { TournamentLifecycleService } from '../src/tournament/tournament-lifecycle.service';
 
 // Decision logic only; the SQL and concurrency are covered by the PostgreSQL test.
@@ -24,6 +24,7 @@ class FakeLifecycle {
   constructor(private readonly failures: Record<string, Error> = {}, private readonly gate?: Promise<void>) {}
   async closeAndStart(id: string) { return this.call(`close:${id}`, id); }
   async startClosed(id: string) { return this.call(`start:${id}`, id); }
+  async cancelUnstartable(id: string) { this.calls.push(`cancel:${id}`); return true; }
   private async call(label: string, id: string) {
     this.calls.push(label);
     if (this.gate) await this.gate;
@@ -41,7 +42,7 @@ describe('TournamentDeadlineScheduler', () => {
     const lifecycle = new FakeLifecycle();
     const result = await scheduler(fakePrisma(['a', 'b'], ['c']), lifecycle).tick();
     assert.deepEqual(lifecycle.calls, ['close:a', 'close:b', 'start:c']);
-    assert.deepEqual(result, { skipped: false, closed: 2, restarted: 1, failed: 0 });
+    assert.deepEqual(result, { skipped: false, closed: 2, restarted: 1, failed: 0, cancelled: 0 });
   });
 
   it('keeps going after a lost race (409/404) or an unexpected error', async () => {
@@ -52,7 +53,7 @@ describe('TournamentDeadlineScheduler', () => {
     });
     const result = await scheduler(fakePrisma(['a', 'b', 'd'], ['c', 'e']), lifecycle).tick();
     assert.deepEqual(lifecycle.calls, ['close:a', 'close:b', 'close:d', 'start:c', 'start:e']);
-    assert.deepEqual(result, { skipped: false, closed: 1, restarted: 1, failed: 3 });
+    assert.deepEqual(result, { skipped: false, closed: 1, restarted: 1, failed: 3, cancelled: 0 });
   });
 
   it('skips a tick while the previous one is still executing', async () => {
@@ -71,8 +72,29 @@ describe('TournamentDeadlineScheduler', () => {
   it('survives a failing scan and releases the guard', async () => {
     const prisma = { tournament: { findMany: async () => { throw new Error('db down'); } } } as unknown as PrismaService;
     const s = scheduler(prisma, new FakeLifecycle());
-    assert.deepEqual(await s.tick(), { skipped: false, closed: 0, restarted: 0, failed: 0 });
+    assert.deepEqual(await s.tick(), { skipped: false, closed: 0, restarted: 0, failed: 0, cancelled: 0 });
     assert.equal((await s.tick()).skipped, false);
+  });
+
+  it(`cancels after ${MAX_START_ATTEMPTS} consecutive failed starts`, async () => {
+    const lifecycle = new FakeLifecycle({ a: new Error('bracket failure') });
+    const s = scheduler(fakePrisma(['a'], []), lifecycle);
+    for (let i = 1; i < MAX_START_ATTEMPTS; i++) assert.equal((await s.tick()).cancelled, 0);
+    assert.ok(!lifecycle.calls.includes('cancel:a'));
+    assert.equal((await s.tick()).cancelled, 1);
+    assert.equal(lifecycle.calls.filter((c) => c === 'cancel:a').length, 1);
+  });
+
+  it('counts only consecutive failures: a success or a lost race resets the count', async () => {
+    const failures: Record<string, Error> = {};
+    const lifecycle = new FakeLifecycle(failures);
+    const s = scheduler(fakePrisma([], ['a']), lifecycle);
+    for (const outcome of ['fail', 'fail', 'fail', 'fail', 'ok', 'fail', 'fail', 'fail', 'fail', 'race', 'fail', 'fail', 'fail', 'fail']) {
+      if (outcome === 'ok') delete failures.a;
+      else failures.a = outcome === 'race' ? new TournamentHttpError(409, 'REGISTRATION_CLOSED', 'closed') : new Error('boom');
+      await s.tick();
+    }
+    assert.ok(!lifecycle.calls.includes('cancel:a'));
   });
 
   it('starts an unref()d timer on init and clears it on destroy', () => {
