@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/database/prisma.service';
 import { TournamentHttpError } from '../../src/tournament/http/tournament.errors';
 import { TournamentBracketService } from '../../src/tournament/tournament-bracket.service';
+import { RegistrationClosedEvent, TournamentEventsPublisher } from '../../src/tournament/tournament-events.publisher';
 import { TournamentLifecycleService } from '../../src/tournament/tournament-lifecycle.service';
 import { TournamentsService } from '../../src/tournament/tournaments.service';
 import { requireTestDatabaseUrl } from '../test-database-url';
@@ -14,8 +15,23 @@ import { requireTestDatabaseUrl } from '../test-database-url';
 const prisma = new PrismaService({
   datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
 });
-const lifecycle = new TournamentLifecycleService(prisma, new TournamentBracketService(prisma));
+const publisher = new TournamentEventsPublisher();
+const lifecycle = new TournamentLifecycleService(prisma, new TournamentBracketService(prisma), publisher);
 const service = new TournamentsService(prisma, lifecycle);
+
+/** Collects registration-closed events for one tournament; each entry has the status seen by the listener. */
+function recordEvents(tournamentId: string) {
+  const seen: (RegistrationClosedEvent & { dbStatus: string })[] = [];
+  const unsubscribe = publisher.onRegistrationClosed(async (event) => {
+    if (event.tournamentId !== tournamentId) return;
+    const row = await prisma.tournament.findUniqueOrThrow({ where: { id: tournamentId } });
+    seen.push({ ...event, dbStatus: row.status });
+  });
+  return { seen, unsubscribe };
+}
+
+/** Lets deferred listeners (setImmediate + their DB read) finish. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
 
 const userIds: string[] = [];
 const tournamentIds: string[] = [];
@@ -265,6 +281,97 @@ describe('Tournaments service against PostgreSQL (#102)', () => {
       assert.equal(state.counter, state.rows);
       assert.ok(state.status === 'IN_PROGRESS' || state.status === 'CANCELLED');
       await expectError(service.join((await createUser()).id, t.id), 409, 'REGISTRATION_CLOSED');
+    });
+  });
+
+  describe('registration-closed events', () => {
+    it('publishes one event after commit, for both outcomes', async () => {
+      const creator = await createUser();
+      const started = await createTournament(creator.id, 2);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, started.id);
+      const cancelled = await createTournament(creator.id);
+      const a = recordEvents(started.id);
+      const b = recordEvents(cancelled.id);
+      try {
+        await lifecycle.closeAndStart(started.id, 'MANUAL');
+        await lifecycle.closeAndStart(cancelled.id, 'MANUAL');
+        await settle();
+        // dbStatus: the listener already sees the committed state.
+        assert.deepEqual(a.seen.map((e) => [e.outcome, e.reason, e.dbStatus]), [['IN_PROGRESS', 'MANUAL', 'IN_PROGRESS']]);
+        assert.deepEqual(b.seen.map((e) => [e.outcome, e.reason, e.dbStatus]), [['CANCELLED', 'MANUAL', 'CANCELLED']]);
+      } finally {
+        a.unsubscribe();
+        b.unsubscribe();
+      }
+    });
+
+    it('publishes exactly once under concurrent closes', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 4);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      const rec = recordEvents(t.id);
+      try {
+        await Promise.allSettled([1, 2, 3].map(() => lifecycle.closeAndStart(t.id, 'MANUAL')));
+        await settle();
+        assert.equal(rec.seen.length, 1);
+      } finally {
+        rec.unsubscribe();
+      }
+    });
+
+    it('publishes nothing for a rejected close (404, 409, scheduler before the deadline)', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id);
+      const unknown = randomUUID();
+      const recT = recordEvents(t.id);
+      const recUnknown = recordEvents(unknown);
+      try {
+        await expectError(lifecycle.closeAndStart(unknown, 'MANUAL'), 404, 'TOURNAMENT_NOT_FOUND');
+        await expectError(lifecycle.closeAndStart(t.id, 'SCHEDULER'), 409, 'REGISTRATION_CLOSED');
+        await prisma.tournament.update({ where: { id: t.id }, data: { status: 'CANCELLED' } });
+        await expectError(lifecycle.closeAndStart(t.id, 'MANUAL'), 409, 'REGISTRATION_CLOSED');
+        await settle();
+        assert.equal(recT.seen.length + recUnknown.seen.length, 0);
+      } finally {
+        recT.unsubscribe();
+        recUnknown.unsubscribe();
+      }
+    });
+
+    it('rolls back the close and publishes nothing when bracket generation fails', async () => {
+      class FailingBracket extends TournamentBracketService {
+        override async generateAndSaveBracket(): Promise<never> { throw new Error('bracket failure'); }
+      }
+      const failing = new TournamentLifecycleService(prisma, new FailingBracket(prisma), publisher);
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 4);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      const rec = recordEvents(t.id);
+      try {
+        await assert.rejects(failing.closeAndStart(t.id, 'MANUAL'), /bracket failure/);
+        await settle();
+        assert.equal(rec.seen.length, 0);
+        const state = await counterAndRows(t.id);
+        assert.equal(state.status, 'OPEN_FOR_SIGNUP');
+        assert.equal(state.counter, 2);
+      } finally {
+        rec.unsubscribe();
+      }
+    });
+
+    it('the scheduler closes an expired registration and reports its reason', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 2);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      await prisma.tournament.update({ where: { id: t.id }, data: { registrationDeadline: new Date(Date.now() - MINUTE) } });
+      const rec = recordEvents(t.id);
+      try {
+        assert.equal(await lifecycle.closeAndStart(t.id, 'SCHEDULER'), 'IN_PROGRESS');
+        await settle();
+        assert.deepEqual(rec.seen.map((e) => [e.outcome, e.reason]), [['IN_PROGRESS', 'SCHEDULER']]);
+      } finally {
+        rec.unsubscribe();
+      }
     });
   });
 
