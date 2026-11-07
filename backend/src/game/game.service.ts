@@ -139,6 +139,15 @@ export class GameService implements OnModuleDestroy
 
     return this.toPublicState(session);
     }
+
+    public findActiveGameForPlayer(userId: string): string | null {
+      for (const session of this.activeGames.values()) {
+        if (!session.isFinished &&
+            (session.whitePlayerId === userId || session.blackPlayerId === userId)) {
+          return session.gameId;
+        }
+      }
+      return null;
     /**
      * Registers a callback fired exactly once per game, right after its result
      * row was written by removeGame(). Listener errors are logged and never

@@ -108,6 +108,23 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     }
   }
 
+  // Discover an ongoing match using the authenticated server-side identity.
+  // Never trust a player ID supplied by the browser.
+  @SubscribeMessage('game:resume')
+  async handleResume(@ConnectedSocket() client: Socket): Promise<void> {
+    const userId: string | undefined = client.data.userId;
+    if (!userId) {
+      client.emit('game:error', { code: 'UNAUTHENTICATED' });
+      return;
+    }
+    const gameId = this.game.findActiveGameForPlayer(userId);
+    if (!gameId) {
+      client.emit('game:no-active');
+      return;
+    }
+    await this.handleJoinRoom(client, { gameId });
+  }
+
   @SubscribeMessage('game:join')
   async handleJoinRoom(
     @ConnectedSocket() client: Socket,
@@ -157,7 +174,13 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
 
     await client.join(gameId);
 
+    // Include elapsed time since the last move, not the stored base clock.
     const state = this.game.getPublicGameState(gameId);
+    const clock = this.game.getClockSnapshot(gameId);
+    if (clock) {
+      state.whiteTimeRemainingMs = clock.whiteTimeRemainingMs;
+      state.blackTimeRemainingMs = clock.blackTimeRemainingMs;
+    }
 
     client.emit('game:joined', {
       gameId,
