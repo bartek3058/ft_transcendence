@@ -2,14 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TournamentBracketService } from '../src/tournament/tournament-bracket.service';
 
-/** Minimal Prisma `where` evaluator: equality, null, { in }, { not: null }. */
+/** Minimal Prisma `where` evaluator: equality, null, { in }, { not }, OR. */
 function matchesWhere(row: any, where: any = {}): boolean {
   return Object.entries(where).every(([key, cond]: [string, any]) => {
+    if (key === 'OR') return (cond as any[]).some((c) => matchesWhere(row, c));
     const value = row[key] ?? null;
     if (cond === null) return value === null;
     if (typeof cond === 'object' && !(cond instanceof Date)) {
       if ('in' in cond) return cond.in.includes(value);
-      if ('not' in cond) return cond.not === null ? value !== null : value !== cond.not;
+      // Mirrors SQL: `{ not: X }` never matches NULL.
+      if ('not' in cond) return cond.not === null ? value !== null : value !== null && value !== cond.not;
     }
     return value === cond;
   });
@@ -96,18 +98,8 @@ function createMockPrisma() {
         Array.from(matches.values()).filter((m) => matchesWhere(m, where)).length,
     },
     game: {
-      count: async ({ where }: any) => {
-        let count = 0;
-        for (const g of games.values()) {
-          if (
-            where.tournamentMatchId &&
-            g.tournamentMatchId === where.tournamentMatchId
-          ) {
-            count++;
-          }
-        }
-        return count;
-      },
+      count: async ({ where }: any) =>
+        Array.from(games.values()).filter((g) => matchesWhere(g, where)).length,
     },
   };
 
@@ -650,5 +642,79 @@ describe('TournamentBracketService (Database Service)', () => {
       (err: any) => err.status === 409,
     );
     assert.equal(mock.matches.get(byId('R1-M1').id).winnerId, 'u1');
+  });
+
+  // ---------------------------------------------------------------------------
+  // M9: draw resolution counts only played draws
+  // ---------------------------------------------------------------------------
+
+  async function drawSetup() {
+    const { mock, service, tournamentId, byId } = await setupBracket(2);
+    await service.generateAndSaveBracket(mock.tx, tournamentId);
+    const matchId = byId('R1-M1').id;
+    return { mock, service, tournamentId, matchId };
+  }
+
+  it('draw resolution ignores decisive, aborted and abandoned games', async () => {
+    const { mock, service, tournamentId, matchId } = await drawSetup();
+    mock.games.set('g-a', { id: 'g-a', tournamentMatchId: matchId, result: 'ABORTED' });
+    mock.games.set('g-b', { id: 'g-b', tournamentMatchId: matchId, result: 'DRAW', endReason: 'ABANDONMENT' });
+    mock.games.set('g-c', { id: 'g-c', tournamentMatchId: matchId, result: 'WHITE_WON', endReason: 'CHECKMATE' });
+    mock.games.set('g-1', { id: 'g-1', tournamentMatchId: matchId, result: 'DRAW', endReason: 'STALEMATE' });
+
+    const draw = await service.handleMatchDraw(mock.tx, tournamentId, matchId);
+    assert.equal(draw.action, 'REPLAY');
+    assert.equal(draw.replayCount, 1, 'only the stalemate counts');
+  });
+
+  it('draw resolution rejects a match whose game is still in progress', async () => {
+    const { mock, service, tournamentId, matchId } = await drawSetup();
+    mock.games.set('g-1', { id: 'g-1', tournamentMatchId: matchId, result: 'DRAW', endReason: 'STALEMATE' });
+    mock.games.set('g-2', { id: 'g-2', tournamentMatchId: matchId, result: 'IN_PROGRESS' });
+    await assert.rejects(
+      service.handleMatchDraw(mock.tx, tournamentId, matchId),
+      (err: any) => err.status === 409,
+    );
+  });
+
+  it('draw resolution rejects a match without any drawn game', async () => {
+    const { mock, service, tournamentId, matchId } = await drawSetup();
+    await assert.rejects(
+      service.handleMatchDraw(mock.tx, tournamentId, matchId),
+      (err: any) => err.status === 409,
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // M2 / M5: invalid bracket input is a 400 and changes nothing
+  // ---------------------------------------------------------------------------
+
+  it('rejects a custom bracket size that would leave empty Round 1 matches (400)', async () => {
+    const { mock, service, tournamentId } = await setupBracket(3);
+    await assert.rejects(
+      service.generateAndSaveBracket(mock.tx, tournamentId, 8),
+      (err: any) => err.status === 400 && err.getResponse().error.code === 'INVALID_BRACKET',
+    );
+    assert.equal(mock.matches.size, 0);
+  });
+
+  it('rejects an invalid custom bracket size (400, not 500)', async () => {
+    for (const size of [3, 64]) {
+      const { mock, service, tournamentId } = await setupBracket(2);
+      await assert.rejects(
+        service.generateAndSaveBracket(mock.tx, tournamentId, size),
+        (err: any) => err.status === 400,
+        `size ${size}`,
+      );
+    }
+  });
+
+  it('rejects more than 32 participants (400, not 500)', async () => {
+    const { mock, service, tournamentId } = await setupBracket(33);
+    await assert.rejects(
+      service.generateAndSaveBracket(mock.tx, tournamentId),
+      (err: any) => err.status === 400 && err.getResponse().error.code === 'INVALID_BRACKET',
+    );
+    assert.equal(mock.matches.size, 0);
   });
 });

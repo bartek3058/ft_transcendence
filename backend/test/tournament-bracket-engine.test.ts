@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BracketGenerationError,
   generateBracket,
   getBracketSize,
   seedParticipants,
@@ -61,6 +62,33 @@ describe('Tournament Bracket Generation Engine (Pure)', () => {
       assert.equal(seeded[1].userId, 'u-later');
       assert.equal(seeded[1].seed, 2);
     });
+
+    it('sorts a missing registeredAt after known dates, regardless of input order', () => {
+      const date = new Date('2026-01-01T00:00:00Z');
+      const players: ParticipantToSeed[] = [
+        { userId: 'u-b', seedRating: 1500 },
+        { userId: 'u-dated', seedRating: 1500, registeredAt: date },
+        { userId: 'u-a', seedRating: 1500 },
+      ];
+      const expected = ['u-dated', 'u-a', 'u-b'];
+      const permutations = [
+        [0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0],
+      ];
+      for (const order of permutations) {
+        const seeded = seedParticipants(order.map((i) => players[i]));
+        assert.deepEqual(seeded.map((p) => p.userId), expected, `input order ${order}`);
+      }
+    });
+
+    it('falls back to a locale-independent userId comparison', () => {
+      const seeded = seedParticipants([
+        { userId: 'b', seedRating: 1500 },
+        { userId: 'B', seedRating: 1500 },
+        { userId: 'a', seedRating: 1500 },
+      ]);
+      // Code-point order: uppercase before lowercase.
+      assert.deepEqual(seeded.map((p) => p.userId), ['B', 'a', 'b']);
+    });
   });
 
   describe('generateBracket', () => {
@@ -88,6 +116,49 @@ describe('Tournament Bracket Generation Engine (Pure)', () => {
             bracketSize: 6,
           }),
         /Invalid bracket size: 6/,
+      );
+    });
+
+    it('rejects a bracket size that would leave a Round 1 match without players', () => {
+      const participants = [
+        { userId: 'u1', seedRating: 1300 },
+        { userId: 'u2', seedRating: 1200 },
+        { userId: 'u3', seedRating: 1100 },
+      ];
+      assert.throws(
+        () => generateBracket({ tournamentId: 't1', participants, bracketSize: 8 }),
+        (err: unknown) =>
+          err instanceof BracketGenerationError && /too large for 3 participants/.test(err.message),
+      );
+      // Exactly half the slots filled is also rejected (would be all byes).
+      assert.throws(
+        () =>
+          generateBracket({
+            tournamentId: 't1',
+            participants: participants.slice(0, 2),
+            bracketSize: 4,
+          }),
+        BracketGenerationError,
+      );
+    });
+
+    it('throws BracketGenerationError for every invalid input', () => {
+      const two = [
+        { userId: 'u1', seedRating: 1200 },
+        { userId: 'u2', seedRating: 1100 },
+      ];
+      assert.throws(
+        () => generateBracket({ tournamentId: 't1', participants: two.slice(0, 1) }),
+        BracketGenerationError,
+      );
+      assert.throws(
+        () => generateBracket({ tournamentId: 't1', participants: two, bracketSize: 6 }),
+        BracketGenerationError,
+      );
+      const many = Array.from({ length: 33 }, (_, i) => ({ userId: `u${i}`, seedRating: 1000 + i }));
+      assert.throws(
+        () => generateBracket({ tournamentId: 't1', participants: many }),
+        BracketGenerationError,
       );
     });
 

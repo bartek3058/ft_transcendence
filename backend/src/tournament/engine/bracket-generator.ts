@@ -7,6 +7,17 @@ import {
 } from './tournament-engine.types';
 
 /**
+ * Invalid bracket input (participant count / bracket size). The service maps
+ * it to HTTP 400; any other Error stays a server error.
+ */
+export class BracketGenerationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BracketGenerationError';
+  }
+}
+
+/**
  * Calculates the next power of 2 greater than or equal to playerCount.
  * Bounds: minimum 2, maximum 32 (per 42 subject and DB constraints).
  */
@@ -19,8 +30,11 @@ export function getBracketSize(playerCount: number): number {
 /**
  * Seeds participants deterministically:
  * 1. By seedRating descending (higher ELO gets lower seed number, e.g. Seed 1).
- * 2. Tiebreaker: registeredAt ascending (earlier sign-up wins tie).
- * 3. Fallback: userId string comparison.
+ * 2. Tiebreaker: registeredAt ascending (earlier sign-up wins tie);
+ *    a missing registeredAt sorts after any known date.
+ * 3. Fallback: userId code-point comparison (locale-independent).
+ * The comparator is a strict total order, so the result never depends on the
+ * input order or the server locale.
  */
 export function seedParticipants(
   participants: ParticipantToSeed[],
@@ -29,11 +43,13 @@ export function seedParticipants(
     if (b.seedRating !== a.seedRating) {
       return b.seedRating - a.seedRating;
     }
-    if (a.registeredAt && b.registeredAt) {
-      const timeDiff = a.registeredAt.getTime() - b.registeredAt.getTime();
-      if (timeDiff !== 0) return timeDiff;
+    const aTime = a.registeredAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bTime = b.registeredAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (aTime !== bTime) {
+      return aTime < bTime ? -1 : 1;
     }
-    return a.userId.localeCompare(b.userId);
+    if (a.userId === b.userId) return 0;
+    return a.userId < b.userId ? -1 : 1;
   });
 
   return sorted.map((p, idx) => ({
@@ -59,17 +75,29 @@ export function generateBracket(
 ): GeneratedBracket {
   const { participants } = options;
   if (participants.length < 2) {
-    throw new Error('A tournament requires at least 2 participants.');
+    throw new BracketGenerationError('A tournament requires at least 2 participants.');
   }
 
   const bracketSize = options.bracketSize ?? getBracketSize(participants.length);
   if (bracketSize < 2 || bracketSize > 32 || (bracketSize & (bracketSize - 1)) !== 0) {
-    throw new Error(`Invalid bracket size: ${bracketSize}. Must be a power of 2 between 2 and 32.`);
+    throw new BracketGenerationError(
+      `Invalid bracket size: ${bracketSize}. Must be a power of 2 between 2 and 32.`,
+    );
   }
 
   if (participants.length > bracketSize) {
-    throw new Error(
+    throw new BracketGenerationError(
       `Participants count (${participants.length}) exceeds bracket size (${bracketSize}).`,
+    );
+  }
+
+  // More than half the slots empty would create a Round 1 match with no
+  // players, which can never be played or resolved. Only the smallest power of
+  // 2 that fits the participants is allowed (AI-filled slots are a future option).
+  if (participants.length <= bracketSize / 2) {
+    throw new BracketGenerationError(
+      `Bracket size ${bracketSize} is too large for ${participants.length} participants ` +
+        `(use ${getBracketSize(participants.length)}).`,
     );
   }
 

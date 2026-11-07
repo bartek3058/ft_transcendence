@@ -8,6 +8,7 @@ import {
 import { Prisma, TournamentMatch } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import {
+  BracketGenerationError,
   generateBracket,
   getBracketSize,
 } from './engine/bracket-generator';
@@ -143,11 +144,22 @@ export class TournamentBracketService {
     const bracketSize =
       customBracketSize ?? getBracketSize(participantsToSeed.length);
 
-    const bracket = generateBracket({
-      tournamentId,
-      participants: participantsToSeed,
-      bracketSize,
-    });
+    let bracket: GeneratedBracket;
+    try {
+      bracket = generateBracket({
+        tournamentId,
+        participants: participantsToSeed,
+        bracketSize,
+      });
+    } catch (err) {
+      if (err instanceof BracketGenerationError) {
+        // Invalid input -> 400; the transaction rolls back the status claim.
+        throw new BadRequestException({
+          error: { code: 'INVALID_BRACKET', message: err.message },
+        });
+      }
+      throw err;
+    }
 
     // 3. Clear any stale seeds first so sequential updates cannot collide on
     //    the (tournament_id, seed) unique index.
@@ -235,9 +247,32 @@ export class TournamentBracketService {
     await this.assertTournamentInProgress(tx, tournamentId);
     const match = await this.loadPlayableMatch(tx, tournamentId, matchId);
 
-    const gamesCount = await tx.game.count({
-      where: { tournamentMatchId: matchId },
-    });
+    // Count only played draws (an abandonment is a forfeit, not a draw), and
+    // only once no game of this match is still running.
+    const [liveGames, gamesCount] = await Promise.all([
+      tx.game.count({
+        where: { tournamentMatchId: matchId, result: 'IN_PROGRESS' },
+      }),
+      tx.game.count({
+        where: {
+          tournamentMatchId: matchId,
+          result: 'DRAW',
+          // `not` alone would also drop rows with a NULL end_reason.
+          OR: [{ endReason: null }, { endReason: { not: 'ABANDONMENT' } }],
+        },
+      }),
+    ]);
+
+    if (liveGames > 0) {
+      throw new ConflictException(
+        `Match ${matchId} still has a game in progress.`,
+      );
+    }
+    if (gamesCount === 0) {
+      throw new ConflictException(
+        `Match ${matchId} has no drawn game to resolve.`,
+      );
+    }
 
     if (gamesCount < 3) {
       this.logger.log(

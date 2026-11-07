@@ -32,6 +32,7 @@
     "test:tournament-bracket": "ts-node --project tsconfig.tools.json test/tournament-bracket-engine.test.ts",
     "test:tournament-bracket:service": "ts-node --project tsconfig.tools.json test/tournament-bracket-service.test.ts",
     "test:tournament-games": "ts-node --project tsconfig.tools.json test/tournament-game-service.test.ts",
+    "test:game-gateway": "ts-node --project tsconfig.tools.json test/game-gateway-conclusion.test.ts",
     "test:tournament:db": "ts-node --project tsconfig.tools.json test/integration/tournament-postgres.test.ts",
     "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts"
   },
