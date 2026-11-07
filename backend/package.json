@@ -21,6 +21,7 @@
     "test:api-guard": "ts-node --project tsconfig.tools.json test/public-api-guard-and-limiter.test.ts",
     "test:sliding-limiter": "ts-node --project tsconfig.tools.json test/sliding-window-limiter.test.ts",
     "test:tournaments:http": "ts-node --project tsconfig.tools.json test/tournaments-http.test.ts",
+    "test:friends:filter": "ts-node --project tsconfig.tools.json test/friends-exception-filter.test.ts",
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
     "test:matchmaking:service": "ts-node --project tsconfig.tools.json test/matchmaking-service.test.ts",

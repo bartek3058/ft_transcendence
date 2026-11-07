@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { AUTH_CONFIG, AuthConfig } from '../../auth/auth.config';
 import { AuthenticatedRequest } from '../../auth/session.guard';
+import { hasErrorEnvelope } from '../../common/http-error-envelope';
 import { TournamentHttpError } from './tournament.errors';
 import { TournamentRateLimiter } from './tournament-rate-limiter';
 
@@ -82,15 +83,6 @@ const GENERIC: Record<number, readonly [string, string]> = {
   404: ['TOURNAMENT_NOT_FOUND', 'Tournament not found.'],
   409: ['TOURNAMENT_CONFLICT', 'Tournament state does not allow this action.'],
 };
-
-// Nest's default bodies are `{ message, error: 'Conflict', statusCode }` (error is a string),
-// so only an object `error` with a string `code` counts as our envelope.
-function hasErrorEnvelope(body: unknown): boolean {
-  if (typeof body !== 'object' || body === null || !('error' in body)) return false;
-  const envelope = (body as { error: unknown }).error;
-  return typeof envelope === 'object' && envelope !== null
-    && typeof (envelope as { code?: unknown }).code === 'string';
-}
 
 @Catch()
 export class TournamentsExceptionFilter implements ExceptionFilter {

@@ -3,6 +3,7 @@ import { ArgumentsHost, BadRequestException, UnsupportedMediaTypeException, CanA
 import { AUTH_CONFIG, AuthConfig } from '../auth/auth.config';
 import { AuthRateLimiter } from '../auth/auth-rate-limiter';
 import { AuthRetryException } from '../auth/auth.errors';
+import { hasErrorEnvelope } from '../common/http-error-envelope';
 
 @Injectable()
 export class FriendsRequestGuard implements CanActivate {
@@ -47,7 +48,7 @@ export class FriendsExceptionFilter implements ExceptionFilter {
     if (error instanceof AuthRetryException) res.setHeader('Retry-After', error.retryAfter);
     if (error instanceof HttpException) {
       const body = error.getResponse();
-      return res.status(error.getStatus()).json(typeof body === 'object' && 'error' in body ? body : {
+      return res.status(error.getStatus()).json(hasErrorEnvelope(body) ? body : {
         error: { code: 'INVALID_INPUT', message: 'Request validation failed.' },
       });
     }
