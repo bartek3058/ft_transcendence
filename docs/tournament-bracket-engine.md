@@ -36,6 +36,8 @@ flowchart TD
     FinalCheck -- No --> ActiveMatches
 ```
 
+> Registration, deadline scheduling and the HTTP routes that start a bracket are documented in [tournaments-api.md](tournaments-api.md).
+
 ---
 
 ## 2. Seeding & Bracket Topology Rules
