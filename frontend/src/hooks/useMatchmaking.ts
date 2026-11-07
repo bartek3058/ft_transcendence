@@ -75,7 +75,19 @@ export function useMatchmaking() {
     matchmaking.on("connect_error", onConnectError);
 
     gameSocket.on("game:joined", onGameJoined);
-    gameSocket.on("game:error", onError);
+    const onGameError = (payload?: { code?: string }) => {
+      if (
+        [
+          "UNAUTHENTICATED",
+          "GAME_NOT_FOUND",
+          "NOT_A_PLAYER",
+          "GAME_ID_REQUIRED",
+        ].includes(payload?.code ?? "")
+      ) {
+        onError(payload);
+      }
+    };
+    gameSocket.on("game:error", onGameError);
     gameSocket.on("connect_error", onConnectError);
 
     return () => {
@@ -87,7 +99,7 @@ export function useMatchmaking() {
       matchmaking.off("connect_error", onConnectError);
 
       gameSocket.off("game:joined", onGameJoined);
-      gameSocket.off("game:error", onError);
+      gameSocket.off("game:error", onGameError);
       gameSocket.off("connect_error", onConnectError);
 
       wantsToSearchRef.current = false;
@@ -105,6 +117,9 @@ export function useMatchmaking() {
   const search = useCallback(() => {
     const socket = getMatchmakingSocket();
 
+    if (game) {
+      getGameSocket().emit("game:leave", { gameId: game.gameId });
+    }
     setError(null);
     setGame(null);
     setGameId(null);
@@ -123,7 +138,7 @@ export function useMatchmaking() {
     if (!socket.connected) {
       socket.connect();
     }
-  }, []);
+  }, [game]);
 
   const cancel = useCallback(() => {
     const socket = getMatchmakingSocket();

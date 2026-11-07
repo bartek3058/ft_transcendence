@@ -1,180 +1,175 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
+import {
+  getGameSocket,
+  type GameJoined,
+  type PublicGameState,
+  type GameClockSnapshot,
+} from "../services/socket";
 
 export type PromotionPiece = Extract<PieceSymbol, "q" | "r" | "b" | "n">;
 export type PendingPromotion = { from: Square; to: Square; color: Color };
 export type GameResult = { title: string; message: string } | null;
 
-const INITIAL_TIME = 10 * 60;
+type ClockSnapshot = {
+  whiteMs: number;
+  blackMs: number;
+  turn: Color;
+  isFinished: boolean;
+  receivedAt: number;
+};
 
-export function useChessGame() {
-  const [game, setGame] = useState(() => new Chess());
+function createClockSnapshot(state: PublicGameState): ClockSnapshot {
+  return {
+    whiteMs: state.whiteTimeRemainingMs,
+    blackMs: state.blackTimeRemainingMs,
+    turn: state.turn,
+    isFinished: state.isFinished,
+    receivedAt: performance.now(),
+  };
+}
+
+export function useChessGame(joined: GameJoined) {
+  const [state, setState] = useState<PublicGameState>(joined.state);
   const [selected, setSelected] = useState<Square | null>(null);
-  const [moves, setMoves] = useState<string[]>([]);
   const [pendingPromotion, setPendingPromotion] =
     useState<PendingPromotion | null>(null);
-  const [whiteTime, setWhiteTime] = useState(INITIAL_TIME);
-  const [blackTime, setBlackTime] = useState(INITIAL_TIME);
-  const [started, setStarted] = useState(false);
-  const [result, setResult] = useState<GameResult>(null);
-
-  const board = useMemo(() => game.board(), [game]);
+  const [error, setError] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const [clockSnapshot, setClockSnapshot] = useState<ClockSnapshot>(() =>
+    createClockSnapshot(joined.state),
+  );
+  const [clockNow, setClockNow] = useState(() => performance.now());
 
   useEffect(() => {
-    if (!started || result || game.isGameOver() || pendingPromotion) return;
+    const socket = getGameSocket();
 
-    const id = window.setInterval(() => {
-      if (game.turn() === "w") {
-        setWhiteTime((t) => {
-          if (t <= 1) {
-            setResult({
-              title: "Time's up",
-              message: "Alice wins — Peter ran out of time.",
-            });
-            return 0;
-          }
+    const onState = (next: PublicGameState) => {
+      if (next.gameId !== joined.gameId) return;
 
-          return t - 1;
-        });
-      } else {
-        setBlackTime((t) => {
-          if (t <= 1) {
-            setResult({
-              title: "Time's up",
-              message: "Peter wins — Alice ran out of time.",
-            });
-            return 0;
-          }
+      const now = performance.now();
+      setState(next);
+      setClockSnapshot({
+        whiteMs: next.whiteTimeRemainingMs,
+        blackMs: next.blackTimeRemainingMs,
+        turn: next.turn,
+        isFinished: next.isFinished,
+        receivedAt: now,
+      });
+      setClockNow(now);
+      setSelected(null);
+      setPendingPromotion(null);
+      setWaiting(false);
+      setError(null);
+    };
 
-          return t - 1;
-        });
+    const onError = (payload?: { code?: string; state?: PublicGameState }) => {
+      if (payload?.state?.gameId === joined.gameId) onState(payload.state);
+      setError(payload?.code ?? "Unable to make move");
+      setWaiting(false);
+    };
+
+    const onClock = (snapshot: GameClockSnapshot) => {
+      if (snapshot.gameId !== joined.gameId) return;
+      const now = performance.now();
+      setClockSnapshot({
+        whiteMs: snapshot.whiteTimeRemainingMs,
+        blackMs: snapshot.blackTimeRemainingMs,
+        turn: snapshot.turn,
+        isFinished: snapshot.isFinished,
+        receivedAt: now,
+      });
+      setClockNow(now);
+    };
+
+    socket.on("game:clock", onClock);
+    socket.on("game:state", onState);
+    socket.on("game:error", onError);
+
+    return () => {
+      socket.off("game:clock", onClock);
+      socket.off("game:state", onState);
+      socket.off("game:error", onError);
+    };
+  }, [joined.gameId]);
+
+  useEffect(() => {
+    if (clockSnapshot.isFinished || state.plyCount === 0) return;
+
+    const interval = window.setInterval(() => {
+      setClockNow(performance.now());
+    }, 100);
+
+    return () => window.clearInterval(interval);
+  }, [clockSnapshot.isFinished, state.plyCount]);
+
+  const elapsedMs =
+    clockSnapshot.isFinished || state.plyCount === 0
+      ? 0
+      : Math.max(0, clockNow - clockSnapshot.receivedAt);
+
+  const whiteTimeMs = Math.max(
+    0,
+    clockSnapshot.whiteMs - (clockSnapshot.turn === "w" ? elapsedMs : 0),
+  );
+  const blackTimeMs = Math.max(
+    0,
+    clockSnapshot.blackMs - (clockSnapshot.turn === "b" ? elapsedMs : 0),
+  );
+
+  const game = useMemo(() => new Chess(state.fen), [state.fen]);
+  const board = useMemo(() => game.board(), [game]);
+  const canMove = !state.isFinished && !waiting && game.turn() === joined.color;
+
+  const sendMove = useCallback(
+    (from: Square, to: Square, promotion?: PromotionPiece) => {
+      const socket = getGameSocket();
+      if (!socket.connected) {
+        setError("Connection lost");
+        return;
       }
-    }, 1000);
 
-    return () => window.clearInterval(id);
-  }, [started, result, game, pendingPromotion]);
-
-  function finishIfNeeded(next: Chess) {
-    if (next.isCheckmate()) {
-      const winner = next.turn() === "w" ? "Alice" : "Peter";
-      setResult({
-        title: "Checkmate!",
-        message: `${winner} wins the game.`,
-      });
-    } else if (next.isStalemate()) {
-      setResult({
-        title: "Stalemate",
-        message: "The game ended in a draw.",
-      });
-    } else if (next.isThreefoldRepetition()) {
-      setResult({
-        title: "Draw",
-        message: "Threefold repetition.",
-      });
-    } else if (next.isInsufficientMaterial()) {
-      setResult({
-        title: "Draw",
-        message: "Insufficient material to checkmate.",
-      });
-    } else if (next.isDraw()) {
-      setResult({
-        title: "Draw",
-        message: "The game ended in a draw.",
-      });
-    }
-  }
-
-  function makeMove(
-    from: Square,
-    to: Square,
-    promotion?: PromotionPiece,
-  ): boolean {
-    try {
-      const next = new Chess(game.fen());
-      const move = next.move({
+      setWaiting(true);
+      setError(null);
+      socket.emit("game:move", {
+        gameId: joined.gameId,
         from,
         to,
         ...(promotion ? { promotion } : {}),
       });
-
-      if (!move) {
-        return false;
-      }
-
-      setGame(next);
-      setMoves((current) => [...current, move.san]);
-      setStarted(true);
-      finishIfNeeded(next);
-
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function requiresPromotion(from: Square, to: Square): boolean {
-    const piece = game.get(from);
-
-    if (piece?.type !== "p") {
-      return false;
-    }
-
-    const reachesLastRank =
-      (piece.color === "w" && to.endsWith("8")) ||
-      (piece.color === "b" && to.endsWith("1"));
-
-    if (!reachesLastRank) {
-      return false;
-    }
-
-    return game
-      .moves({ square: from, verbose: true })
-      .some((move) => move.to === to && Boolean(move.promotion));
-  }
+    },
+    [joined.gameId],
+  );
 
   function movePiece(from: Square, to: Square) {
-    if (game.isGameOver() || pendingPromotion || result) {
-      return;
-    }
+    if (!canMove || pendingPromotion) return;
 
     const piece = game.get(from);
+    if (!piece || piece.color !== joined.color) return;
 
-    if (!piece || piece.color !== game.turn()) {
-      return;
-    }
+    const legalMoves = game.moves({ square: from, verbose: true });
+    const candidates = legalMoves.filter((move) => move.to === to);
+    if (!candidates.length) return;
 
-    if (requiresPromotion(from, to)) {
-      setPendingPromotion({
-        from,
-        to,
-        color: piece.color,
-      });
+    if (candidates.some((move) => Boolean(move.promotion))) {
+      setPendingPromotion({ from, to, color: piece.color });
       setSelected(null);
       return;
     }
 
-    makeMove(from, to);
+    sendMove(from, to);
     setSelected(null);
   }
 
   function clickSquare(square: Square) {
-    if (game.isGameOver() || pendingPromotion || result) {
-      return;
-    }
+    if (!canMove || pendingPromotion) return;
 
     if (!selected) {
-      const piece = game.get(square);
-
-      if (piece?.color === game.turn()) {
-        setSelected(square);
-      }
-
+      if (game.get(square)?.color === joined.color) setSelected(square);
       return;
     }
 
-    const target = game.get(square);
-
-    if (target?.color === game.turn()) {
+    if (game.get(square)?.color === joined.color) {
       setSelected(square);
       return;
     }
@@ -183,54 +178,67 @@ export function useChessGame() {
   }
 
   function promote(piece: PromotionPiece) {
-    if (!pendingPromotion) {
-      return;
+    if (!pendingPromotion) return;
+    sendMove(pendingPromotion.from, pendingPromotion.to, piece);
+    setPendingPromotion(null);
+  }
+
+  const resign = useCallback(async (): Promise<boolean> => {
+    if (state.isFinished) return true;
+    const socket = getGameSocket();
+    if (!socket.connected) {
+      setError("Connection lost");
+      return false;
     }
+    setWaiting(true);
+    setError(null);
+    return new Promise<boolean>((resolve) => {
+      socket
+        .timeout(15000)
+        .emit(
+          "game:resign",
+          { gameId: joined.gameId },
+          (
+            timeoutError: Error | null,
+            reply?: { success: boolean; code?: string },
+          ) => {
+            setWaiting(false);
+            if (timeoutError || !reply?.success) {
+              setError(reply?.code ?? "Unable to resign. Please try again.");
+              resolve(false);
+              return;
+            }
+            resolve(true);
+          },
+        );
+    });
+  }, [joined.gameId, state.isFinished]);
 
-    makeMove(pendingPromotion.from, pendingPromotion.to, piece);
-    setPendingPromotion(null);
-  }
-
-  function cancelPromotion() {
-    setPendingPromotion(null);
-  }
-
-  function reset() {
-    setGame(new Chess());
-    setMoves([]);
-    setSelected(null);
-    setPendingPromotion(null);
-    setWhiteTime(INITIAL_TIME);
-    setBlackTime(INITIAL_TIME);
-    setStarted(false);
-    setResult(null);
-  }
-
-  function resign() {
-    if (!result) {
-      setResult({
-        title: "Resignation",
-        message: `${
-          game.turn() === "w" ? "Alice" : "Peter"
-        } wins — the opponent resigned.`,
-      });
-    }
-  }
+  const result: GameResult = state.isFinished
+    ? {
+        title: state.winnerColor ? "Game over" : "Draw",
+        message: state.winnerColor
+          ? `${state.winnerColor === "w" ? "White" : "Black"} wins (${state.gameOverReason ?? "game over"}).`
+          : `Draw (${state.gameOverReason ?? "game over"}).`,
+      }
+    : null;
 
   return {
     game,
     board,
     selected,
-    moves,
+    moves: state.moves ?? [],
     pendingPromotion,
-    whiteTime,
-    blackTime,
+    whiteTime: Math.ceil(whiteTimeMs / 1000),
+    blackTime: Math.ceil(blackTimeMs / 1000),
     result,
+    error,
+    waiting,
     clickSquare,
     movePiece,
     promote,
-    cancelPromotion,
-    reset,
+    cancelPromotion: () => setPendingPromotion(null),
+    isFinished: state.isFinished,
     resign,
   };
 }

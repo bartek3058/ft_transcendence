@@ -147,6 +147,42 @@ export class GameService implements OnModuleDestroy
     public onGameConcluded(listener: GameConclusionListener): void {
       this.conclusionListeners.push(listener);
     }
+
+    public getActiveGameIds(): string[] {
+      return [...this.activeGames.keys()];
+    }
+
+    public getClockSnapshot(gameId: string, now = Date.now()) {
+      const session = this.activeGames.get(gameId);
+      if (!session) return null;
+      const elapsed = session.isFinished || session.plyCount === 0
+        ? 0 : Math.max(0, now - session.lastMoveTimestamp);
+      return {
+        gameId,
+        whiteTimeRemainingMs: Math.max(0, session.whiteTimeRemainingMs - (session.engine.turn() === 'w' ? elapsed : 0)),
+        blackTimeRemainingMs: Math.max(0, session.blackTimeRemainingMs - (session.engine.turn() === 'b' ? elapsed : 0)),
+        turn: session.engine.turn(),
+        plyCount: session.plyCount,
+        isFinished: session.isFinished,
+      };
+    }
+
+    public checkGameTimeout(gameId: string, now = Date.now()): boolean {
+      const session = this.activeGames.get(gameId);
+      if (!session || session.isFinished || session.plyCount === 0) return false;
+      const turn = session.engine.turn();
+      const remaining = turn === 'w' ? session.whiteTimeRemainingMs : session.blackTimeRemainingMs;
+      if (remaining > Math.max(0, now - session.lastMoveTimestamp)) return false;
+      if (turn === 'w') session.whiteTimeRemainingMs = 0;
+      else session.blackTimeRemainingMs = 0;
+      session.lastMoveTimestamp = now;
+      session.isFinished = true;
+      session.gameOverReason = 'TIMEOUT';
+      session.winnerColor = turn === 'w' ? 'b' : 'w';
+      this.logger.log(`Game [${gameId}] ended by TIMEOUT.`);
+      return true;
+    }
+
     //Internal lookup returning the mutable GameSession reference for engine tasks (#114-#118).
     public getGameSession(gameId: string): GameSession | undefined {
       return this.activeGames.get(gameId);
@@ -437,17 +473,18 @@ export class GameService implements OnModuleDestroy
 
       //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
       const concluded = await this.persistGameConclusion(gameId, final);
-      if (concluded) {
-        await this.triggerRatingUpdate(gameId);
-        await this.notifyConclusionListeners({
-          gameId,
-          result: final.result,
-          endReason: final.endReason,
-          whitePlayerId: session.whitePlayerId,
-          blackPlayerId: session.blackPlayerId,
-        });
+      if (!concluded) {
+        this.logger.error(`Could not persist conclusion of game [${gameId}]; retaining session for retry.`);
+        return false;
       }
-
+      await this.triggerRatingUpdate(gameId);
+	  await this.notifyConclusionListeners({
+		gameId,
+		result: final.result,
+		endReason: final.endReason,
+		whitePlayerId: session.whitePlayerId,
+		blackPlayerId: session.blackPlayerId,
+    	});
       const deleted = this.activeGames.delete(gameId);
       if (deleted) {
         this.logger.log(`Purged game session [${gameId}] from server RAM.`);
@@ -670,6 +707,7 @@ export class GameService implements OnModuleDestroy
     return {
       gameId: session.gameId,
       fen: session.engine.fen(),
+      moves: session.engine.history(),
       turn: session.engine.turn(),
       whitePlayerId: session.whitePlayerId,
       blackPlayerId: session.blackPlayerId,
@@ -822,6 +860,11 @@ export class GameService implements OnModuleDestroy
 
     const { session, playerColor, playerId } = auth;
     const fenBeforeMove = session.engine.fen();
+    // Check the server deadline BEFORE applying the move.
+    if (this.checkGameTimeout(dto.gameId)) {
+      return { success: false, currentFen: fenBeforeMove, errorReason: 'TIMEOUT',
+        isGameOver: true, gameOverReason: 'TIMEOUT', winnerColor: session.winnerColor };
+    }
     let moveObj: ReturnType<Chess['move']>;
     try {
       moveObj = session.engine.move({
@@ -847,7 +890,14 @@ export class GameService implements OnModuleDestroy
       };
     }
     const now = Date.now();
-    const timeSpentMs = Math.max(0, now - session.lastMoveTimestamp);
+    const timeSpentMs = session.plyCount === 0
+      ? 0
+      : Math.max(0, now - session.lastMoveTimestamp);
+    if (playerColor === 'w') {
+      session.whiteTimeRemainingMs = Math.max(0, session.whiteTimeRemainingMs - timeSpentMs);
+    } else {
+      session.blackTimeRemainingMs = Math.max(0, session.blackTimeRemainingMs - timeSpentMs);
+    }
     session.lastMoveTimestamp = now;
     session.plyCount += 1;
     this.evaluateGameOverState(session, playerColor); // chceck that this move is game over
