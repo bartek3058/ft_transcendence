@@ -80,6 +80,11 @@ function OnlineGame({
 
   return (
     <>
+      {!chess.connected && (
+        <p role="status" className="muted">
+          Reconnecting to the game...
+        </p>
+      )}
       <div className="gameLayout">
         <section>
           <div className="player">
