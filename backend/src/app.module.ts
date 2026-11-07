@@ -7,6 +7,7 @@ import { RatingModule } from "./rating/rating.module";
 import { ProfileModule } from "./profile/profile.module";
 import { PublicApiModule } from "./public-api/public-api.module";
 import { MatchmakingModule } from "./matchmaking/matchmaking.module";
+import { TournamentModule } from "./tournament/tournament.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MatchmakingModule } from "./matchmaking/matchmaking.module";
     ProfileModule,
     PublicApiModule,
     MatchmakingModule,
+    TournamentModule,
   ],
   controllers: [],
   providers: [],
