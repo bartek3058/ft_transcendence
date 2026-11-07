@@ -64,6 +64,27 @@ export class TournamentLifecycleService {
   }
 
   /**
+   * Manual cancel (permission is checked by the caller). Allowed only from
+   * OPEN_FOR_SIGNUP / REGISTRATION_CLOSED; IN_PROGRESS is out of scope (live games).
+   * The conditional UPDATE takes the same row lock as join, leave, close and the
+   * scheduler, so any race ends in exactly one committed outcome.
+   */
+  async cancel(tournamentId: string): Promise<void> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      UPDATE tournaments SET status = 'CANCELLED', updated_at = now()
+      WHERE id = ${tournamentId}::uuid AND status IN ('OPEN_FOR_SIGNUP', 'REGISTRATION_CLOSED')
+      RETURNING id`;
+    if (rows.length === 0) {
+      const exists = await this.prisma.tournament.count({ where: { id: tournamentId } });
+      if (!exists) throw new TournamentHttpError(404, 'TOURNAMENT_NOT_FOUND', 'Tournament not found.');
+      throw new TournamentHttpError(409, 'TOURNAMENT_NOT_CANCELLABLE',
+        'Only a tournament that has not started can be cancelled.');
+    }
+    this.logger.log(`Tournament ${tournamentId} cancelled (MANUAL).`);
+    this.events.cancelled({ tournamentId, at: new Date() });
+  }
+
+  /**
    * Gives up on a tournament whose bracket start keeps failing: CANCELLED, only if it is
    * still expired-open or REGISTRATION_CLOSED (never one that started meanwhile).
    * Returns false when the tournament was already handled elsewhere.

@@ -8,7 +8,7 @@ import {
 import { TournamentsService } from './tournaments.service';
 
 // Guard order: id format + per-IP limit (no I/O) -> session -> per-user limit -> handler (DB).
-// :id is already UUID-checked by TournamentRequestGuard; join/leave/close accept only `{}`.
+// :id is already UUID-checked by TournamentRequestGuard; join/leave/close/cancel accept only `{}`.
 @Controller('tournaments')
 @UseFilters(TournamentsExceptionFilter)
 @UseGuards(TournamentRequestGuard, SessionGuard, TournamentUserLimitGuard)
@@ -44,5 +44,10 @@ export class TournamentsController {
   @Post(':id/close-registration') @HttpCode(200)
   closeRegistration(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.tournaments.closeRegistration(req.account.id, id);
+  }
+
+  @Post(':id/cancel') @HttpCode(200)
+  cancel(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.tournaments.cancel(req.account.id, id);
   }
 }

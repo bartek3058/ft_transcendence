@@ -17,7 +17,8 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Public API, Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
 - **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
 - **Tournament bracket & progression engine** - automated single-elimination tournament generator with balanced seed-fold pairing, Round 1 Bye resolution, match progression to champion, and knockout draw tiebreak handling.
-- _TODO: tournament registration API / lobby UI, AI opponent, live chat, internationalization._
+- **Tournament registration & lifecycle** - create, browse (open / live / past) and join tournaments; the creator or an admin can close registration early or cancel. Registration closes on its own at the deadline, the bracket starts automatically, and tournaments with fewer than 2 players are cancelled.
+- _TODO: tournament lobby UI, AI opponent, live chat, internationalization._
 
 ---
 
@@ -120,6 +121,7 @@ The DB roles are split: an owner role runs migrations and seeding, while the app
 | Ranking & statistics API | astefans, pmamala, tszymans | Per-user profile and statistics (`GET /api/profile/me`), public web leaderboard (`GET /api/leaderboard`), and machine-to-machine public ranking API (`GET /api/v1/leaderboard`). |
 | Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90), full API key CRUD, global ELO leaderboard & platform statistics (Issue #146) with OpenAPI/Swagger docs at `/api/docs`. |
 | Game conclusion & rating trigger | tszymans | Authoritative termination hook in `GameService.removeGame()` resolving final results (`WHITE_WON`, `BLACK_WON`, `DRAW`, `ABORTED`), persisting to PostgreSQL `games`, and triggering atomic Elo recalculations via `RatingService.applyGameResult()`. |
+| Tournament registration & lifecycle | tszymans | Session-authenticated REST routes under `/api/tournaments` (create, list, detail, join, leave, close-registration, cancel). Atomic slot counting in PostgreSQL, a 60 s deadline scheduler that starts the bracket exactly once, frozen seed ratings in responses. Contract: [docs/tournaments-api.md](docs/tournaments-api.md). |
 
 ---
 
@@ -166,10 +168,12 @@ Product Owner, Public API subsystem, API key security, sliding-window rate limit
 - Implemented public leaderboard and platform statistics (`GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/players/:username`) with win/loss aggregation and win percentage calculation.
 - Connected real backend APIs to frontend ranking (`/ranking`) and history (`/history`) views, eliminating static mock data.
 - Built test suites covering API security, rate limit headers, match queries, and leaderboard pagination.
+- Built tournament registration and lifecycle (Issue #102): seven `/api/tournaments` routes, a registration-deadline scheduler, and start/cancel transitions that stay consistent under concurrent requests, all tested against real PostgreSQL.
 
 ### Challenges
 - Guaranteeing database protection against DoS by enforcing zero-I/O key validation and sliding-window rate limiting before database queries.
 - Designing consistent pagination and aggregation for player rankings while handling ties and case-insensitive lookups safely.
+- Making joins, closes, cancels and the scheduler safe to race each other: every state change is one conditional `UPDATE` on the tournament row, so exactly one outcome commits.
 
 ## pjedrycz - Tech Lead
 ### Responsibilities
@@ -225,6 +229,7 @@ ft_transcendence/
 │       ├── profile/       # user profile & statistics
 │       ├── public-api/    # API keys, match history, leaderboard & platform stats
 │       ├── rating/        # ELO rating engine & service
+│       ├── tournament/    # bracket engine, registration routes, lifecycle & deadline scheduler
 │       └── health/        # health check endpoint
 ├── nginx/                 # TLS termination & reverse proxy
 ├── docs/                  # setup and implementation documentation

@@ -11,9 +11,15 @@ export interface RegistrationClosedEvent {
   at: Date;
 }
 
-type Listener = (event: RegistrationClosedEvent) => void | Promise<void>;
+export interface TournamentCancelledEvent {
+  tournamentId: string;
+  at: Date;
+}
+
+type Listener<T> = (event: T) => void | Promise<void>;
 
 const REGISTRATION_CLOSED = 'registration-closed';
+const CANCELLED = 'cancelled';
 
 /**
  * In-process tournament notifications. Publish only after the transaction commits.
@@ -29,17 +35,31 @@ export class TournamentEventsPublisher implements OnModuleDestroy {
     setImmediate(() => this.events.emit(REGISTRATION_CLOSED, event));
   }
 
+  /** Manual cancel by the creator or an admin (the scheduler's cancels are registration-closed). */
+  cancelled(event: TournamentCancelledEvent): void {
+    setImmediate(() => this.events.emit(CANCELLED, event));
+  }
+
   /** Returns an unsubscribe function. */
-  onRegistrationClosed(listener: Listener): () => void {
-    const safe = (event: RegistrationClosedEvent) => {
+  onRegistrationClosed(listener: Listener<RegistrationClosedEvent>): () => void {
+    return this.subscribe(REGISTRATION_CLOSED, listener);
+  }
+
+  /** Returns an unsubscribe function. */
+  onCancelled(listener: Listener<TournamentCancelledEvent>): () => void {
+    return this.subscribe(CANCELLED, listener);
+  }
+
+  private subscribe<T>(name: string, listener: Listener<T>): () => void {
+    const safe = (event: T) => {
       try {
         Promise.resolve(listener(event)).catch((error: unknown) => this.report(error));
       } catch (error) {
         this.report(error);
       }
     };
-    this.events.on(REGISTRATION_CLOSED, safe);
-    return () => { this.events.off(REGISTRATION_CLOSED, safe); };
+    this.events.on(name, safe);
+    return () => { this.events.off(name, safe); };
   }
 
   onModuleDestroy(): void {

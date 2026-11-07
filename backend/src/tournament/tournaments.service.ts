@@ -167,6 +167,12 @@ export class TournamentsService {
     return { status: await this.lifecycle.closeAndStart(id, 'MANUAL') };
   }
 
+  async cancel(userId: string, id: string): Promise<{ status: 'CANCELLED' }> {
+    await this.assertCreatorOrAdmin(userId, id);
+    await this.lifecycle.cancel(id);
+    return { status: 'CANCELLED' };
+  }
+
   /** Role is read from the DB: SafeAccount carries no role. */
   private async assertCreatorOrAdmin(userId: string, id: string): Promise<void> {
     const [tournament, user] = await Promise.all([

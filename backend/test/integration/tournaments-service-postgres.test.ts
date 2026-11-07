@@ -507,6 +507,111 @@ describe('Tournaments service against PostgreSQL (#102)', () => {
     });
   });
 
+  describe('cancel', () => {
+    function recordCancels(tournamentId: string) {
+      const seen: string[] = [];
+      const unsubscribe = publisher.onCancelled((e) => { if (e.tournamentId === tournamentId) seen.push(e.tournamentId); });
+      return { seen, unsubscribe };
+    }
+
+    it('cancels an open tournament for the creator, keeping participant rows; one event', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      const rec = recordCancels(t.id);
+      try {
+        assert.deepEqual(await service.cancel(creator.id, t.id), { status: 'CANCELLED' });
+        await settle();
+        const state = await counterAndRows(t.id);
+        assert.equal(state.status, 'CANCELLED');
+        assert.equal(state.counter, 2);
+        assert.equal(state.rows, 2);
+        assert.equal(rec.seen.length, 1);
+      } finally {
+        rec.unsubscribe();
+      }
+      await expectError(service.join((await createUser()).id, t.id), 409, 'REGISTRATION_CLOSED');
+    });
+
+    it('allows only the creator or an admin; 404 for an unknown id', async () => {
+      const creator = await createUser();
+      const stranger = await createUser();
+      const admin = await createUser('admin');
+      const t = await createTournament(creator.id);
+      await expectError(service.cancel(stranger.id, t.id), 403, 'FORBIDDEN');
+      await expectError(service.cancel(admin.id, randomUUID()), 404, 'TOURNAMENT_NOT_FOUND');
+      assert.equal((await counterAndRows(t.id)).status, 'OPEN_FOR_SIGNUP');
+      assert.deepEqual(await service.cancel(admin.id, t.id), { status: 'CANCELLED' });
+    });
+
+    it('cancels from REGISTRATION_CLOSED; 409 for IN_PROGRESS, FINISHED and CANCELLED', async () => {
+      const creator = await createUser();
+      const statuses = ['REGISTRATION_CLOSED', 'IN_PROGRESS', 'FINISHED', 'CANCELLED'] as const;
+      const ids: Record<string, string> = {};
+      for (const status of statuses) {
+        const t = await createTournament(creator.id);
+        await prisma.tournament.update({ where: { id: t.id }, data: { status } });
+        ids[status] = t.id;
+      }
+      assert.deepEqual(await service.cancel(creator.id, ids.REGISTRATION_CLOSED), { status: 'CANCELLED' });
+      for (const status of ['IN_PROGRESS', 'FINISHED', 'CANCELLED']) {
+        await expectError(service.cancel(creator.id, ids[status]), 409, 'TOURNAMENT_NOT_CANCELLABLE');
+        assert.equal((await counterAndRows(ids[status])).status, status);
+      }
+    });
+
+    it('a cancel racing joins leaves counter and rows consistent', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 8);
+      const players = await Promise.all([1, 2, 3, 4, 5].map(() => createUser()));
+      const results = await Promise.allSettled([
+        ...players.map((p) => service.join(p.id, t.id)),
+        service.cancel(creator.id, t.id),
+      ]);
+      assert.equal(results[results.length - 1].status, 'fulfilled');
+      for (const r of results.slice(0, -1)) assert.ok(r.status === 'fulfilled' || codeOf(r) === 'REGISTRATION_CLOSED');
+      const state = await counterAndRows(t.id);
+      assert.equal(state.status, 'CANCELLED');
+      assert.equal(state.counter, state.rows);
+      assert.equal(state.rows, results.slice(0, -1).filter((r) => r.status === 'fulfilled').length);
+    });
+
+    it('a cancel racing a close and the scheduler ends in exactly one outcome', async () => {
+      for (let round = 0; round < 5; round++) {
+        const creator = await createUser();
+        const t = await createTournament(creator.id, 4);
+        for (const p of [await createUser(), await createUser(), await createUser()]) await service.join(p.id, t.id);
+        await prisma.tournament.update({ where: { id: t.id }, data: { registrationDeadline: new Date(Date.now() - MINUTE) } });
+        const closes = recordEvents(t.id);
+        const cancels = recordCancels(t.id);
+        try {
+          const [cancel, close] = await Promise.allSettled([
+            service.cancel(creator.id, t.id),
+            service.closeRegistration(creator.id, t.id),
+            new TournamentDeadlineScheduler(prisma, lifecycle).tick(),
+          ]);
+          await settle();
+          const state = await counterAndRows(t.id);
+          const matches = await prisma.tournamentMatch.count({ where: { tournamentId: t.id } });
+          if (state.status === 'CANCELLED') {
+            assert.equal(cancel.status, 'fulfilled');
+            assert.equal(codeOf(close), 'REGISTRATION_CLOSED');
+            assert.equal(matches, 0);
+            assert.deepEqual([cancels.seen.length, closes.seen.length], [1, 0]);
+          } else {
+            assert.equal(state.status, 'IN_PROGRESS');
+            assert.equal(codeOf(cancel), 'TOURNAMENT_NOT_CANCELLABLE');
+            assert.equal(matches, 3);
+            assert.deepEqual([cancels.seen.length, closes.seen.length], [0, 1]);
+          }
+        } finally {
+          closes.unsubscribe();
+          cancels.unsubscribe();
+        }
+      }
+    });
+  });
+
   describe('detail', () => {
     it('returns frozen seedRating snapshots and the bracket links, never live users.rating', async () => {
       const creator = await createUser('user', 1500);

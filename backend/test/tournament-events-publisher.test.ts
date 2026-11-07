@@ -35,6 +35,19 @@ describe('TournamentEventsPublisher', () => {
     assert.deepEqual(received, [event.tournamentId]);
   });
 
+  it('keeps cancelled and registration-closed channels separate', async () => {
+    const publisher = new TournamentEventsPublisher();
+    const closed: string[] = [];
+    const cancelled: string[] = [];
+    publisher.onRegistrationClosed((e) => { closed.push(e.tournamentId); });
+    publisher.onCancelled((e) => { cancelled.push(e.tournamentId); });
+    publisher.cancelled({ tournamentId: 'x', at: new Date(0) });
+    assert.equal(cancelled.length, 0); // deferred
+    await tick();
+    assert.deepEqual(cancelled, ['x']);
+    assert.deepEqual(closed, []);
+  });
+
   it('stops delivery after unsubscribe and on module destroy', async () => {
     const publisher = new TournamentEventsPublisher();
     let a = 0;
