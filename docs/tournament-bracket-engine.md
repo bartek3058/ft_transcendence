@@ -60,6 +60,10 @@ Between rounds, Match $i$ (top) and Match $K - 1 - i$ (bottom) feed into the nex
   - `R1-M4`: Seed 4 vs Seed 5 $\to$ feeds `SF1.player2`
   - `SF1` (Winner 1v8 vs Winner 4v5) and `SF2` (Winner 2v7 vs Winner 3v6) feed into the Grand Final.
 
+### Seeding & Validation Rules
+- **Deterministic Seeding (`seedParticipants`):** Participants are ranked by `seedRating` descending. Ties are broken by registration timestamp (`registeredAt` ascending, with missing timestamps sorted last), followed by a locale-independent direct comparison on `userId`.
+- **Bracket Size Validation & Error Handling:** `generateBracket()` validates participant counts and bracket dimensions. It enforces powers of 2 ($2 \le \text{bracketSize} \le 32$) and rejects oversized brackets where $N \le \text{bracketSize} / 2$ so that no Round 1 matches are left without players. All input violations throw `BracketGenerationError`, which `TournamentBracketService` maps to HTTP 400 with error code `INVALID_BRACKET`, rolling back any status change.
+
 ### Automatic Round 1 Bye Handling
 When $N < \text{bracketSize}$ (e.g. 6 players in an 8-slot bracket):
 - Seeds 7 and 8 are absent.
@@ -81,6 +85,7 @@ When $N < \text{bracketSize}$ (e.g. 6 players in an 8-slot bracket):
 
 ### 2. Knockout Draw & Tiebreak Protocol (`handleMatchDraw`)
 In a single-elimination bracket, draws cannot leave a match unresolved:
+- **Draw Counting:** `handleMatchDraw` only counts concluded draws (`result: 'DRAW'`). Decisive wins, aborted matches, and abandonments are excluded. If an active game in the match is still `IN_PROGRESS`, or no drawn game exists, it rejects with HTTP 409 Conflict.
 - **Games 1 & 2 Drawn:** The engine triggers an immediate rematch with piece colors swapped. The match remains `IN_PROGRESS`.
 - **Game 3 Drawn (Replay Cap):** Core tiebreak fallback activates: the participant with the better seed (lower seed number) is declared the winner and advanced to the next round.
 - Respects the PostgreSQL partial unique index `games_tournament_match_active_key`: allows multiple games per tournament match in history, but enforces at most one `IN_PROGRESS` game at any time.
@@ -97,7 +102,8 @@ If both players are absent, both lose and nobody advances:
 - Double forfeit in the Final: tournament `FINISHED` with `championId = null`; both finalists get rank 2, semifinal losers rank 3.
 - Sibling feeders concluding concurrently are serialized by a `SELECT ... FOR UPDATE` on the parent match.
 
-### 4. Game Integration (`TournamentGameService`)
+### 4. Game Integration (`TournamentGameService` & `GameGateway`)
+- **Game Conclusion Trigger (`GameGateway`):** When a move results in a board conclusion (checkmate, stalemate, threefold repetition, 50-move rule, insufficient material), `GameGateway.handleMove()` executes `concludeGame()` to invoke `removeGame()`. A shared `concludingGames` set prevents duplicate conclusions between board moves and clock timeout intervals.
 - `GameService.onGameConcluded(listener)` fires exactly once per game, right after `removeGame()` wrote its result row (and the rating update ran). GameService stays tournament-agnostic; the dependency is one-way (`TournamentModule -> GameModule`).
 - `TournamentGameService` registers as a listener and, for games linked to a `tournament_match_id`:
   - `WHITE_WON` / `BLACK_WON` -> `advanceWinner()`.
@@ -114,16 +120,19 @@ If both players are absent, both lose and nobody advances:
 All tests run inside the Docker container to ensure environment consistency:
 
 ```bash
-# 1. Run pure mathematical bracket generator tests (10 test cases):
+# 1. Run pure mathematical bracket generator tests (14 test cases):
 docker compose run --rm backend npm run test:tournament-bracket
 
-# 2. Run database-integrated bracket service tests:
+# 2. Run database-integrated bracket service tests (25 test cases):
 docker compose run --rm backend npm run test:tournament-bracket:service
 
-# 2b. Run game -> tournament integration tests:
+# 2b. Run game -> tournament integration tests (15 test cases):
 docker compose run --rm backend npm run test:tournament-games
 
-# 2c. Run real PostgreSQL tests (concurrency, unique indexes, end-to-end game flow).
+# 2c. Run game gateway conclusion & board-ending move persistence tests (3 test cases):
+docker compose run --rm backend npm run test:game-gateway
+
+# 2d. Run real PostgreSQL tests (concurrency, unique indexes, end-to-end game flow).
 #     The compose `migration` service only migrates the main database, so first apply
 #     all migrations (incl. 20261104210000_tournament_system) to chess_test with the
 #     OWNER role (same credentials as MIGRATION_DATABASE_URL, database name chess_test).
