@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/database/prisma.service';
 import { TournamentHttpError } from '../../src/tournament/http/tournament.errors';
 import { TournamentBracketService } from '../../src/tournament/tournament-bracket.service';
+import { TournamentDeadlineScheduler } from '../../src/tournament/tournament-deadline.scheduler';
 import { RegistrationClosedEvent, TournamentEventsPublisher } from '../../src/tournament/tournament-events.publisher';
 import { TournamentLifecycleService } from '../../src/tournament/tournament-lifecycle.service';
 import { TournamentsService } from '../../src/tournament/tournaments.service';
@@ -372,6 +373,102 @@ describe('Tournaments service against PostgreSQL (#102)', () => {
       } finally {
         rec.unsubscribe();
       }
+    });
+  });
+
+  describe('deadline scheduler', () => {
+    // Ticks also touch other expired fixtures in this *_test database, so assertions are per tournament.
+    const expire = (id: string) => prisma.tournament.update({
+      where: { id }, data: { registrationDeadline: new Date(Date.now() - MINUTE) },
+    });
+
+    it('starts expired tournaments with 2+ players, cancels the rest, and leaves future ones open', async () => {
+      const creator = await createUser();
+      const full = await createTournament(creator.id, 2);
+      const partial = await createTournament(creator.id, 8);
+      const lonely = await createTournament(creator.id, 8);
+      const future = await createTournament(creator.id, 8);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, full.id);
+      for (const p of [await createUser(), await createUser(), await createUser()]) await service.join(p.id, partial.id);
+      await service.join(creator.id, lonely.id);
+      await service.join(creator.id, future.id);
+      await Promise.all([full.id, partial.id, lonely.id].map(expire));
+
+      await new TournamentDeadlineScheduler(prisma, lifecycle).tick();
+
+      assert.equal((await counterAndRows(full.id)).status, 'IN_PROGRESS');
+      assert.equal((await counterAndRows(partial.id)).status, 'IN_PROGRESS');
+      assert.equal(await prisma.tournamentMatch.count({ where: { tournamentId: partial.id } }), 3); // 3 players -> 4-bracket
+      assert.equal((await counterAndRows(lonely.id)).status, 'CANCELLED');
+      assert.equal((await counterAndRows(future.id)).status, 'OPEN_FOR_SIGNUP');
+    });
+
+    it('a full tournament waits for its deadline, then the scheduler starts it', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 2);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      const scheduler = new TournamentDeadlineScheduler(prisma, lifecycle);
+      await scheduler.tick();
+      assert.equal((await counterAndRows(t.id)).status, 'OPEN_FOR_SIGNUP');
+      await expire(t.id);
+      await scheduler.tick();
+      assert.equal((await counterAndRows(t.id)).status, 'IN_PROGRESS');
+    });
+
+    it('two schedulers and a manual close racing produce one bracket and one event', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 4);
+      for (const p of [await createUser(), await createUser(), await createUser(), await createUser()]) {
+        await service.join(p.id, t.id);
+      }
+      await expire(t.id);
+      const rec = recordEvents(t.id);
+      try {
+        await Promise.allSettled([
+          new TournamentDeadlineScheduler(prisma, lifecycle).tick(),
+          new TournamentDeadlineScheduler(prisma, lifecycle).tick(),
+          service.closeRegistration(creator.id, t.id),
+        ]);
+        await settle();
+        assert.equal((await counterAndRows(t.id)).status, 'IN_PROGRESS');
+        assert.equal(await prisma.tournamentMatch.count({ where: { tournamentId: t.id } }), 3);
+        assert.equal(rec.seen.length, 1);
+      } finally {
+        rec.unsubscribe();
+      }
+    });
+
+    it('retries a tournament stuck in REGISTRATION_CLOSED', async () => {
+      const creator = await createUser();
+      const stuck = await createTournament(creator.id, 4);
+      const stuckEmpty = await createTournament(creator.id, 4);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, stuck.id);
+      await service.join(creator.id, stuckEmpty.id);
+      // Simulates a close whose bracket start never happened (e.g. legacy data or a manual DB fix).
+      await prisma.tournament.updateMany({
+        where: { id: { in: [stuck.id, stuckEmpty.id] } }, data: { status: 'REGISTRATION_CLOSED' },
+      });
+      const rec = recordEvents(stuck.id);
+      try {
+        await new TournamentDeadlineScheduler(prisma, lifecycle).tick();
+        await settle();
+        assert.equal((await counterAndRows(stuck.id)).status, 'IN_PROGRESS');
+        assert.equal(await prisma.tournamentMatch.count({ where: { tournamentId: stuck.id } }), 1);
+        assert.equal((await counterAndRows(stuckEmpty.id)).status, 'CANCELLED');
+        assert.deepEqual(rec.seen.map((e) => [e.outcome, e.reason]), [['IN_PROGRESS', 'SCHEDULER']]);
+      } finally {
+        rec.unsubscribe();
+      }
+    });
+
+    it('a concurrent retry of the same stuck tournament starts it once', async () => {
+      const creator = await createUser();
+      const t = await createTournament(creator.id, 2);
+      for (const p of [await createUser(), await createUser()]) await service.join(p.id, t.id);
+      await prisma.tournament.update({ where: { id: t.id }, data: { status: 'REGISTRATION_CLOSED' } });
+      const results = await Promise.allSettled([lifecycle.startClosed(t.id), lifecycle.startClosed(t.id)]);
+      assert.deepEqual(results.map(codeOf).sort(), [undefined, 'REGISTRATION_CLOSED'].sort());
+      assert.equal(await prisma.tournamentMatch.count({ where: { tournamentId: t.id } }), 1);
     });
   });
 

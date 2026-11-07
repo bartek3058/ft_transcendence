@@ -24,6 +24,7 @@
     "test:friends:filter": "ts-node --project tsconfig.tools.json test/friends-exception-filter.test.ts",
     "test:tournaments:dto": "ts-node --project tsconfig.tools.json test/tournament-dto.test.ts",
     "test:tournaments:events": "ts-node --project tsconfig.tools.json test/tournament-events-publisher.test.ts",
+    "test:tournaments:scheduler": "ts-node --project tsconfig.tools.json test/tournament-deadline-scheduler.test.ts",
     "test:tournaments:db":"ts-node --project tsconfig.tools.json test/integration/tournaments-service-postgres.test.ts",
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",
