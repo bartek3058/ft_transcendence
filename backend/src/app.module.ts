@@ -8,6 +8,8 @@ import { ProfileModule } from "./profile/profile.module";
 import { PublicApiModule } from "./public-api/public-api.module";
 import { MatchmakingModule } from "./matchmaking/matchmaking.module";
 import { TournamentModule } from "./tournament/tournament.module";
+import { AiModule } from "./ai/ai.module";
+import { ChatModule } from "./chat/chat.module";
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { TournamentModule } from "./tournament/tournament.module";
     PublicApiModule,
     MatchmakingModule,
     TournamentModule,
+    AiModule,
+    ChatModule,
   ],
   controllers: [],
   providers: [],

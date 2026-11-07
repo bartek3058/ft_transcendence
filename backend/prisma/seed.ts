@@ -2,6 +2,13 @@ import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { createHash } from 'node:crypto';
 import { isExistingAdmin, validateAdminPassword } from './admin-bootstrap';
+import {
+  AI_BOT_USER_ID,
+  AI_BOT_USERNAME,
+  AI_BOT_EMAIL,
+  AI_BOT_ROLE,
+  AI_BOT_DISPLAY_RATING,
+} from '../src/ai/ai.constants';
 
 const prisma = new PrismaClient();
 
@@ -94,12 +101,50 @@ async function main() {
     });
     console.log(`[Seed] Seeded evaluator API key: ${EVALUATOR_RAW_KEY}`);
   }
+
+  // --- Phase 3: AI opponent bootstrap (always runs) ---
+  // The Stockfish bot is a normal user row so games against it can use the usual
+  // white_id/black_id foreign keys. Its role is "bot" (RatingService uses that to
+  // keep AI games out of ELO) and its password hash is intentionally unusable, so
+  // nobody can log in as it. Fixed id, matched on, so re-seeding is idempotent.
+  const existingBot = await prisma.user.findUnique({
+    where: { id: AI_BOT_USER_ID },
+    select: { id: true },
+  });
+  if (!existingBot) {
+    await prisma.user.create({
+      data: {
+        id: AI_BOT_USER_ID,
+        email: AI_BOT_EMAIL,
+        username: AI_BOT_USERNAME,
+        passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$dW51c2FibGVfYWlfYm90$0000000000000000000000000000000000000000000',
+        role: AI_BOT_ROLE,
+        status: 'online',
+        rating: AI_BOT_DISPLAY_RATING,
+      },
+    });
+    console.log(`[Seed] Created AI bot user: ${AI_BOT_USERNAME} (${AI_BOT_USER_ID})`);
+  } else {
+    console.log('[Seed] AI bot user already exists. Skipping.');
+  }
 }
 
 main()
   .catch((e) => {
     // Prisma errors can include query inputs; never log a credential/hash payload.
-    console.error('[Seed] Admin bootstrap failed:', e.constructor === Error ? e.message : 'Database operation failed. Check connectivity and bootstrap identity configuration.');
+    // The error code and the constraint it hit are safe, though, and tell us
+    // exactly what failed, so surface those.
+    const code = e && typeof e === 'object' && 'code' in e ? ` [${(e as any).code}]` : '';
+    const target =
+      e && typeof e === 'object' && (e as any).meta?.target
+        ? ` on ${JSON.stringify((e as any).meta.target)}`
+        : '';
+    const detail =
+      e && e.constructor === Error
+        ? e.message
+        : 'Database operation failed. Check connectivity and bootstrap identity configuration.';
+    const kind = e && typeof e === 'object' ? (e.constructor?.name ?? 'unknown') : typeof e;
+    console.error(`[Seed] Seeding failed (${kind})${code}${target}: ${detail}`);
     process.exitCode = 1;
   })
   .finally(async () => {
