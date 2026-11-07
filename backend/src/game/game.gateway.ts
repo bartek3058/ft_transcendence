@@ -22,7 +22,7 @@ interface JoinGameRoomDto {
 export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModuleDestroy {
   private clockTimer: NodeJS.Timeout | null = null;
   private lastClockBroadcast = 0;
-  private readonly concludingTimeouts = new Set<string>();
+  private readonly concludingGames = new Set<string>();
   @WebSocketServer()
   server: Server;
 
@@ -43,7 +43,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
       const shouldBroadcast = now - this.lastClockBroadcast >= 5000;
       if (shouldBroadcast) this.lastClockBroadcast = now;
       for (const gameId of this.game.getActiveGameIds()) {
-        if (this.concludingTimeouts.has(gameId)) continue;
+        if (this.concludingGames.has(gameId)) continue;
         if (this.game.checkGameTimeout(gameId, now)) {
           void this.finishTimedOutGame(gameId);
           continue;
@@ -60,14 +60,27 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
   }
 
   private async finishTimedOutGame(gameId: string): Promise<void> {
-    if (this.concludingTimeouts.has(gameId)) return;
-    this.concludingTimeouts.add(gameId);
+    await this.concludeGame(gameId, true);
+  }
+
+  /**
+   * Persists a finished game (result, moves, rating, tournament hook) and
+   * purges the in-memory session. Shared by timeouts and moves that end the
+   * game on the board (checkmate, stalemate, repetition, insufficient
+   * material). Guarded so the clock ticker and the move handler never
+   * conclude the same game twice.
+   */
+  private async concludeGame(gameId: string, broadcastState: boolean): Promise<void> {
+    if (this.concludingGames.has(gameId)) return;
+    this.concludingGames.add(gameId);
     try {
       if (!this.game.hasActiveGame(gameId)) return;
-      this.server.to(gameId).emit('game:state', this.game.getPublicGameState(gameId));
+      if (broadcastState) {
+        this.server.to(gameId).emit('game:state', this.game.getPublicGameState(gameId));
+      }
       await this.game.removeGame(gameId);
     } finally {
-      this.concludingTimeouts.delete(gameId);
+      this.concludingGames.delete(gameId);
     }
   }
 
@@ -204,24 +217,27 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     }
 
     const result = this.game.executeMove(dto, userId);
-
-if (!result.success) {
-  if (result.errorReason === 'TIMEOUT') {
-    void this.finishTimedOutGame(dto.gameId);
-  }
-
-  client.emit('game:error', {
-    code: result.errorReason ?? 'ILLEGAL_MOVE',
-    state: this.game.hasActiveGame(dto.gameId)
-      ? this.game.getPublicGameState(dto.gameId)
-      : undefined,
-  });
-
-  return;
-}
+    if (!result.success) {
+      if (result.errorReason === 'TIMEOUT') {
+        void this.finishTimedOutGame(dto.gameId);
+      }
+      client.emit('game:error', {
+        code: result.errorReason ?? 'ILLEGAL_MOVE',
+        state: this.game.hasActiveGame(dto.gameId)
+          ? this.game.getPublicGameState(dto.gameId)
+          : undefined,
+      });
+      return;
+    }
 
     this.server.to(dto.gameId).emit('game:state',
       this.game.getPublicGameState(dto.gameId));
+
+    // The move ended the game on the board: persist it like a timeout or
+    // resignation, otherwise the result is never saved and the session lingers.
+    if (result.isGameOver) {
+      void this.concludeGame(dto.gameId, false);
+    }
   }
 
   @SubscribeMessage('game:leave')

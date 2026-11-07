@@ -10,6 +10,8 @@ type Props = {
   onSquareClick: (square: Square) => void;
   onMove: (from: Square, to: Square) => void;
   orientation?: Color;
+  // Two squares to highlight as a suggested move (the AI hint).
+  highlight?: { from: Square; to: Square } | null;
 };
 
 const files = "abcdefgh".split("");
@@ -21,6 +23,7 @@ export function ChessBoard({
   onSquareClick,
   onMove,
   orientation = "w",
+  highlight = null,
 }: Props) {
   const [draggedFrom, setDraggedFrom] = useState<Square | null>(null);
   const [draggedOver, setDraggedOver] = useState<Square | null>(null);
@@ -139,6 +142,10 @@ export function ChessBoard({
             onDrop={(event) => handleDrop(event, square)}
             className={`sq ${(row + col) % 2 ? "dark" : "light"} ${
               selected === square ? "selected" : ""
+            } ${
+              highlight && (highlight.from === square || highlight.to === square)
+                ? "hint"
+                : ""
             } ${draggedOver === square ? "dragOver" : ""}`}
           >
             {piece && (
