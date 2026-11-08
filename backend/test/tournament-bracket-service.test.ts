@@ -96,6 +96,11 @@ function createMockPrisma() {
         updateManyIn(matches, where, data),
       count: async ({ where }: any) =>
         Array.from(matches.values()).filter((m) => matchesWhere(m, where)).length,
+      // Only the `_max.round` form used by assertFinalRound.
+      aggregate: async ({ where }: any) => {
+        const rounds = Array.from(matches.values()).filter((m) => matchesWhere(m, where)).map((m) => m.round);
+        return { _max: { round: rounds.length ? Math.max(...rounds) : null } };
+      },
     },
     game: {
       count: async ({ where }: any) =>

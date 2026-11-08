@@ -10,7 +10,8 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import { GameService } from '../game/game.service';
 import { GameConclusionEvent } from '../game/types/chess.types';
-import { TournamentBracketService } from './tournament-bracket.service';
+import { AdvanceWinnerResult, TournamentBracketService } from './tournament-bracket.service';
+import { TournamentEventsPublisher } from './tournament-events.publisher';
 
 export interface TournamentGameCreated {
   gameId: string;
@@ -41,6 +42,7 @@ export class TournamentGameService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly gameService: GameService,
     private readonly bracket: TournamentBracketService,
+    private readonly events: TournamentEventsPublisher,
   ) {}
 
   onModuleInit(): void {
@@ -48,40 +50,54 @@ export class TournamentGameService implements OnModuleInit {
   }
 
   /**
-   * Starts the first game of a SCHEDULED match. Game 1: player1 (better seed
-   * in Round 1) plays White. Intended for the tournament lobby / "ready" flow.
+   * Starts the first game of a SCHEDULED match in its own transaction.
+   * The check-in flow (#161) uses createMatchGame + startSession instead.
    */
   async startMatchGame(
     tournamentId: string,
     matchId: string,
   ): Promise<TournamentGameCreated> {
-    const created = await this.prisma.$transaction(async (tx) => {
-      const match = await tx.tournamentMatch.findUnique({ where: { id: matchId } });
-      if (!match || match.tournamentId !== tournamentId) {
-        throw new NotFoundException(
-          `Match ${matchId} not found in tournament ${tournamentId}.`,
-        );
-      }
-      if (!match.player1Id || !match.player2Id) {
-        throw new ConflictException(
-          `Match ${matchId} does not have both players assigned yet.`,
-        );
-      }
-      return this.createMatchGameRow(tx, tournamentId, matchId, {
-        whitePlayerId: match.player1Id,
-        blackPlayerId: match.player2Id,
-        allowedStatuses: ['SCHEDULED'],
-      });
-    });
-
+    const created = await this.prisma.$transaction((tx) =>
+      this.createMatchGame(tx, tournamentId, matchId),
+    );
     this.startSession(created);
+    this.events.bracketChanged(tournamentId, [matchId], false);
     return created;
+  }
+
+  /**
+   * Inside the caller's transaction: creates game 1 of a SCHEDULED match,
+   * player1 (better seed in Round 1) plays White, and moves the match to
+   * IN_PROGRESS. Call startSession(result) only after the transaction commits.
+   */
+  async createMatchGame(
+    tx: Prisma.TransactionClient,
+    tournamentId: string,
+    matchId: string,
+  ): Promise<TournamentGameCreated> {
+    const match = await tx.tournamentMatch.findUnique({ where: { id: matchId } });
+    if (!match || match.tournamentId !== tournamentId) {
+      throw new NotFoundException(
+        `Match ${matchId} not found in tournament ${tournamentId}.`,
+      );
+    }
+    if (!match.player1Id || !match.player2Id) {
+      throw new ConflictException(
+        `Match ${matchId} does not have both players assigned yet.`,
+      );
+    }
+    return this.createMatchGameRow(tx, tournamentId, matchId, {
+      whitePlayerId: match.player1Id,
+      blackPlayerId: match.player2Id,
+      allowedStatuses: ['SCHEDULED'],
+    });
   }
 
   /**
    * Conclusion listener. Errors are logged by GameService; ConflictException
    * means the result was already applied (or the match is no longer open)
-   * and is logged here as a no-op.
+   * and is logged here as a no-op. If this listener fails for any other reason,
+   * TournamentRecoveryService applies the stored result later.
    */
   async handleGameConcluded(event: GameConclusionEvent): Promise<void> {
     const game = await this.prisma.game.findUnique({
@@ -91,50 +107,18 @@ export class TournamentGameService implements OnModuleInit {
     if (!game?.tournamentId || !game.tournamentMatchId) {
       return; // Not a tournament game.
     }
-    const tournamentId = game.tournamentId;
     const matchId = game.tournamentMatchId;
 
     if (event.result === 'ABORTED') {
+      // Recovery sends the match back to check-in (TournamentRecoveryService).
       this.logger.warn(
-        `Tournament game ${event.gameId} (match ${matchId}) was aborted; bracket unchanged.`,
+        `Tournament game ${event.gameId} (match ${matchId}) was aborted; recovery will reopen check-in.`,
       );
       return;
     }
 
-    let replay: TournamentGameCreated | null = null;
     try {
-      replay = await this.prisma.$transaction(async (tx) => {
-        if (event.endReason === 'ABANDONMENT') {
-          // No-show / abandonment is a forfeit, not a played result.
-          if (event.result === 'DRAW') {
-            // Nobody showed up: both lose, nobody advances.
-            await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId);
-          } else {
-            const forfeitedUserId =
-              event.result === 'WHITE_WON' ? event.blackPlayerId : event.whitePlayerId;
-            await this.bracket.handleWalkover(tx, tournamentId, matchId, forfeitedUserId);
-          }
-          return null;
-        }
-
-        if (event.result === 'DRAW') {
-          const draw = await this.bracket.handleMatchDraw(tx, tournamentId, matchId);
-          if (draw.action !== 'REPLAY') {
-            return null;
-          }
-          // Replay with colors swapped relative to the game that just ended.
-          return this.createMatchGameRow(tx, tournamentId, matchId, {
-            whitePlayerId: event.blackPlayerId,
-            blackPlayerId: event.whitePlayerId,
-            allowedStatuses: ['IN_PROGRESS'],
-          });
-        }
-
-        const winnerId =
-          event.result === 'WHITE_WON' ? event.whitePlayerId : event.blackPlayerId;
-        await this.bracket.advanceWinner(tx, tournamentId, matchId, winnerId);
-        return null;
-      });
+      await this.applyGameResult(game.tournamentId, matchId, event);
     } catch (error) {
       if (error instanceof ConflictException) {
         this.logger.warn(
@@ -144,10 +128,61 @@ export class TournamentGameService implements OnModuleInit {
       }
       throw error;
     }
+  }
+
+  /**
+   * Applies a finished (non-ABORTED) game to the bracket: win, draw (replay or seed
+   * tiebreak) or abandonment (walkover / double forfeit). Every bracket write is
+   * conditional, so applying the same game twice gives a ConflictException instead
+   * of a second result; callers decide whether that is a no-op.
+   * Used by the conclusion listener and by TournamentRecoveryService.
+   */
+  async applyGameResult(tournamentId: string, matchId: string, event: GameConclusionEvent): Promise<void> {
+    const { replay, advanced } = await this.prisma.$transaction(async (tx): Promise<{
+      replay: TournamentGameCreated | null; advanced: AdvanceWinnerResult | null;
+    }> => {
+      if (event.endReason === 'ABANDONMENT') {
+        // No-show / abandonment is a forfeit, not a played result.
+        if (event.result === 'DRAW') {
+          // Nobody showed up: both lose, nobody advances.
+          return { replay: null, advanced: await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId) };
+        }
+        const forfeitedUserId =
+          event.result === 'WHITE_WON' ? event.blackPlayerId : event.whitePlayerId;
+        return {
+          replay: null,
+          advanced: await this.bracket.handleWalkover(tx, tournamentId, matchId, forfeitedUserId),
+        };
+      }
+
+      if (event.result === 'DRAW') {
+        const draw = await this.bracket.handleMatchDraw(tx, tournamentId, matchId);
+        if (draw.action !== 'REPLAY') {
+          return { replay: null, advanced: draw.advanceResult ?? null };
+        }
+        // Replay with colors swapped relative to the game that just ended.
+        return {
+          replay: await this.createMatchGameRow(tx, tournamentId, matchId, {
+            whitePlayerId: event.blackPlayerId,
+            blackPlayerId: event.whitePlayerId,
+            allowedStatuses: ['IN_PROGRESS'],
+          }),
+          advanced: null,
+        };
+      }
+
+      const winnerId =
+        event.result === 'WHITE_WON' ? event.whitePlayerId : event.blackPlayerId;
+      return { replay: null, advanced: await this.bracket.advanceWinner(tx, tournamentId, matchId, winnerId) };
+    });
 
     if (replay) {
       this.startSession(replay);
     }
+    // After commit: a replay changes the match's current game; a result changes the
+    // match, its next match and any cascade.
+    this.events.bracketChanged(tournamentId, advanced?.changedMatchIds ?? [matchId],
+      advanced?.tournamentFinished ?? false);
   }
 
   /**
@@ -220,8 +255,8 @@ export class TournamentGameService implements OnModuleInit {
     };
   }
 
-  /** Creates the in-memory session only after the DB transaction committed. */
-  private startSession(created: TournamentGameCreated): void {
+  /** Creates the in-memory session; call only after the DB transaction committed. */
+  startSession(created: TournamentGameCreated): void {
     this.gameService.createGame({
       gameId: created.gameId,
       whitePlayerId: created.whitePlayerId,

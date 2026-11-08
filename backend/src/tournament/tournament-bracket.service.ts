@@ -20,6 +20,7 @@ import {
   TournamentMatchStatus,
   TournamentStatus,
 } from './types/tournament.types';
+import { checkInDeadlineFrom } from './tournament-rules';
 
 export interface AdvanceWinnerResult {
   completedMatchId: string;
@@ -28,6 +29,10 @@ export interface AdvanceWinnerResult {
   nextMatchId: string | null;
   /** Set when this call (or a cascade it triggered) finished the tournament with a champion. */
   championId: string | null;
+  /** Every match this call changed (the match, its next match, and any cascade), for #168. */
+  changedMatchIds: string[];
+  /** True when this call (or its cascade) finished the tournament, champion or not. */
+  tournamentFinished: boolean;
 }
 
 export interface MatchDrawResult {
@@ -184,7 +189,9 @@ export class TournamentBracketService {
       }
     }
 
-    // 4. Bulk insert all tournament match nodes
+    // 4. Bulk insert all tournament match nodes. Every match that starts SCHEDULED
+    //    (Round 1, or Round 2 filled by Byes) opens its check-in window now.
+    const checkInDeadline = checkInDeadlineFrom(new Date());
     await tx.tournamentMatch.createMany({
       data: bracket.matches.map((m) => ({
         id: m.id,
@@ -199,6 +206,7 @@ export class TournamentBracketService {
         isBye: m.isBye,
         nextMatchId: m.nextMatchId,
         nextMatchSlot: m.nextMatchSlot,
+        checkInDeadline: m.status === 'SCHEDULED' ? checkInDeadline : null,
       })),
     });
 
@@ -464,12 +472,15 @@ export class TournamentBracketService {
     }
 
     if (!match.nextMatchId) {
+      await this.assertFinalRound(tx, match);
       await this.concludeTournament(tx, match, winnerId);
       return {
         completedMatchId: match.id,
         winnerId,
         nextMatchId: null,
         championId: winnerId,
+        changedMatchIds: [match.id],
+        tournamentFinished: true,
       };
     }
 
@@ -480,6 +491,9 @@ export class TournamentBracketService {
       winnerId,
       nextMatchId: match.nextMatchId,
       championId: cascade?.championId ?? null,
+      // The next match got a player, became SCHEDULED or was resolved by the cascade.
+      changedMatchIds: [...new Set([match.id, match.nextMatchId, ...(cascade?.changedMatchIds ?? [])])],
+      tournamentFinished: cascade?.tournamentFinished ?? false,
     };
   }
 
@@ -543,9 +557,10 @@ export class TournamentBracketService {
     }
 
     if (next.player1Id && next.player2Id) {
+      // Becoming SCHEDULED opens the check-in window (#161).
       await tx.tournamentMatch.updateMany({
         where: { id: next.id, status: 'PENDING' },
-        data: { status: 'SCHEDULED' },
+        data: { status: 'SCHEDULED', checkInDeadline: checkInDeadlineFrom(new Date()) },
       });
       return null;
     }
@@ -568,6 +583,27 @@ export class TournamentBracketService {
         : `Match ${next.id}: no players left after double forfeits, nobody advances.`,
     );
     return this.completeMatch(tx, next, lonePlayer, 'WALKOVER', ['PENDING']);
+  }
+
+  /**
+   * A match without a parent must be the Final. A lost link (next_match_id is
+   * ON DELETE SET NULL) would otherwise finish the tournament after a semifinal;
+   * this turns it into an error and rolls the result back.
+   */
+  private async assertFinalRound(
+    tx: Prisma.TransactionClient,
+    match: TournamentMatch,
+  ): Promise<void> {
+    const last = await tx.tournamentMatch.aggregate({
+      where: { tournamentId: match.tournamentId },
+      _max: { round: true },
+    });
+    if (last._max.round !== match.round) {
+      throw new ConflictException(
+        `Match ${match.id} (round ${match.round}) has no next match but is not the Final ` +
+          `(last round ${last._max.round}): bracket links are inconsistent.`,
+      );
+    }
   }
 
   /**
