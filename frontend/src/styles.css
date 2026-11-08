@@ -1556,6 +1556,29 @@ header nav a.active {
   cursor: pointer;
 }
 
+/* Slim, themed scrollbar for the chat body */
+.chatBody {
+  scrollbar-width: thin;
+  scrollbar-color: #3a423a transparent;
+}
+.chatBody::-webkit-scrollbar {
+  width: 8px;
+}
+.chatBody::-webkit-scrollbar-thumb {
+  background: #3a423a;
+  border-radius: 8px;
+}
+.chatBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Sentiment emoji next to a chat message */
+.msgMood {
+  margin-left: 4px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
 .sq.dragOver {
   outline: 3px solid rgba(143, 196, 95, 0.8);
   outline-offset: -3px;
