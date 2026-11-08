@@ -148,6 +148,7 @@ export class GameService implements OnModuleDestroy
         }
       }
       return null;
+    }
     /**
      * Registers a callback fired exactly once per game, right after its result
      * row was written by removeGame(). Listener errors are logged and never
@@ -155,6 +156,27 @@ export class GameService implements OnModuleDestroy
      */
     public onGameConcluded(listener: GameConclusionListener): void {
       this.conclusionListeners.push(listener);
+    }
+
+    /** Returns only the final result of a persisted game to one of its players. */
+    public async getFinishedGameForPlayer(gameId: string, userId: string) {
+      if (!UUID_REGEX.test(gameId)) return null;
+      const record = await this.prisma.game.findFirst({
+        where: {
+          id: gameId,
+          result: { not: 'IN_PROGRESS' },
+          OR: [{ whiteId: userId }, { blackId: userId }],
+        },
+        select: { id: true, result: true, endReason: true },
+      });
+      if (!record) return null;
+      return {
+        gameId: record.id,
+        winnerColor: record.result === 'WHITE_WON' ? 'w'
+          : record.result === 'BLACK_WON' ? 'b' : null,
+        reason: record.endReason,
+        result: record.result,
+      };
     }
 
     public getActiveGameIds(): string[] {
