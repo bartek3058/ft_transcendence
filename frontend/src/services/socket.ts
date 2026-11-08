@@ -29,7 +29,6 @@ export interface GameClockSnapshot {
   isFinished: boolean;
 }
 
-// --- AI game (/ai-game) payloads ---
 export type AiDifficulty = "easy" | "medium" | "hard";
 
 export interface AiMoveResult {
@@ -69,7 +68,11 @@ export interface AiHint {
   from: string;
   to: string;
   promotion: "q" | "r" | "b" | "n" | null;
-  evaluation: { scoreCp: number | null; mateIn: number | null; depth: number | null };
+  evaluation: {
+    scoreCp: number | null;
+    mateIn: number | null;
+    depth: number | null;
+  };
 }
 
 export interface MatchFound {
@@ -78,6 +81,13 @@ export interface MatchFound {
   blackPlayerId: string;
   timeControl: string | null;
   state: PublicGameState;
+}
+
+export interface FinishedGame {
+  gameId: string;
+  winnerColor: PlayerColor | null;
+  reason: string | null;
+  result: string;
 }
 
 export interface GameJoined {
@@ -107,6 +117,7 @@ export function getGameSocket(): Socket {
       transports: ["websocket", "polling"],
     });
   }
+
   return gameSocket;
 }
 
@@ -121,15 +132,7 @@ export function getAiGameSocket(): Socket {
 }
 
 export function joinGameRoom(gameId: string): void {
-  const socket = getGameSocket();
-  const join = () => socket.emit("game:join", { gameId });
-
-  if (socket.connected) {
-    join();
-  } else {
-    socket.once("game:ready", join);
-    socket.connect();
-  }
+  getGameSocket().emit("game:join", { gameId });
 }
 
 export function disconnectRealtime(): void {

@@ -29,14 +29,16 @@ function createClockSnapshot(state: PublicGameState): ClockSnapshot {
   };
 }
 
-export function useChessGame(joined: GameJoined) {
+export function useChessGame(joined: GameJoined, restoring = false) {
   const [state, setState] = useState<PublicGameState>(joined.state);
   const [selected, setSelected] = useState<Square | null>(null);
   const [pendingPromotion, setPendingPromotion] =
     useState<PendingPromotion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
-  const [connected, setConnected] = useState(() => getGameSocket().connected);
+  const [connected, setConnected] = useState(
+    () => getGameSocket().connected && !restoring,
+  );
   const [clockSnapshot, setClockSnapshot] = useState<ClockSnapshot>(() =>
     createClockSnapshot(joined.state),
   );
@@ -52,6 +54,7 @@ export function useChessGame(joined: GameJoined) {
     setPendingPromotion(null);
     setWaiting(false);
     setError(null);
+    setConnected(getGameSocket().connected);
   }, [joined.state]);
 
   useEffect(() => {
@@ -99,7 +102,7 @@ export function useChessGame(joined: GameJoined) {
       setConnected(false);
       setWaiting(false);
     };
-    const onConnect = () => setConnected(true);
+    const onConnect = () => setConnected(false);
     socket.on("disconnect", onDisconnect);
     socket.on("connect", onConnect);
     socket.on("game:clock", onClock);
@@ -142,12 +145,16 @@ export function useChessGame(joined: GameJoined) {
   const game = useMemo(() => new Chess(state.fen), [state.fen]);
   const board = useMemo(() => game.board(), [game]);
   const canMove =
-    connected && !state.isFinished && !waiting && game.turn() === joined.color;
+    connected &&
+    !restoring &&
+    !state.isFinished &&
+    !waiting &&
+    game.turn() === joined.color;
 
   const sendMove = useCallback(
     (from: Square, to: Square, promotion?: PromotionPiece) => {
       const socket = getGameSocket();
-      if (!socket.connected) {
+      if (!socket.connected || !connected || restoring) {
         setError("Connection lost");
         return;
       }
@@ -161,7 +168,7 @@ export function useChessGame(joined: GameJoined) {
         ...(promotion ? { promotion } : {}),
       });
     },
-    [joined.gameId],
+    [joined.gameId, connected, restoring],
   );
 
   function movePiece(from: Square, to: Square) {
@@ -209,7 +216,7 @@ export function useChessGame(joined: GameJoined) {
   const resign = useCallback(async (): Promise<boolean> => {
     if (state.isFinished) return true;
     const socket = getGameSocket();
-    if (!socket.connected) {
+    if (!socket.connected || !connected || restoring) {
       setError("Connection lost");
       return false;
     }
@@ -235,7 +242,7 @@ export function useChessGame(joined: GameJoined) {
           },
         );
     });
-  }, [joined.gameId, state.isFinished]);
+  }, [joined.gameId, state.isFinished, connected, restoring]);
 
   const result: GameResult = state.isFinished
     ? {
@@ -257,7 +264,7 @@ export function useChessGame(joined: GameJoined) {
     result,
     error,
     waiting,
-    connected,
+    connected: connected && !restoring,
     clickSquare,
     movePiece,
     promote,

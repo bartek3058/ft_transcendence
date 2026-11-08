@@ -30,7 +30,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      setUser(await authApi.getMe());
+      const currentUser = await authApi.getMe();
+      setUser(currentUser);
+    } catch (error) {
+      console.warn("[Auth] Session refresh failed:", error);
     } finally {
       setLoading(false);
     }

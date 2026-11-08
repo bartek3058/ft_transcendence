@@ -1,5 +1,5 @@
 interface MatchmakingLobbyProps {
-  status: "idle" | "connecting" | "queued" | "matched" | "error";
+  status: "idle" | "restoring" | "connecting" | "queued" | "matched" | "error";
   gameId: string | null;
   error: string | null;
   onSearch: () => void;
@@ -25,6 +25,7 @@ export function MatchmakingLobby({
         {status === "idle" &&
           "Join the queue and play against another online player."}
         {status === "connecting" && "Connecting to the server..."}
+        {status === "restoring" && "Checking for an active game..."}
         {status === "queued" &&
           "Searching for an opponent with a similar ELO rating..."}
         {status === "matched" &&
@@ -38,7 +39,7 @@ export function MatchmakingLobby({
         <button type="button" onClick={onCancel}>
           Cancel search
         </button>
-      ) : status !== "matched" ? (
+      ) : status !== "matched" && status !== "restoring" ? (
         <button type="button" className="primary" onClick={onSearch}>
           Search for opponent
         </button>
