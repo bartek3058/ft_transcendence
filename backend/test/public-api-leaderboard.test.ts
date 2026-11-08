@@ -25,7 +25,7 @@ interface MockUser {
   id: string;
   username: string;
   rating: number;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'bot';
 }
 
 interface MockGame {
@@ -43,7 +43,11 @@ const byteCompare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 function createMockPrisma(users: MockUser[] = [], games: MockGame[] = []) {
   const ranked = (where: any) =>
-    users.filter((u) => (where?.role?.not ? u.role !== where.role.not : true));
+    users.filter((u) => {
+      if (where?.role?.notIn) return !where.role.notIn.includes(u.role);
+      if (where?.role?.not) return u.role !== where.role.not;
+      return true;
+    });
 
   const sorted = (list: MockUser[]) =>
     [...list].sort((a, b) => b.rating - a.rating || byteCompare(a.username, b.username));
@@ -133,6 +137,8 @@ function createMockPrisma(users: MockUser[] = [], games: MockGame[] = []) {
 
 const mockUsers: MockUser[] = [
   { id: 'u0', username: 'root_admin', rating: 2500, role: 'admin' },
+  // Rated above everyone so any leak into a ranking or stat shows up.
+  { id: 'u5', username: 'stockfish', rating: 2000, role: 'bot' },
   { id: 'u1', username: 'alice', rating: 1700, role: 'user' },
   { id: 'u2', username: 'bob', rating: 1850, role: 'user' },
   { id: 'u3', username: 'charlie', rating: 1600, role: 'user' },
@@ -168,12 +174,12 @@ async function validateQuery(metatype: any, value: Record<string, string>) {
 
 describe('Public API Leaderboard & Stats (unit)', () => {
   describe('LeaderboardService.getLeaderboard', () => {
-    it('returns ranked players with DB-aggregated records, excluding admins', async () => {
+    it('returns ranked players with DB-aggregated records, excluding admins and the AI bot', async () => {
       const res = await service().getLeaderboard(1, 10);
       assert.equal(res.total, 4);
       assert.equal(res.totalPages, 1);
       assert.deepEqual(res.items.map((i) => i.username), ['bob', 'dave', 'alice', 'charlie']);
-      assert.ok(!res.items.some((i) => i.username === 'root_admin'));
+      assert.ok(!res.items.some((i) => i.username === 'root_admin' || i.username === 'stockfish'));
 
       const [bob, dave, alice, charlie] = res.items;
       assert.deepEqual([bob.rank, bob.gamesPlayed, bob.wins, bob.winRate], [1, 2, 2, 100]);
@@ -198,7 +204,7 @@ describe('Public API Leaderboard & Stats (unit)', () => {
   });
 
   describe('LeaderboardService.getGlobalStats', () => {
-    it('aggregates players and matches without admin accounts', async () => {
+    it('aggregates players and matches without admin and AI bot accounts', async () => {
       const stats = await service().getGlobalStats();
       assert.equal(stats.totalPlayers, 4);
       assert.equal(stats.totalMatches, 4);
@@ -244,8 +250,8 @@ describe('Public API Leaderboard & Stats (unit)', () => {
       }
     });
 
-    it('returns 404 with a fixed message for unknown players and admins', async () => {
-      for (const name of ['unknown_gm', 'root_admin']) {
+    it('returns 404 with a fixed message for unknown players, admins and the AI bot', async () => {
+      for (const name of ['unknown_gm', 'root_admin', 'stockfish']) {
         await assert.rejects(() => service().getPlayerRanking(name), (err: any) => {
           assert.ok(err instanceof NotFoundException);
           assert.equal((err.getResponse() as any).error.message, 'Player not found.');
@@ -299,7 +305,7 @@ describe('Public API Leaderboard & Stats (unit)', () => {
   });
 
   describe('Web leaderboard (RatingService, RatingController, WebLeaderboardGuard)', () => {
-    it('RatingService excludes admins and ranks by rating then username', async () => {
+    it('RatingService excludes admins and the AI bot and ranks by rating then username', async () => {
       const res = await new RatingService(createMockPrisma(mockUsers, mockGames) as any).getLeaderboard(10, 0);
       assert.equal(res.total, 4);
       assert.deepEqual(res.entries.map((e) => [e.rank, e.username]), [[1, 'bob'], [2, 'dave'], [3, 'alice'], [4, 'charlie']]);
@@ -324,7 +330,7 @@ describe('Public API Leaderboard & Stats (unit)', () => {
   });
 
   describe('ProfileService history', () => {
-    it('getMyProfile uses aggregated records and ranks among non-admins', async () => {
+    it('getMyProfile uses aggregated records and ranks without admins and the AI bot', async () => {
       const profile = await new ProfileService(createMockPrisma(mockUsers, mockGames) as any).getMyProfile('u4');
       assert.deepEqual([profile.stats.games, profile.stats.wins, profile.stats.losses, profile.stats.winRate], [2, 1, 1, 50]);
       assert.equal(profile.user.rank, 2);
