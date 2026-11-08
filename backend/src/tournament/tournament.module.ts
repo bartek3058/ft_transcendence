@@ -10,6 +10,8 @@ import { TournamentCheckInSweeper } from './tournament-check-in.sweeper';
 import { TournamentGameService } from './tournament-game.service';
 import { TournamentDeadlineScheduler } from './tournament-deadline.scheduler';
 import { TournamentEventsPublisher } from './tournament-events.publisher';
+import { TournamentInvitationsController } from './tournament-invitations.controller';
+import { TournamentInvitationsService } from './tournament-invitations.service';
 import { TournamentLifecycleService } from './tournament-lifecycle.service';
 import { TournamentsController } from './tournaments.controller';
 import { TournamentsService } from './tournaments.service';
@@ -18,10 +20,11 @@ import { TournamentsService } from './tournaments.service';
 // Dependency is one-way: GameModule never imports TournamentModule.
 @Module({
   imports: [AuthModule, DatabaseModule, GameModule],
-  controllers: [TournamentsController],
+  controllers: [TournamentsController, TournamentInvitationsController],
   providers: [
     TournamentBracketService, TournamentGameService, TournamentLifecycleService, TournamentsService,
     TournamentEventsPublisher, TournamentDeadlineScheduler, TournamentCheckInService, TournamentCheckInSweeper,
+    TournamentInvitationsService,
     TournamentRateLimiter,
     TournamentRequestGuard, TournamentUserLimitGuard, TournamentsExceptionFilter,
   ],

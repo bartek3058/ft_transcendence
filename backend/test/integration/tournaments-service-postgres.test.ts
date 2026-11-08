@@ -18,7 +18,7 @@ const prisma = new PrismaService({
 });
 const publisher = new TournamentEventsPublisher();
 const lifecycle = new TournamentLifecycleService(prisma, new TournamentBracketService(prisma), publisher);
-const service = new TournamentsService(prisma, lifecycle);
+const service = new TournamentsService(prisma, lifecycle, publisher);
 
 /** Collects registration-closed events for one tournament; each entry has the status seen by the listener. */
 function recordEvents(tournamentId: string) {

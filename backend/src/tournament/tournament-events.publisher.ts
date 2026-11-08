@@ -16,10 +16,24 @@ export interface TournamentCancelledEvent {
   at: Date;
 }
 
+export interface InvitationReceivedEvent {
+  invitationId: string;
+  tournamentId: string;
+  senderId: string;
+  recipientId: string;
+  at: Date;
+}
+
+export interface InvitationAnsweredEvent extends InvitationReceivedEvent {
+  status: 'ACCEPTED' | 'DECLINED';
+}
+
 type Listener<T> = (event: T) => void | Promise<void>;
 
 const REGISTRATION_CLOSED = 'registration-closed';
 const CANCELLED = 'cancelled';
+const INVITATION_RECEIVED = 'invitation-received';
+const INVITATION_ANSWERED = 'invitation-answered';
 
 /**
  * In-process tournament notifications. Publish only after the transaction commits.
@@ -38,6 +52,25 @@ export class TournamentEventsPublisher implements OnModuleDestroy {
   /** Manual cancel by the creator or an admin (the scheduler's cancels are registration-closed). */
   cancelled(event: TournamentCancelledEvent): void {
     setImmediate(() => this.events.emit(CANCELLED, event));
+  }
+
+  invitationReceived(event: InvitationReceivedEvent): void {
+    setImmediate(() => this.events.emit(INVITATION_RECEIVED, event));
+  }
+
+  /** Accepted (through respond or a direct join) or declined. */
+  invitationAnswered(event: InvitationAnsweredEvent): void {
+    setImmediate(() => this.events.emit(INVITATION_ANSWERED, event));
+  }
+
+  /** Returns an unsubscribe function. */
+  onInvitationReceived(listener: Listener<InvitationReceivedEvent>): () => void {
+    return this.subscribe(INVITATION_RECEIVED, listener);
+  }
+
+  /** Returns an unsubscribe function. */
+  onInvitationAnswered(listener: Listener<InvitationAnsweredEvent>): () => void {
+    return this.subscribe(INVITATION_ANSWERED, listener);
   }
 
   /** Returns an unsubscribe function. */

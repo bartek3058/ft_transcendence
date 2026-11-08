@@ -62,6 +62,13 @@ Validation errors (`400 INVALID_INPUT`) may add `fields: [{ field, code }]`.
 | 409 | `TOURNAMENT_NOT_IN_PROGRESS` | check-in while the tournament is not running |
 | 409 | `MATCH_NOT_SCHEDULED` | check-in for a match that is not waiting for players |
 | 409 | `CHECK_IN_CLOSED` | check-in after the match's deadline |
+| 400 | `SELF_INVITE` | inviting yourself |
+| 403 | `NOT_ALLOWED_TO_INVITE` | inviting without being the creator or a registered player |
+| 403 | `NOT_FRIEND` | inviting someone who is not an accepted friend |
+| 409 | `ALREADY_INVITED` | the player already has a pending invitation to this tournament |
+| 404 | `INVITATION_NOT_FOUND` | unknown invitation, or one addressed to someone else |
+| 409 | `INVITATION_EXPIRED` | answering after the deadline or after registration ended |
+| 409 | `INVITATION_ALREADY_ANSWERED` | changing an answer (decline after accept, accept after decline) |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | `POST` without `application/json` |
 | 429 | `RATE_LIMITED` | limit exceeded |
 | 503 | `TOURNAMENTS_BUSY` / `TOURNAMENTS_UNAVAILABLE` | overload or temporary failure; retry later |
@@ -232,6 +239,62 @@ checked in wins by walkover; if nobody checked in, both lose.
 Errors: `403 NOT_MATCH_PLAYER`, `404 MATCH_NOT_FOUND`, `409 TOURNAMENT_NOT_IN_PROGRESS`,
 `409 MATCH_NOT_SCHEDULED`, `409 CHECK_IN_CLOSED`.
 
+## Invitations (#154)
+
+Only accepted friends can be invited, by the creator or by a registered player, while
+registration is open. One recipient per request: to invite several friends, the UI
+lets the user tick them and sends one request per friend (watch the per-user write
+limit of 30 requests per minute; on `429` wait `Retry-After` seconds).
+
+An invitation expires at the tournament's registration deadline, or as soon as
+registration ends (manual close, scheduler, cancel). A user can be invited again
+after declining (for example after a wrong click), after an expiry, or after
+accepting and then leaving. A user has at most one invitation per tournament.
+
+### `POST /api/tournaments/:id/invitations` (201)
+
+Body `{ "recipientId": "<uuid>" }`. Returns:
+
+```ts
+{ invitationId: string; tournamentId: string; recipientId: string; status: 'PENDING'; expiresAt: string }
+```
+
+Errors: `400 SELF_INVITE`, `403 NOT_ALLOWED_TO_INVITE`, `403 NOT_FRIEND`, `404`,
+`409 REGISTRATION_CLOSED`, `409 ALREADY_JOINED`, `409 ALREADY_INVITED`.
+
+### `GET /api/tournaments/invitations/me?limit=&offset=` (200)
+
+The caller's pending invitations that can still be accepted (not expired, tournament
+still open), soonest deadline first. `limit` 1-50 (default 20), `offset` 0-9999.
+
+```ts
+{
+  items: {
+    id: string;
+    tournament: { id; title; status; maxParticipants; currentParticipants; registrationDeadline };
+    sender: UserRef;
+    createdAt: string;
+    expiresAt: string;
+  }[];
+  total: number; limit: number; offset: number;
+}
+```
+
+### `POST /api/tournaments/invitations/:id/respond` (200)
+
+Body `{ "response": "ACCEPT" | "DECLINE" }`.
+
+- `ACCEPT` joins the tournament exactly like `POST /:id/join` and returns
+  `{ invitationId, tournamentId, status: "ACCEPTED", currentParticipants }`. If the
+  tournament is full or closed the join's error is returned (`409 TOURNAMENT_FULL`,
+  `409 REGISTRATION_CLOSED`) and the invitation stays pending.
+- `DECLINE` returns `{ invitationId, tournamentId, status: "DECLINED" }`.
+- Sending the same answer again returns the current state.
+- Joining with `POST /:id/join` also accepts a pending invitation to that tournament.
+
+Errors: `404 INVITATION_NOT_FOUND`, `409 INVITATION_EXPIRED`,
+`409 INVITATION_ALREADY_ANSWERED`, plus the join errors above.
+
 ## Backend internals
 
 Code lives in `backend/src/tournament/`.
@@ -324,12 +387,36 @@ Details:
 |---|---|---|
 | `onRegistrationClosed` | `{ tournamentId, outcome: 'IN_PROGRESS' \| 'CANCELLED', reason: 'MANUAL' \| 'SCHEDULER', at }` | close, scheduler, stuck retry, give-up cancel |
 | `onCancelled` | `{ tournamentId, at }` | manual cancel |
+| `onInvitationReceived` | `{ invitationId, tournamentId, senderId, recipientId, at }` | invite (new or re-sent) |
+| `onInvitationAnswered` | same plus `status: 'ACCEPTED' \| 'DECLINED'` | respond, or a direct join that accepted a pending invitation |
 
 Events are published only after the transaction commits, so a listener that reads the
 database already sees the new state. Delivery uses `setImmediate`, so the request never
 waits for listeners; a listener that throws or rejects is logged and does not affect
-others. Both subscribe methods return an unsubscribe function. Nothing subscribes yet;
-a WebSocket gateway for #155 can listen here.
+others. Every subscribe method returns an unsubscribe function. Nothing subscribes yet;
+the WebSocket gateway of #168 will listen here.
+
+### Invitations internals
+
+- `TournamentInvitationsService` (`tournament-invitations.service.ts`) and
+  `TournamentInvitationsController` (same guards, filter and pipeline as the other routes).
+- Invite: one transaction. The tournament row is read `FOR SHARE`, so a concurrent
+  close or cancel either waits or commits first (then the invite gets
+  `REGISTRATION_CLOSED`). Then membership, friendship (`friendships` pair with
+  `status = 'ACCEPTED'`) and participant checks, then one statement:
+  `INSERT ... ON CONFLICT (tournament_id, recipient_id) DO UPDATE ... WHERE status <> 'PENDING' OR expires_at <= now()`.
+  It creates a new row or refreshes an answered / expired one; a live pending invitation
+  returns no row (`ALREADY_INVITED`), which also covers two senders at once.
+- Accept reuses `TournamentsService.joinInTx` (the conditional join of #102). A failed
+  join rolls back the whole transaction, so the invitation stays pending. `joinInTx`
+  also marks the user's pending invitation `ACCEPTED`, so a direct join never leaves
+  one behind.
+- Lock order is always tournament row first, then invitation rows (invite, join,
+  respond, close, cancel), so these operations cannot deadlock.
+- `closeAndStart`, `startClosed`, `cancel` and `cancelUnstartable` set the tournament's
+  `PENDING` invitations to `EXPIRED` in the same transaction.
+- An invitation past `expires_at` but still `PENDING` in the table is treated as
+  expired: hidden from `me`, refused by respond, and re-invitable.
 
 ### Data
 
@@ -357,11 +444,13 @@ changes afterwards. No tournament response selects `users.rating`.
 |---|---|---|
 | `test:tournaments:dto` | DTO validation through the real global pipe | 13 |
 | `test:tournaments:http` | guard order, headers, body keys, limits, error filter | 14 |
-| `test:tournaments:events` | deferred delivery, listener isolation, channels, unsubscribe | 4 |
+| `test:tournaments:events` | deferred delivery, listener isolation, channels, unsubscribe | 5 |
 | `test:tournaments:scheduler` | tick order, lost races, overlap guard, retry limit, timer | 7 |
 | `test:tournaments:db` | real PostgreSQL: all routes, races, scheduler, events, cancel | 33 |
 | `test:tournament-checkin` | check-in sweep decisions, retry limit, overlap guard, timer | 6 |
 | `test:tournament-checkin:db` | real PostgreSQL: deadlines, check-in, concurrent check-ins, sweep races, walkover / double forfeit, final-round guard | 14 |
+| `test:tournament-invitations` | invitation DTOs through the real global pipe | 4 |
+| `test:tournament-invitations:db` | real PostgreSQL: permissions, friendship, re-invite, `me`, accept/decline, races (last slot, close, cancel, two senders), expiry, events | 15 |
 
 The PostgreSQL suite only touches its own fixtures, but scheduler ticks also close
 other expired tournaments in `chess_test`, so its assertions check each tournament
@@ -369,8 +458,9 @@ by id.
 
 ## Not covered here
 
-- Live updates: the backend publishes in-process events after a close or cancel
-  (`TournamentEventsPublisher`), but no WebSocket channel sends them yet. Until then
+- Live updates: the backend publishes in-process events after a close, cancel or
+  invitation change (`TournamentEventsPublisher`), but no WebSocket channel sends them
+  yet (#168). Until then
   the UI should reload the list or detail after an action, or poll.
 
 ## Tests
