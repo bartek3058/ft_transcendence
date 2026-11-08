@@ -47,13 +47,25 @@ test('real application: registration, login, persistence, rotation, expiry and l
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
   const input = { email: `Chess_${suffix}@Example.test`, username: `Player_${suffix}`,
     password: '  chess café password 😀  ' };
-  const canonical = { ...input, email: input.email.toLowerCase(), username: input.username.toLowerCase() };
+  const canonical = { ...input, email: input.email.toLowerCase(), username: input.username };
   let response = await h.request('register', 'POST', input);
   assert.equal(response.status, 201);
   const { user } = await response.json();
   ids.push(user.id);
   assert.equal(user.email, canonical.email);
   assert.equal(user.username, canonical.username);
+  assert.equal(await h.db.user.findUnique({ where: { username: input.username.toLowerCase() } }), null);
+  const variantResponse = await h.request('register', 'POST', {
+    ...input, email: `variant_${suffix}@example.test`, username: input.username.toLowerCase(),
+  });
+  assert.equal(variantResponse.status, 201);
+  const variant = (await variantResponse.json()).user;
+  ids.push(variant.id);
+  assert.notEqual(variant.id, user.id);
+  const exact = await h.db.user.findUniqueOrThrow({ where: { username: input.username } });
+  const lowercase = await h.db.user.findUniqueOrThrow({ where: { username: input.username.toLowerCase() } });
+  assert.equal(exact.id, user.id);
+  assert.equal(lowercase.id, variant.id);
   assert.equal('passwordHash' in user, false);
   assert.equal(response.headers.get('set-cookie'), null);
   const stored = await h.db.user.findUniqueOrThrow({ where: { id: user.id } });
@@ -62,7 +74,7 @@ test('real application: registration, login, persistence, rotation, expiry and l
   assert.equal(await argon2.verify(stored.passwordHash, input.password.trim()), false);
   for (const duplicate of [
     { ...canonical, username: `other_${suffix}` },
-    { ...canonical, email: `other_${suffix}@example.test` },
+    { ...canonical, username: input.username, email: `other_${suffix}@example.test` },
   ]) assert.equal((await h.request('register', 'POST', duplicate)).status, 409);
   const wrong = await h.request('login', 'POST', { email: canonical.email, password: 'incorrect password' });
   const missing = await h.request('login', 'POST', { email: `missing_${suffix}@example.test`, password: input.password });

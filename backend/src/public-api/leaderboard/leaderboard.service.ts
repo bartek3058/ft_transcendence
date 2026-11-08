@@ -85,12 +85,11 @@ export class LeaderboardService {
   }
 
   async getPlayerRanking(username: string): Promise<PlayerRankingDto> {
-    // Stage 1: zero-I/O format check. Usernames are stored lowercase (RegisterDto),
-    // so normalising here lets the unique index serve an exact lookup.
-    const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    // Validate before I/O; preserve case to select the exact account.
+    const normalized = typeof username === 'string' ? username.trim() : '';
     if (!USERNAME_REGEX.test(normalized)) {
       throw new BadRequestException({
-        error: { code: 'INVALID_USERNAME', message: 'Username must match ^[a-z0-9_]{3,20}$.' },
+        error: { code: 'INVALID_USERNAME', message: 'Username must match ^[A-Za-z0-9_]{3,20}$.' },
       });
     }
 

@@ -44,7 +44,7 @@ Use Prisma model names `User` and `Session`, with database mappings `users` and 
 |---|---|---|
 | id | id UUID | Primary key; generated once; immutable identity |
 | email | email VARCHAR(254), C collation | Unique canonical lowercase ASCII email; surrounding whitespace already removed |
-| username | username VARCHAR(20), C collation | Unique canonical lowercase handle: `[a-z0-9_]{3,20}` |
+| username | username VARCHAR(20), C collation | Case-preserving handle: `[A-Za-z0-9_]{3,20}`; case-sensitive UNIQUE |
 | passwordHash | password_hash TEXT | Complete Argon2id encoded hash, including algorithm, parameters and salt |
 | createdAt | created_at TIMESTAMPTZ(3) | Default current timestamp |
 | updatedAt | updated_at TIMESTAMPTZ(3) | Default current timestamp; updated by Prisma on account updates |
@@ -58,7 +58,7 @@ CHECK (email = lower(email COLLATE "C")
        AND email !~ '[[:space:]]'
        AND octet_length(email) = char_length(email)
        AND char_length(email) BETWEEN 3 AND 254)
-CHECK (username ~ '^[a-z0-9_]{3,20}$')
+CHECK (username::text ~ '^[A-Za-z0-9_]{3,20}$')
 CHECK (char_length(password_hash) > 0)
 ```
 
@@ -66,7 +66,7 @@ The ASCII check assumes a UTF-8 database. Full email syntax belongs in the appli
 
 The product explicitly treats the whole email as case-insensitive. This is an application policy, not a claim that all mail systems treat local parts that way. Preserve dots and plus-tags; never apply Gmail-style provider-specific alias rewriting. Restrict initial email support to conventional ASCII addresses (including already-punycoded domains), and document that internationalized mailbox support is deferred.
 
-`username` is a lowercase public handle. A separate future `displayName` can preserve styling/Unicode; don't mix display identity with the unique login/account key. Login initially uses email, not username.
+`username` preserves ASCII capitalization. PostgreSQL VARCHAR(20) enforces case-sensitive uniqueness, including concurrent registrations. Login uses email. Apply both username_case_preservation and username_case_sensitive migrations; existing lowercase names remain unchanged.
 
 Use Prisma's update timestamp behavior for normal writes. If raw SQL updates User later, those queries must also update `updated_at`; do not imply a Prisma annotation is a database trigger.
 

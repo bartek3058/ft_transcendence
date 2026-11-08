@@ -19,7 +19,7 @@ async function main() {
     const adminPassword = validateAdminPassword(configuredPassword);
 
     const adminEmail = (process.env.ADMIN_EMAIL || 'admin@transcendence.local').trim().toLowerCase();
-    const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
+    const adminUsername = (process.env.ADMIN_USERNAME || 'admin').trim();
 
     console.log(`[Seed] Checking for existing admin: ${adminEmail} (${adminUsername})...`);
 

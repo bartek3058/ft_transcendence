@@ -2,7 +2,12 @@ export const PASSWORD_MIN_LENGTH = 15;
 export const PASSWORD_MAX_LENGTH = 128;
 export const PASSWORD_MAX_BYTES = 512;
 
-// Identity normalization only. Never apply this function to a password.
+// Preserve username spelling. Never normalize passwords.
+export function normalizeUsername(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+// Email canonicalization for registration, login and rate limiting.
 export function normalizeIdentity(value: unknown): unknown {
   return typeof value === 'string'
     ? value.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase())

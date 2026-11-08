@@ -36,7 +36,7 @@ When the PostgreSQL data volume (`db_data`) is initialized for the first time:
 
 - **`id`**: UUID primary key (`@default(uuid())`).
 - **`email`**: Unique lowercase canonical email, ASCII validation, `"C"` collation.
-- **`username`**: Unique handle `^[a-z0-9_]{3,20}$`, `"C"` collation.
+- **`username`**: Case-preserving VARCHAR(20) handle `^[A-Za-z0-9_]{3,20}$`, with case-sensitive uniqueness.
 - **`rating`**: ELO rating, defaults to `1200`.
 - **`password_hash`**: Argon2id encoded string.
 - **`role`**: User authorization level: `'user'` (default) or `'admin'`.

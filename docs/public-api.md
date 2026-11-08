@@ -85,7 +85,7 @@ Lists match history with pagination and optional filters.
 * **Query Parameters**:
   * `page` (optional integer $\ge 1$, default: `1`)
   * `limit` (optional integer, min: `1`, max: `50`, default: `10`)
-  * `username` (optional string, case-insensitive match against white or black player)
+  * `username` (optional string, case-sensitive match against white or black player)
   * `result` (optional enum: `ALL`, `WHITE_WON`, `BLACK_WON`, `DRAW`, `IN_PROGRESS`)
 * **Success Response (200)**:
   ```json

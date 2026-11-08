@@ -19,8 +19,8 @@ export class MatchesService {
     if (query.username) {
       const cleanUsername = query.username.trim();
       where.OR = [
-        { whitePlayer: { username: { equals: cleanUsername, mode: 'insensitive' } } },
-        { blackPlayer: { username: { equals: cleanUsername, mode: 'insensitive' } } },
+        { whitePlayer: { username: { equals: cleanUsername } } },
+        { blackPlayer: { username: { equals: cleanUsername } } },
       ];
     }
 

@@ -24,7 +24,7 @@ test('register → login → me → logout, with safe responses and hashed sessi
   const { user } = await registration.json();
   assert.deepEqual(Object.keys(user).sort(), ['createdAt', 'email', 'id', 'username']);
   assert.equal(user.email, 'alice@example.com');
-  assert.equal(user.username, 'chess_fan');
+  assert.equal(user.username, 'Chess_Fan');
   assert.match(h.repository.accounts.get(user.id).passwordHash, /^\$argon2id\$/);
   assert.equal((await h.request('me')).status, 401);
   const response = await login(h);
@@ -178,4 +178,19 @@ test('unrelated accounts remain isolated and session lookup never exposes passwo
   assert.equal(result.user.email, second.email);
   assert.ok(!JSON.stringify(result).includes('password'));
   assert.equal((await h.request('me', { cookie: aliceCookie })).status, 401);
+});
+
+ test('case variants are separate usernames but exact duplicates conflict', async t => {
+  const h = await harness(t);
+  const first = await register(h, { ...account, username: 'Przemek' });
+  const second = await register(h, { ...account, email: 'second@example.com', username: 'przemek' });
+  const a = (await first.json()).user;
+  const b = (await second.json()).user;
+  assert.notEqual(a.id, b.id);
+  assert.equal(a.username, 'Przemek');
+  assert.equal(b.username, 'przemek');
+  const duplicate = await h.request('register', { method: 'POST', body: {
+    ...account, email: 'third@example.com', username: 'Przemek',
+  } });
+  assert.equal(duplicate.status, 409);
 });

@@ -61,7 +61,7 @@ Frontend can render initials until avatar support is implemented.
 
 | Method and URL | Body/query | Success |
 |---|---|---|
-| GET `/api/users/search?q=alice` | Required q: 3–20 username characters, normalized trim/lowercase; prefix search; optional pagination | 200 paginated public users, excluding yourself |
+| GET `/api/users/search?q=alice` | Required q: 3–20 username characters, trimmed with capitalization preserved; case-sensitive prefix search; optional pagination | 200 paginated public users, excluding yourself |
 | GET `/api/users/:id` | User UUID | 200 `{ user: PublicUser }` |
 | GET `/api/friends` | Optional pagination | 200 paginated accepted friends |
 | GET `/api/friends/requests` | Optional `direction=incoming` or `outgoing`; omitted returns both; pagination | 200 paginated pending requests |

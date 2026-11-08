@@ -81,7 +81,7 @@ The statistics and ranking subsystem provides global and individual performance 
 
 ### C. Individual Player Ranking (`GET /api/v1/leaderboard/players/:username`)
 * **Headers**: `X-API-Key: <high-entropy-key>`
-* **Behavior**: The username is trimmed and lowercased, then checked against `^[a-z0-9_]{3,20}$` (the registration rule) before any DB access, and looked up by exact match on the unique index. Returns global rank, rating, and match stats.
+* **Behavior**: The username is trimmed with capitalization preserved, then checked against `^[A-Za-z0-9_]{3,20}$` before any DB access, and looked up by exact match on the unique index. Returns global rank, rating, and match stats.
 * **Errors**:
   * `400 Bad Request` — `{ "error": { "code": "INVALID_USERNAME", ... } }` for malformed input.
   * `404 Not Found` — `{ "error": { "code": "PLAYER_NOT_FOUND", "message": "Player not found." } }` if no ranked player has that username (admins included). The message never echoes the input.

@@ -282,3 +282,13 @@ checkouts using a container named `postgres`. Only one checkout can bind the def
 host ports 80/443 at a time. Stop an older checkout from its folder with
 `docker compose down` when necessary; do not add `-v` unless deleting its database
 volume is intentional. Commit configuration changes, never the local `.env`.
+
+### Username capitalization
+
+Registration trims whitespace but preserves capitalization (` Chess_Fan ` → `Chess_Fan`). Names allow 3–20 ASCII letters, digits and underscores. PostgreSQL enforces case-sensitive uniqueness: `Chess_Fan` and `chess_fan` can be separate accounts (with different emails). Exact duplicates are rejected. Email normalization and passwords are unchanged.
+
+Run `sudo docker compose up --build -d` from this folder with your existing `.env` to apply the migration and rebuild. Check `sudo docker compose logs migration backend`. Keep the existing database volume. Existing lowercase usernames remain unchanged.
+
+Browser check: register `Chess_Fan` with an unused email and verify its spelling. Register `CHESS_FAN` with a different email: expect success. Repeat the exact username with another email: expect HTTP 409. Use exact capitalization in friends search, rankings and match-history filters. Login still uses email.
+
+Backend checks: `npm test`, `npm run test:bootstrap`. Real database checks: migrate a dedicated test database and run `TEST_DATABASE_URL=... npm run test:auth:db` with its restricted application role. Never target the development database.

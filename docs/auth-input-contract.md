@@ -9,7 +9,7 @@ Normalization chooses a canonical identity. Validation accepts/rejects a value. 
 | Field | Normalization | Validation |
 |---|---|---|
 | email | Trim surrounding whitespace, then lowercase ASCII letters. Same function for register and login. | Must already be a string; conventional ASCII email syntax, one address, no display name, no internal whitespace, total length ≤254 and local part ≤64. Use a maintained validator rather than a handwritten email regex. |
-| username | Trim surrounding whitespace, then lowercase ASCII letters. | Registration only: `[a-z0-9_]{3,20}`. Clearly tell users their public handle will be lowercase. |
+| username | Trim surrounding whitespace; preserve capitalization. | Registration only: `[A-Za-z0-9_]{3,20}`. Uniqueness is case-sensitive in PostgreSQL. |
 | password | **None:** no trim, lowercase, Unicode normalization, HTML escaping or character removal. | Registration: 15–128 Unicode code points, max 512 UTF-8 bytes. Allow spaces, punctuation and Unicode; reject malformed Unicode (unpaired surrogate code units) rather than silently changing it. Login: nonempty and same upper bounds; do not reapply a newer registration minimum to existing accounts. |
 
 These exact limits are project policies, not numeric requirements in the subject. The 15-character minimum is selected for password-only login without MFA. No mandatory uppercase/digit/symbol composition rules. Count Unicode code points consistently on both sides (for example, `Array.from(value).length` after well-formed-Unicode validation); HTML maxlength counts UTF-16 units and must not be the only check. Bounds are rejection limits, never truncation. A future Unicode-normalization change for passwords would require an explicit credential migration strategy.
@@ -22,7 +22,7 @@ Examples:
 |---|---|
 | email ` Alice@Example.COM ` | `alice@example.com` on registration and login |
 | email `alice+chess@example.com` | Keep `+chess` |
-| username ` Chess_Fan ` | `chess_fan` |
+| username ` Chess_Fan ` | `Chess_Fan` |
 | username `<b>alice</b>` | Reject; do not strip tags and quietly create `alice` |
 | password `  my long passphrase!  ` | Hash and verify the exact value, including spaces |
 | email `null`, `123`, array or object | Reject; do not coerce to text |

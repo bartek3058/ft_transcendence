@@ -20,11 +20,11 @@ function createMockPrisma(initialData?: { games?: any[]; apiKeys?: any[] }) {
         let list = gamesStore;
         if (where?.result) list = list.filter((g) => g.result === where.result);
         if (where?.OR) {
-          const username = where.OR[0]?.whitePlayer?.username?.equals?.toLowerCase();
+          const username = where.OR[0]?.whitePlayer?.username?.equals;
           list = list.filter(
             (g) =>
-              g.whitePlayer?.username?.toLowerCase() === username ||
-              g.blackPlayer?.username?.toLowerCase() === username,
+              g.whitePlayer?.username === username ||
+              g.blackPlayer?.username === username,
           );
         }
         return list.length;
@@ -33,11 +33,11 @@ function createMockPrisma(initialData?: { games?: any[]; apiKeys?: any[] }) {
         let list = gamesStore;
         if (where?.result) list = list.filter((g) => g.result === where.result);
         if (where?.OR) {
-          const username = where.OR[0]?.whitePlayer?.username?.equals?.toLowerCase();
+          const username = where.OR[0]?.whitePlayer?.username?.equals;
           list = list.filter(
             (g) =>
-              g.whitePlayer?.username?.toLowerCase() === username ||
-              g.blackPlayer?.username?.toLowerCase() === username,
+              g.whitePlayer?.username === username ||
+              g.blackPlayer?.username === username,
           );
         }
         return list.slice(skip, skip + take);

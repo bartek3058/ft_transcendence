@@ -226,10 +226,11 @@ describe('Public API Leaderboard & Stats (unit)', () => {
       }
     });
 
-    it('normalises case before an exact lookup', async () => {
-      const ranking = await service().getPlayerRanking('  BOB ');
+    it('trims whitespace but preserves case for an exact lookup', async () => {
+      const ranking = await service().getPlayerRanking('  bob ');
       assert.equal(ranking.username, 'bob');
       assert.equal(ranking.rank, 1);
+      await assert.rejects(service().getPlayerRanking('BOB'), (e: any) => e.getStatus() === 404);
     });
 
     it('rejects malformed usernames with 400 before any DB access', async () => {
