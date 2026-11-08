@@ -7,11 +7,12 @@ import { resolveTestDatabaseUrl } from '../test-database-url';
 import { LeaderboardService } from '../../src/public-api/leaderboard/leaderboard.service';
 import { RatingService } from '../../src/rating/rating.service';
 import { ProfileService } from '../../src/profile/profile.service';
+import { AI_BOT_EMAIL, AI_BOT_ROLE, AI_BOT_USER_ID, AI_BOT_USERNAME } from '../../src/ai/ai.constants';
 
 /*
  * Real-PostgreSQL checks for what the in-memory unit tests cannot prove
  * (constitution §8 "No Mock Blindness"): COLLATE "C" tie ordering, GROUP BY
- * aggregation, the role filter and the new indexes. Requires TEST_DATABASE_URL
+ * aggregation, the role filter (admins, AI bot) and the new indexes. Requires TEST_DATABASE_URL
  * (application role, database name ending in _test) with migrations applied.
  */
 
@@ -30,11 +31,34 @@ const names = {
   tieLower: `lb_${suffix}_b`,
   third: `lb_${suffix}_c`,
   admin: `lb_${suffix}_x`,
+  bot: `lb_${suffix}_y`,
 };
-const ids: Record<keyof typeof names, string> = { tieUpper: '', tieLower: '', third: '', admin: '' };
+const ids: Record<keyof typeof names, string> = { tieUpper: '', tieLower: '', third: '', admin: '', bot: '' };
 const gameIds: string[] = [];
+let createdAiBot = false;
 
-async function createUser(username: string, ratingValue: number, role: 'user' | 'admin') {
+/**
+ * Records exclude games by the bot's fixed id, so the game against the bot must use
+ * the real account. Reuse the seeded row when present; otherwise create it and
+ * remove it afterwards.
+ */
+async function ensureAiBot() {
+  const existing = await prisma.user.findUnique({ where: { id: AI_BOT_USER_ID }, select: { id: true } });
+  if (existing) return;
+  await prisma.user.create({
+    data: {
+      id: AI_BOT_USER_ID,
+      email: AI_BOT_EMAIL,
+      username: AI_BOT_USERNAME,
+      rating: 1500,
+      role: AI_BOT_ROLE,
+      passwordHash: '$argon2id$test-fixture-not-a-real-password',
+    },
+  });
+  createdAiBot = true;
+}
+
+async function createUser(username: string, ratingValue: number, role: 'user' | 'admin' | 'bot') {
   const user = await prisma.user.create({
     data: {
       email: `${username}@example.test`,
@@ -68,18 +92,23 @@ describe('Leaderboard against PostgreSQL', () => {
     ids.tieLower = await createUser(names.tieLower, TOP, 'user');
     ids.third = await createUser(names.third, TOP - 1, 'user');
     ids.admin = await createUser(names.admin, TOP + 500, 'admin');
+    ids.bot = await createUser(names.bot, TOP + 400, AI_BOT_ROLE);
+    await ensureAiBot();
 
     await createGame(ids.tieUpper, ids.tieLower, 'WHITE_WON', 40);
     await createGame(ids.tieLower, ids.tieUpper, 'DRAW', 30);
     await createGame(ids.third, ids.tieUpper, 'BLACK_WON', 20);
     await createGame(ids.tieUpper, ids.third, 'IN_PROGRESS', 10);
     await createGame(ids.third, ids.tieLower, 'ABORTED', 5);
+    // A finished game against the bot: kept in history, left out of the record.
+    await createGame(AI_BOT_USER_ID, ids.third, 'WHITE_WON', 3);
   });
 
   after(async () => {
     try {
       if (gameIds.length) await prisma.game.deleteMany({ where: { id: { in: gameIds } } });
       await prisma.user.deleteMany({ where: { id: { in: Object.values(ids).filter(Boolean) } } });
+      if (createdAiBot) await prisma.user.delete({ where: { id: AI_BOT_USER_ID } });
     } finally {
       await prisma.$disconnect();
     }
@@ -110,6 +139,7 @@ describe('Leaderboard against PostgreSQL', () => {
     assert.deepEqual([lower.gamesPlayed, lower.wins, lower.draws, lower.losses], [2, 0, 1, 1]);
 
     const listed = (await leaderboard.getLeaderboard(1, 50)).items.find((i) => i.username === names.third);
+    // The loss against the bot is not counted.
     assert.deepEqual([listed?.gamesPlayed, listed?.losses], [1, 1]);
   });
 
@@ -125,6 +155,27 @@ describe('Leaderboard against PostgreSQL', () => {
     assert.ok(!web.entries.some((e) => e.username === names.admin));
 
     await assert.rejects(() => leaderboard.getPlayerRanking(names.admin), NotFoundException);
+  });
+
+  it('excludes the AI bot from the list, stats, web leaderboard, lookup and rank counts', async () => {
+    const page = await leaderboard.getLeaderboard(1, 50);
+    assert.ok(!page.items.some((i) => i.username === names.bot));
+
+    const stats = await leaderboard.getGlobalStats();
+    assert.ok(stats.highestRating < TOP + 400);
+    assert.notEqual(stats.topPlayer?.username, names.bot);
+
+    const web = await rating.getLeaderboard(100, 0);
+    assert.ok(!web.entries.some((e) => e.username === names.bot));
+
+    await assert.rejects(() => leaderboard.getPlayerRanking(names.bot), NotFoundException);
+
+    // The bot is rated above the fixtures; counting it would push their rank down.
+    const humansAbove = await prisma.user.count({
+      where: { role: { notIn: ['admin', AI_BOT_ROLE] }, rating: { gt: TOP } },
+    });
+    assert.equal((await leaderboard.getPlayerRanking(names.tieUpper)).rank, humansAbove + 1);
+    assert.equal((await profile.getMyProfile(ids.tieUpper)).user.rank, humansAbove + 1);
   });
 
   it('returns full paginated match history newest first', async () => {

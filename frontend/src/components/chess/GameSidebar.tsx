@@ -6,6 +6,7 @@ import {
   RotateCcw,
   Send,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { ChatMessage } from "../../types";
 
 type Props = {
@@ -39,6 +40,14 @@ export function GameSidebar({
   onModeChange,
   sending = false,
 }: Props) {
+  const chatBodyRef = useRef<HTMLDivElement>(null);
+
+  // Keep the chat pinned to the latest message as new ones arrive.
+  useEffect(() => {
+    const el = chatBodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   return (
     <aside>
       <div className="card gameRoomCard">
@@ -88,7 +97,7 @@ export function GameSidebar({
             </select>
           )}
         </div>
-        <div className="chatBody">
+        <div className="chatBody" ref={chatBodyRef}>
           {messages.map((m) => (
             <div
               key={m.id}
@@ -96,6 +105,11 @@ export function GameSidebar({
             >
               <b>{m.user}</b>
               <span>{m.text}</span>
+              {m.sentiment && (
+                <span className="msgMood" title={`sentiment: ${m.sentiment}`}>
+                  {m.sentiment === "positive" ? "🙂" : m.sentiment === "negative" ? "🙁" : "😐"}
+                </span>
+              )}
             </div>
           ))}
         </div>

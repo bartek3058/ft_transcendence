@@ -52,7 +52,8 @@
     "test:leaderboard": "ts-node --project tsconfig.tools.json test/rating-leaderboard.test.ts",
     "test:ai": "ts-node --project tsconfig.tools.json test/ai-stockfish.test.ts",
     "test:ai-game": "ts-node --project tsconfig.tools.json test/ai-game.test.ts",
-    "test:chat": "ts-node --project tsconfig.tools.json test/chat.test.ts"
+    "test:chat": "ts-node --project tsconfig.tools.json test/chat.test.ts",
+    "test:player-records": "ts-node --project tsconfig.tools.json test/player-records.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
