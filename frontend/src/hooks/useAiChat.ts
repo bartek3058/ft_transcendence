@@ -1,6 +1,12 @@
 import { useCallback, useState } from "react";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, Sentiment } from "../types";
 import { api } from "../services/api";
+
+interface ChatResponse {
+  reply: string;
+  sentiment?: { label: Sentiment; score: number };
+  blocked?: boolean;
+}
 
 export type ChatMode = "coach" | "commentator" | "rival" | "casual";
 
@@ -34,13 +40,14 @@ export function useAiChat(getContext?: () => GameContext) {
       content: m.text,
     }));
 
-    setMessages((v) => [...v, { id: crypto.randomUUID(), user: "You", text }]);
+    const mineId = crypto.randomUUID();
+    setMessages((v) => [...v, { id: mineId, user: "You", text }]);
     setDraft("");
     setSending(true);
 
     const ctx = getContext?.() ?? {};
     try {
-      const { reply } = await api<{ reply: string }>("/ai/chat", {
+      const res = await api<ChatResponse>("/ai/chat", {
         method: "POST",
         body: JSON.stringify({
           mode,
@@ -51,7 +58,13 @@ export function useAiChat(getContext?: () => GameContext) {
           turn: ctx.turn,
         }),
       });
-      setMessages((v) => [...v, { id: crypto.randomUUID(), user: "AI", text: reply }]);
+      // Tag the user's own message with its sentiment (minor AI feature).
+      if (res.sentiment) {
+        setMessages((v) =>
+          v.map((m) => (m.id === mineId ? { ...m, sentiment: res.sentiment!.label } : m)),
+        );
+      }
+      setMessages((v) => [...v, { id: crypto.randomUUID(), user: "AI", text: res.reply }]);
     } catch {
       setMessages((v) => [
         ...v,
