@@ -1,4 +1,5 @@
 import { PrismaService } from '../database/prisma.service';
+import { AI_BOT_USER_ID } from '../ai/ai.constants';
 
 /** Results that count towards a player's record (IN_PROGRESS and ABORTED excluded). */
 export const FINISHED_RESULTS = ['WHITE_WON', 'BLACK_WON', 'DRAW'] as const;
@@ -33,14 +34,16 @@ export async function loadPlayerRecords(
 
   const finished = { in: [...FINISHED_RESULTS] };
   const [asWhite, asBlack] = await Promise.all([
+    // Games against the AI bot are excluded (opponent != bot), so playing the AI
+    // never pads a player's win/loss record. They still appear in match history.
     prisma.game.groupBy({
       by: ['whiteId', 'result'],
-      where: { whiteId: { in: userIds }, result: finished },
+      where: { whiteId: { in: userIds }, blackId: { not: AI_BOT_USER_ID }, result: finished },
       _count: { _all: true },
     }),
     prisma.game.groupBy({
       by: ['blackId', 'result'],
-      where: { blackId: { in: userIds }, result: finished },
+      where: { blackId: { in: userIds }, whiteId: { not: AI_BOT_USER_ID }, result: finished },
       _count: { _all: true },
     }),
   ]);
