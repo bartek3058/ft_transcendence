@@ -4,8 +4,10 @@ import {
   getMatchmakingSocket,
   joinGameRoom,
   type GameJoined,
+  type FinishedGame,
   type MatchFound,
 } from "../services/socket";
+import { useAuth } from "../context/AuthContext";
 
 type MatchmakingStatus =
   | "idle"
@@ -13,20 +15,27 @@ type MatchmakingStatus =
   | "connecting"
   | "queued"
   | "matched"
+  | "finished"
   | "error";
 
 export function useMatchmaking() {
+  const { user } = useAuth();
+  const storageKey = user ? `chesshub:last-game:${user.id}` : null;
   const [status, setStatus] = useState<MatchmakingStatus>("restoring");
   const [gameId, setGameId] = useState<string | null>(null);
   const [game, setGame] = useState<GameJoined | null>(null);
+  const [finishedGame, setFinishedGame] = useState<FinishedGame | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const readyRef = useRef(false);
+  const gameReadyRef = useRef(false);
   const activeGameIdRef = useRef<string | null>(null);
   const gameRef = useRef<GameJoined | null>(null);
   const wantsToSearchRef = useRef(false);
 
   useEffect(() => {
+    if (!storageKey) return;
+    activeGameIdRef.current = sessionStorage.getItem(storageKey);
     const matchmaking = getMatchmakingSocket();
     const gameSocket = getGameSocket();
 
@@ -55,16 +64,35 @@ export function useMatchmaking() {
     const onMatched = (match: MatchFound) => {
       wantsToSearchRef.current = false;
       activeGameIdRef.current = match.gameId;
+      sessionStorage.setItem(storageKey, match.gameId);
+      setFinishedGame(null);
       setGameId(match.gameId);
-      joinGameRoom(match.gameId);
+      if (gameSocket.connected && gameReadyRef.current) {
+        joinGameRoom(match.gameId);
+      }
     };
 
     const onGameJoined = (joined: GameJoined) => {
       activeGameIdRef.current = joined.gameId;
+      sessionStorage.setItem(storageKey, joined.gameId);
       gameRef.current = joined;
+      setFinishedGame(null);
       setGameId(joined.gameId);
       setGame(joined);
+      setError(null);
       setStatus("matched");
+    };
+
+    const onGameFinished = (finished: FinishedGame) => {
+      if (finished.gameId !== activeGameIdRef.current) return;
+      sessionStorage.removeItem(storageKey);
+      activeGameIdRef.current = null;
+      gameRef.current = null;
+      setGame(null);
+      setGameId(finished.gameId);
+      setFinishedGame(finished);
+      setError(null);
+      setStatus("finished");
     };
 
     const onError = (payload?: { code?: string }) => {
@@ -87,6 +115,7 @@ export function useMatchmaking() {
     matchmaking.on("connect_error", onConnectError);
 
     const onGameReady = () => {
+      gameReadyRef.current = true;
       if (activeGameIdRef.current) {
         gameSocket.emit("game:join", { gameId: activeGameIdRef.current });
       } else {
@@ -94,22 +123,28 @@ export function useMatchmaking() {
       }
     };
     const onNoActiveGame = () => {
-      if (!activeGameIdRef.current && !gameRef.current) {
-        setStatus((current) => (current === "restoring" ? "idle" : current));
-      }
+      if (activeGameIdRef.current) return; // game:join will resolve this ID
+      setStatus((current) => (current === "restoring" ? "idle" : current));
     };
     const onGameDisconnect = () => {
+      gameReadyRef.current = false;
       if (activeGameIdRef.current) setStatus("restoring");
     };
     gameSocket.on("game:ready", onGameReady);
     gameSocket.on("game:no-active", onNoActiveGame);
     gameSocket.on("disconnect", onGameDisconnect);
     gameSocket.on("game:joined", onGameJoined);
+    gameSocket.on("game:finished", onGameFinished);
     const onGameError = (payload?: { code?: string }) => {
+      if (payload?.code === "GAME_NOT_FOUND") {
+        sessionStorage.removeItem(storageKey);
+        activeGameIdRef.current = null;
+      }
       if (
         [
           "UNAUTHENTICATED",
           "GAME_NOT_FOUND",
+          "GAME_RESULT_LOOKUP_FAILED",
           "NOT_A_PLAYER",
           "GAME_ID_REQUIRED",
         ].includes(payload?.code ?? "")
@@ -134,11 +169,13 @@ export function useMatchmaking() {
       gameSocket.off("game:no-active", onNoActiveGame);
       gameSocket.off("disconnect", onGameDisconnect);
       gameSocket.off("game:joined", onGameJoined);
+      gameSocket.off("game:finished", onGameFinished);
       gameSocket.off("game:error", onGameError);
       gameSocket.off("connect_error", onConnectError);
 
       wantsToSearchRef.current = false;
       readyRef.current = false;
+      gameReadyRef.current = false;
 
       if (matchmaking.connected) {
         matchmaking.emit("queue:leave");
@@ -147,7 +184,7 @@ export function useMatchmaking() {
       matchmaking.disconnect();
       gameSocket.disconnect();
     };
-  }, []);
+  }, [storageKey]);
 
   const search = useCallback(() => {
     const socket = getMatchmakingSocket();
@@ -155,8 +192,10 @@ export function useMatchmaking() {
     if (gameRef.current) {
       getGameSocket().emit("game:leave", { gameId: gameRef.current.gameId });
     }
+    if (storageKey) sessionStorage.removeItem(storageKey);
     activeGameIdRef.current = null;
     gameRef.current = null;
+    setFinishedGame(null);
     setError(null);
     setGame(null);
     setGameId(null);
@@ -175,7 +214,7 @@ export function useMatchmaking() {
     if (!socket.connected) {
       socket.connect();
     }
-  }, []);
+  }, [storageKey]);
 
   const cancel = useCallback(() => {
     const socket = getMatchmakingSocket();
@@ -187,17 +226,20 @@ export function useMatchmaking() {
     }
 
     setStatus("idle");
+    if (storageKey) sessionStorage.removeItem(storageKey);
     activeGameIdRef.current = null;
+    setFinishedGame(null);
     gameRef.current = null;
     setGameId(null);
     setGame(null);
     setError(null);
-  }, []);
+  }, [storageKey]);
 
   return {
     status,
     gameId,
     game,
+    finishedGame,
     error,
     search,
     cancel,

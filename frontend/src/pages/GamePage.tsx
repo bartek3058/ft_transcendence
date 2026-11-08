@@ -15,7 +15,31 @@ export function GamePage() {
   const { user } = useAuth();
   const matchmaking = useMatchmaking();
 
-  if (matchmaking.status !== "matched" || !matchmaking.game) {
+  if (matchmaking.status === "finished" && matchmaking.finishedGame) {
+    const finished = matchmaking.finishedGame;
+    const winner = finished.winnerColor === "w" ? "White" : "Black";
+    return (
+      <div className="matchmakingPage">
+        <div className="matchmakingLobby">
+          <div className="matchmakingIcon">♛</div>
+          <h2>{finished.winnerColor ? "Game over" : "Draw"}</h2>
+          <p>
+            {finished.winnerColor ? `${winner} wins` : "Draw"}
+            {finished.reason ? ` (${finished.reason})` : ""}.
+          </p>
+          <p>The game ended while you were disconnected.</p>
+          <button className="primary" onClick={matchmaking.search}>
+            Play again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    !matchmaking.game ||
+    !["matched", "restoring"].includes(matchmaking.status)
+  ) {
     return (
       <div className="matchmakingPage">
         <MatchmakingLobby
@@ -35,6 +59,7 @@ export function GamePage() {
       joined={matchmaking.game}
       username={user?.username ?? "Player"}
       onNewGame={matchmaking.search}
+      restoring={matchmaking.status === "restoring"}
     />
   );
 }
@@ -43,22 +68,24 @@ function OnlineGame({
   joined,
   username,
   onNewGame,
+  restoring,
 }: {
   joined: GameJoined;
   username: string;
   onNewGame: () => void;
+  restoring: boolean;
 }) {
-  const chess = useChessGame(joined);
+  const chess = useChessGame(joined, restoring);
   const chat = useChat();
 
   const handleResign = async () => {
-    if (chess.isFinished || chess.waiting) return;
+    if (restoring || chess.isFinished || chess.waiting) return;
     if (!window.confirm("Are you sure you want to resign?")) return;
     await chess.resign();
   };
 
   const handleNewGame = async () => {
-    if (chess.waiting) return;
+    if (restoring || chess.waiting) return;
     if (!chess.isFinished) {
       if (
         !window.confirm(
@@ -80,7 +107,7 @@ function OnlineGame({
 
   return (
     <>
-      {!chess.connected && (
+      {(!chess.connected || restoring) && (
         <p role="status" className="muted">
           Reconnecting to the game...
         </p>
