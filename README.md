@@ -18,6 +18,7 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
 - **Tournament bracket & progression engine** - automated single-elimination tournament generator with balanced seed-fold pairing, Round 1 Bye resolution, match progression to champion, and knockout draw tiebreak handling.
 - **Tournament registration & lifecycle** - create, browse (open / live / past) and join tournaments; the creator or an admin can close registration early or cancel. Registration closes on its own at the deadline, the bracket starts automatically, and tournaments with fewer than 2 players are cancelled.
+- **Tournament invitations** - the creator or any registered player can invite friends to an open tournament; the friend accepts (joins) or declines, and can be invited again after declining.
 - _TODO: tournament lobby UI, AI opponent, live chat, internationalization._
 
 ---

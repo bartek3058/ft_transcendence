@@ -70,16 +70,19 @@ export class TournamentLifecycleService {
    * scheduler, so any race ends in exactly one committed outcome.
    */
   async cancel(tournamentId: string): Promise<void> {
-    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
-      UPDATE tournaments SET status = 'CANCELLED', updated_at = now()
-      WHERE id = ${tournamentId}::uuid AND status IN ('OPEN_FOR_SIGNUP', 'REGISTRATION_CLOSED')
-      RETURNING id`;
-    if (rows.length === 0) {
-      const exists = await this.prisma.tournament.count({ where: { id: tournamentId } });
-      if (!exists) throw new TournamentHttpError(404, 'TOURNAMENT_NOT_FOUND', 'Tournament not found.');
-      throw new TournamentHttpError(409, 'TOURNAMENT_NOT_CANCELLABLE',
-        'Only a tournament that has not started can be cancelled.');
-    }
+    await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE tournaments SET status = 'CANCELLED', updated_at = now()
+        WHERE id = ${tournamentId}::uuid AND status IN ('OPEN_FOR_SIGNUP', 'REGISTRATION_CLOSED')
+        RETURNING id`;
+      if (rows.length === 0) {
+        const exists = await tx.tournament.count({ where: { id: tournamentId } });
+        if (!exists) throw new TournamentHttpError(404, 'TOURNAMENT_NOT_FOUND', 'Tournament not found.');
+        throw new TournamentHttpError(409, 'TOURNAMENT_NOT_CANCELLABLE',
+          'Only a tournament that has not started can be cancelled.');
+      }
+      await expirePendingInvitations(tx, tournamentId);
+    });
     this.logger.log(`Tournament ${tournamentId} cancelled (MANUAL).`);
     this.events.cancelled({ tournamentId, at: new Date() });
   }
@@ -90,17 +93,21 @@ export class TournamentLifecycleService {
    * Returns false when the tournament was already handled elsewhere.
    */
   async cancelUnstartable(tournamentId: string): Promise<boolean> {
-    const cancelled = await this.prisma.tournament.updateMany({
-      where: {
-        id: tournamentId,
-        OR: [
-          { status: 'OPEN_FOR_SIGNUP', registrationDeadline: { lte: new Date() } },
-          { status: 'REGISTRATION_CLOSED' },
-        ],
-      },
-      data: { status: 'CANCELLED' },
+    const cancelled = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.tournament.updateMany({
+        where: {
+          id: tournamentId,
+          OR: [
+            { status: 'OPEN_FOR_SIGNUP', registrationDeadline: { lte: new Date() } },
+            { status: 'REGISTRATION_CLOSED' },
+          ],
+        },
+        data: { status: 'CANCELLED' },
+      });
+      if (result.count === 1) await expirePendingInvitations(tx, tournamentId);
+      return result.count === 1;
     });
-    if (cancelled.count !== 1) return false;
+    if (!cancelled) return false;
     this.logger.warn(`Tournament ${tournamentId} cancelled: bracket start kept failing.`);
     this.events.registrationClosed({ tournamentId, outcome: 'CANCELLED', reason: 'SCHEDULER', at: new Date() });
     return true;
@@ -109,6 +116,7 @@ export class TournamentLifecycleService {
   /** Counter read from the locked row; join/leave keep it equal to the participant rows. */
   private async startOrCancel(tx: Prisma.TransactionClient, tournamentId: string,
     participants: number): Promise<CloseOutcome> {
+    await expirePendingInvitations(tx, tournamentId); // registration is over either way
     if (participants < 2) {
       await tx.tournament.update({ where: { id: tournamentId }, data: { status: 'CANCELLED' } });
       return 'CANCELLED';
@@ -127,4 +135,12 @@ export class TournamentLifecycleService {
     this.logger.log(`Tournament ${tournamentId} closed (${reason}): ${outcome}`);
     this.events.registrationClosed({ tournamentId, outcome, reason, at: new Date() });
   }
+}
+
+/** Registration is over: pending invitations can no longer be accepted. */
+async function expirePendingInvitations(tx: Prisma.TransactionClient, tournamentId: string): Promise<void> {
+  await tx.tournamentInvitation.updateMany({
+    where: { tournamentId, status: 'PENDING' },
+    data: { status: 'EXPIRED' },
+  });
 }

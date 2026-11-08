@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { CreateTournamentDto } from './dto/create-tournament.dto';
 import { ListTournamentsQueryDto } from './dto/list-tournaments-query.dto';
 import { TournamentHttpError } from './http/tournament.errors';
+import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { CloseOutcome, TournamentLifecycleService } from './tournament-lifecycle.service';
 import { checkRegistrationDeadline, PAGE, TAB_STATUSES } from './tournament-rules';
 import {
@@ -31,12 +32,20 @@ const ORDER: Record<keyof typeof TAB_STATUSES, Prisma.TournamentOrderByWithRelat
 const notFound = () => new TournamentHttpError(404, 'TOURNAMENT_NOT_FOUND', 'Tournament not found.');
 const closed = () => new TournamentHttpError(409, 'REGISTRATION_CLOSED', 'Registration is closed.');
 const alreadyJoined = () => new TournamentHttpError(409, 'ALREADY_JOINED', 'You already joined this tournament.');
+/** Result of a join inside a caller's transaction. */
+export interface JoinResult {
+  currentParticipants: number;
+  /** Pending invitation of the user for this tournament, marked ACCEPTED by the join. */
+  acceptedInvitation: { id: string; senderId: string } | null;
+}
+
 const notJoined = () => new TournamentHttpError(409, 'NOT_JOINED', 'You are not registered in this tournament.');
 
 @Injectable()
 export class TournamentsService {
   constructor(private readonly prisma: PrismaService,
-    private readonly lifecycle: TournamentLifecycleService) {}
+    private readonly lifecycle: TournamentLifecycleService,
+    private readonly events: TournamentEventsPublisher) {}
 
   async create(creatorId: string, dto: CreateTournamentDto): Promise<TournamentSummary> {
     const registrationDeadline = new Date(dto.registrationDeadline);
@@ -118,27 +127,52 @@ export class TournamentsService {
   }
 
   async join(userId: string, id: string): Promise<RegistrationChange> {
+    let result: JoinResult;
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        // Single conditional UPDATE: the row lock serialises concurrent joins, so the
-        // last slot can never be overbooked.
-        const rows = await tx.$queryRaw<{ current_participants: number }[]>`
-          UPDATE tournaments
-          SET current_participants = current_participants + 1, updated_at = now()
-          WHERE id = ${id}::uuid
-            AND status = 'OPEN_FOR_SIGNUP'
-            AND current_participants < max_participants
-            AND registration_deadline > now()
-          RETURNING current_participants`;
-        if (rows.length === 0) throw await this.joinRejection(tx, id, userId);
-        // A duplicate raises P2002; leaving the callback rolls back the increment.
-        await tx.tournamentParticipant.create({ data: { tournamentId: id, userId } });
-        return { currentParticipants: rows[0].current_participants };
-      });
+      result = await this.prisma.$transaction((tx) => this.joinInTx(tx, userId, id));
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw alreadyJoined();
-      throw error;
+      throw mapJoinError(error);
     }
+    this.publishAccepted(userId, id, result);
+    return { currentParticipants: result.currentParticipants };
+  }
+
+  /**
+   * Join inside the caller's transaction (also used to accept an invitation).
+   * Single conditional UPDATE: the row lock serialises concurrent joins, so the last
+   * slot can never be overbooked. A duplicate raises P2002 (map it with mapJoinError
+   * outside the transaction); leaving the callback rolls back the increment.
+   * A pending invitation of the user for this tournament is marked ACCEPTED, so a
+   * direct join never leaves a stale invitation behind.
+   */
+  async joinInTx(tx: Prisma.TransactionClient, userId: string, id: string): Promise<JoinResult> {
+    const rows = await tx.$queryRaw<{ current_participants: number }[]>`
+      UPDATE tournaments
+      SET current_participants = current_participants + 1, updated_at = now()
+      WHERE id = ${id}::uuid
+        AND status = 'OPEN_FOR_SIGNUP'
+        AND current_participants < max_participants
+        AND registration_deadline > now()
+      RETURNING current_participants`;
+    if (rows.length === 0) throw await this.joinRejection(tx, id, userId);
+    await tx.tournamentParticipant.create({ data: { tournamentId: id, userId } });
+    const accepted = await tx.$queryRaw<{ id: string; sender_id: string }[]>`
+      UPDATE tournament_invitations SET status = 'ACCEPTED'
+      WHERE tournament_id = ${id}::uuid AND recipient_id = ${userId}::uuid AND status = 'PENDING'
+      RETURNING id, sender_id`;
+    return {
+      currentParticipants: rows[0].current_participants,
+      acceptedInvitation: accepted.length ? { id: accepted[0].id, senderId: accepted[0].sender_id } : null,
+    };
+  }
+
+  /** After commit: an invitation accepted by a join is announced like an accepted respond. */
+  publishAccepted(userId: string, tournamentId: string, result: JoinResult): void {
+    if (!result.acceptedInvitation) return;
+    this.events.invitationAnswered({
+      invitationId: result.acceptedInvitation.id, tournamentId, senderId: result.acceptedInvitation.senderId,
+      recipientId: userId, status: 'ACCEPTED', at: new Date(),
+    });
   }
 
   async leave(userId: string, id: string): Promise<RegistrationChange> {
@@ -200,6 +234,12 @@ export class TournamentsService {
     if (!isOpen(tournament.status, tournament.registrationDeadline)) return closed();
     return new TournamentHttpError(409, 'TOURNAMENT_FULL', 'Tournament is full.');
   }
+}
+
+/** Maps a duplicate participant row (P2002) to 409 ALREADY_JOINED. */
+export function mapJoinError(error: unknown): unknown {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return alreadyJoined();
+  return error;
 }
 
 function isOpen(status: string, deadline: Date): boolean {

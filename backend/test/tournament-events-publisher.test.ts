@@ -48,6 +48,21 @@ describe('TournamentEventsPublisher', () => {
     assert.deepEqual(closed, []);
   });
 
+  it('delivers invitation events on their own channels', async () => {
+    const publisher = new TournamentEventsPublisher();
+    const received: string[] = [];
+    const answered: string[] = [];
+    publisher.onInvitationReceived((e) => { received.push(e.invitationId); });
+    publisher.onInvitationAnswered((e) => { answered.push(`${e.invitationId}:${e.status}`); });
+    const base = { invitationId: 'i', tournamentId: 't', senderId: 's', recipientId: 'r', at: new Date(0) };
+    publisher.invitationReceived(base);
+    publisher.invitationAnswered({ ...base, status: 'DECLINED' });
+    assert.deepEqual([received, answered], [[], []]); // deferred
+    await tick();
+    assert.deepEqual(received, ['i']);
+    assert.deepEqual(answered, ['i:DECLINED']);
+  });
+
   it('stops delivery after unsubscribe and on module destroy', async () => {
     const publisher = new TournamentEventsPublisher();
     let a = 0;

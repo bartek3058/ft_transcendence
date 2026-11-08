@@ -66,3 +66,43 @@ export interface TournamentDetail extends TournamentSummary {
 export interface RegistrationChange {
   currentParticipants: number;
 }
+
+export type InvitationStatusView = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED';
+
+export interface InvitationCreated {
+  invitationId: string;
+  tournamentId: string;
+  recipientId: string;
+  status: 'PENDING';
+  expiresAt: Date;
+}
+
+export interface MyInvitation {
+  id: string;
+  tournament: {
+    id: string;
+    title: string;
+    status: TournamentStatus;
+    maxParticipants: number;
+    currentParticipants: number;
+    registrationDeadline: Date;
+  };
+  sender: TournamentUserRef;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+export interface MyInvitationsPage {
+  items: MyInvitation[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface InvitationAnswer {
+  invitationId: string;
+  tournamentId: string;
+  status: InvitationStatusView;
+  /** Only after an accept. */
+  currentParticipants?: number;
+}
