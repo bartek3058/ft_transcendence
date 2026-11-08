@@ -35,6 +35,8 @@ const alreadyJoined = () => new TournamentHttpError(409, 'ALREADY_JOINED', 'You 
 /** Result of a join inside a caller's transaction. */
 export interface JoinResult {
   currentParticipants: number;
+  maxParticipants: number;
+  username: string;
   /** Pending invitation of the user for this tournament, marked ACCEPTED by the join. */
   acceptedInvitation: { id: string; senderId: string } | null;
 }
@@ -133,7 +135,7 @@ export class TournamentsService {
     } catch (error) {
       throw mapJoinError(error);
     }
-    this.publishAccepted(userId, id, result);
+    this.publishJoined(userId, id, result);
     return { currentParticipants: result.currentParticipants };
   }
 
@@ -146,28 +148,38 @@ export class TournamentsService {
    * direct join never leaves a stale invitation behind.
    */
   async joinInTx(tx: Prisma.TransactionClient, userId: string, id: string): Promise<JoinResult> {
-    const rows = await tx.$queryRaw<{ current_participants: number }[]>`
+    const rows = await tx.$queryRaw<{ current_participants: number; max_participants: number }[]>`
       UPDATE tournaments
       SET current_participants = current_participants + 1, updated_at = now()
       WHERE id = ${id}::uuid
         AND status = 'OPEN_FOR_SIGNUP'
         AND current_participants < max_participants
         AND registration_deadline > now()
-      RETURNING current_participants`;
+      RETURNING current_participants, max_participants`;
     if (rows.length === 0) throw await this.joinRejection(tx, id, userId);
     await tx.tournamentParticipant.create({ data: { tournamentId: id, userId } });
     const accepted = await tx.$queryRaw<{ id: string; sender_id: string }[]>`
       UPDATE tournament_invitations SET status = 'ACCEPTED'
       WHERE tournament_id = ${id}::uuid AND recipient_id = ${userId}::uuid AND status = 'PENDING'
       RETURNING id, sender_id`;
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { username: true } });
     return {
       currentParticipants: rows[0].current_participants,
+      maxParticipants: rows[0].max_participants,
+      username: user.username,
       acceptedInvitation: accepted.length ? { id: accepted[0].id, senderId: accepted[0].sender_id } : null,
     };
   }
 
-  /** After commit: an invitation accepted by a join is announced like an accepted respond. */
-  publishAccepted(userId: string, tournamentId: string, result: JoinResult): void {
+  /**
+   * After commit: the new participant, and an invitation accepted by the join (announced
+   * like an accepted respond).
+   */
+  publishJoined(userId: string, tournamentId: string, result: JoinResult): void {
+    this.events.participantJoined({
+      tournamentId, userId, username: result.username, currentParticipants: result.currentParticipants,
+      maxParticipants: result.maxParticipants, at: new Date(),
+    });
     if (!result.acceptedInvitation) return;
     this.events.invitationAnswered({
       invitationId: result.acceptedInvitation.id, tournamentId, senderId: result.acceptedInvitation.senderId,
@@ -176,15 +188,15 @@ export class TournamentsService {
   }
 
   async leave(userId: string, id: string): Promise<RegistrationChange> {
-    return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<{ current_participants: number }[]>`
+    const left = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ current_participants: number; max_participants: number }[]>`
         UPDATE tournaments
         SET current_participants = current_participants - 1, updated_at = now()
         WHERE id = ${id}::uuid
           AND status = 'OPEN_FOR_SIGNUP'
           AND registration_deadline > now()
           AND current_participants > 0
-        RETURNING current_participants`;
+        RETURNING current_participants, max_participants`;
       if (rows.length === 0) {
         const tournament = await tx.tournament.findUnique({
           where: { id }, select: { status: true, registrationDeadline: true },
@@ -195,8 +207,11 @@ export class TournamentsService {
       }
       const removed = await tx.tournamentParticipant.deleteMany({ where: { tournamentId: id, userId } });
       if (removed.count === 0) throw notJoined(); // rolls back the decrement
-      return { currentParticipants: rows[0].current_participants };
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { username: true } });
+      return { currentParticipants: rows[0].current_participants, maxParticipants: rows[0].max_participants, username: user.username };
     });
+    this.events.participantLeft({ tournamentId: id, userId, ...left, at: new Date() });
+    return { currentParticipants: left.currentParticipants };
   }
 
   async closeRegistration(userId: string, id: string): Promise<{ status: CloseOutcome }> {

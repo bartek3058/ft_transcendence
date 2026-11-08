@@ -393,8 +393,8 @@ Details:
 Events are published only after the transaction commits, so a listener that reads the
 database already sees the new state. Delivery uses `setImmediate`, so the request never
 waits for listeners; a listener that throws or rejects is logged and does not affect
-others. Every subscribe method returns an unsubscribe function. Nothing subscribes yet;
-the WebSocket gateway of #168 will listen here.
+others. Every subscribe method returns an unsubscribe function. The only listener
+is `TournamentsGateway` (#168), see [tournaments-realtime.md](tournaments-realtime.md).
 
 ### Invitations internals
 
@@ -458,9 +458,8 @@ by id.
 
 ## Not covered here
 
-- Live updates: the backend publishes in-process events after a close, cancel or
-  invitation change (`TournamentEventsPublisher`), but no WebSocket channel sends them
-  yet (#168). Until then
+- Live updates: Socket.IO namespace `/tournaments`, see
+  [tournaments-realtime.md](tournaments-realtime.md) (#168). Until then
   the UI should reload the list or detail after an action, or poll.
 
 ## Tests

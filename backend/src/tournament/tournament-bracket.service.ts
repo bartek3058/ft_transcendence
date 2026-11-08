@@ -29,6 +29,10 @@ export interface AdvanceWinnerResult {
   nextMatchId: string | null;
   /** Set when this call (or a cascade it triggered) finished the tournament with a champion. */
   championId: string | null;
+  /** Every match this call changed (the match, its next match, and any cascade), for #168. */
+  changedMatchIds: string[];
+  /** True when this call (or its cascade) finished the tournament, champion or not. */
+  tournamentFinished: boolean;
 }
 
 export interface MatchDrawResult {
@@ -475,6 +479,8 @@ export class TournamentBracketService {
         winnerId,
         nextMatchId: null,
         championId: winnerId,
+        changedMatchIds: [match.id],
+        tournamentFinished: true,
       };
     }
 
@@ -485,6 +491,9 @@ export class TournamentBracketService {
       winnerId,
       nextMatchId: match.nextMatchId,
       championId: cascade?.championId ?? null,
+      // The next match got a player, became SCHEDULED or was resolved by the cascade.
+      changedMatchIds: [...new Set([match.id, match.nextMatchId, ...(cascade?.changedMatchIds ?? [])])],
+      tournamentFinished: cascade?.tournamentFinished ?? false,
     };
   }
 

@@ -10,7 +10,8 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../database/prisma.service';
 import { GameService } from '../game/game.service';
 import { GameConclusionEvent } from '../game/types/chess.types';
-import { TournamentBracketService } from './tournament-bracket.service';
+import { AdvanceWinnerResult, TournamentBracketService } from './tournament-bracket.service';
+import { TournamentEventsPublisher } from './tournament-events.publisher';
 
 export interface TournamentGameCreated {
   gameId: string;
@@ -41,6 +42,7 @@ export class TournamentGameService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly gameService: GameService,
     private readonly bracket: TournamentBracketService,
+    private readonly events: TournamentEventsPublisher,
   ) {}
 
   onModuleInit(): void {
@@ -59,6 +61,7 @@ export class TournamentGameService implements OnModuleInit {
       this.createMatchGame(tx, tournamentId, matchId),
     );
     this.startSession(created);
+    this.events.bracketChanged(tournamentId, [matchId], false);
     return created;
   }
 
@@ -114,39 +117,45 @@ export class TournamentGameService implements OnModuleInit {
     }
 
     let replay: TournamentGameCreated | null = null;
+    let advanced: AdvanceWinnerResult | null = null;
     try {
-      replay = await this.prisma.$transaction(async (tx) => {
+      ({ replay, advanced } = await this.prisma.$transaction(async (tx): Promise<{
+        replay: TournamentGameCreated | null; advanced: AdvanceWinnerResult | null;
+      }> => {
         if (event.endReason === 'ABANDONMENT') {
           // No-show / abandonment is a forfeit, not a played result.
           if (event.result === 'DRAW') {
             // Nobody showed up: both lose, nobody advances.
-            await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId);
-          } else {
-            const forfeitedUserId =
-              event.result === 'WHITE_WON' ? event.blackPlayerId : event.whitePlayerId;
-            await this.bracket.handleWalkover(tx, tournamentId, matchId, forfeitedUserId);
+            return { replay: null, advanced: await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId) };
           }
-          return null;
+          const forfeitedUserId =
+            event.result === 'WHITE_WON' ? event.blackPlayerId : event.whitePlayerId;
+          return {
+            replay: null,
+            advanced: await this.bracket.handleWalkover(tx, tournamentId, matchId, forfeitedUserId),
+          };
         }
 
         if (event.result === 'DRAW') {
           const draw = await this.bracket.handleMatchDraw(tx, tournamentId, matchId);
           if (draw.action !== 'REPLAY') {
-            return null;
+            return { replay: null, advanced: draw.advanceResult ?? null };
           }
           // Replay with colors swapped relative to the game that just ended.
-          return this.createMatchGameRow(tx, tournamentId, matchId, {
-            whitePlayerId: event.blackPlayerId,
-            blackPlayerId: event.whitePlayerId,
-            allowedStatuses: ['IN_PROGRESS'],
-          });
+          return {
+            replay: await this.createMatchGameRow(tx, tournamentId, matchId, {
+              whitePlayerId: event.blackPlayerId,
+              blackPlayerId: event.whitePlayerId,
+              allowedStatuses: ['IN_PROGRESS'],
+            }),
+            advanced: null,
+          };
         }
 
         const winnerId =
           event.result === 'WHITE_WON' ? event.whitePlayerId : event.blackPlayerId;
-        await this.bracket.advanceWinner(tx, tournamentId, matchId, winnerId);
-        return null;
-      });
+        return { replay: null, advanced: await this.bracket.advanceWinner(tx, tournamentId, matchId, winnerId) };
+      }));
     } catch (error) {
       if (error instanceof ConflictException) {
         this.logger.warn(
@@ -160,6 +169,10 @@ export class TournamentGameService implements OnModuleInit {
     if (replay) {
       this.startSession(replay);
     }
+    // After commit: a replay changes the match's current game; a result changes the
+    // match, its next match and any cascade.
+    this.events.bracketChanged(tournamentId, advanced?.changedMatchIds ?? [matchId],
+      advanced?.tournamentFinished ?? false);
   }
 
   /**

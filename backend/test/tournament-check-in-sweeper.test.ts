@@ -5,6 +5,7 @@ import { ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../src/database/prisma.service';
 import { TournamentBracketService } from '../src/tournament/tournament-bracket.service';
 import { MAX_SWEEP_ATTEMPTS, TournamentCheckInSweeper } from '../src/tournament/tournament-check-in.sweeper';
+import { TournamentEventsPublisher } from '../src/tournament/tournament-events.publisher';
 import { TournamentGameService } from '../src/tournament/tournament-game.service';
 
 // Decision logic only; locking, rollback and races are covered by the PostgreSQL test.
@@ -34,7 +35,7 @@ function setup(locked: Record<string, Row | undefined>, failing: Record<string, 
     createMatchGame: async (_tx: unknown, _t: string, id: string) => { fail(id); calls.push(`create:${id}`); return { gameId: `g-${id}` }; },
     startSession: (created: { gameId: string }) => { calls.push(`session:${created.gameId}`); },
   } as unknown as TournamentGameService;
-  const sweeper = new TournamentCheckInSweeper(prisma, bracket, games);
+  const sweeper = new TournamentCheckInSweeper(prisma, bracket, games, new TournamentEventsPublisher());
   // Route the fake $queryRaw to the match being resolved.
   const resolve = sweeper.resolve.bind(sweeper);
   sweeper.resolve = (t: string, id: string) => { current = id; return resolve(t, id); };
@@ -93,7 +94,8 @@ describe('TournamentCheckInSweeper', () => {
     const prisma = {
       tournamentMatch: { findMany: async () => { await gate; return []; } },
     } as unknown as PrismaService;
-    const sweeper = new TournamentCheckInSweeper(prisma, {} as TournamentBracketService, {} as TournamentGameService);
+    const sweeper = new TournamentCheckInSweeper(prisma, {} as TournamentBracketService, {} as TournamentGameService,
+      new TournamentEventsPublisher());
     const first = sweeper.tick();
     assert.equal((await sweeper.tick()).skipped, true);
     release();
@@ -101,7 +103,7 @@ describe('TournamentCheckInSweeper', () => {
 
     const broken = new TournamentCheckInSweeper(
       { tournamentMatch: { findMany: async () => { throw new Error('db down'); } } } as unknown as PrismaService,
-      {} as TournamentBracketService, {} as TournamentGameService);
+      {} as TournamentBracketService, {} as TournamentGameService, new TournamentEventsPublisher());
     assert.equal((await broken.tick()).failed, 0);
     assert.equal((await broken.tick()).skipped, false); // guard released
   });

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { TournamentBracketService } from './tournament-bracket.service';
+import { AdvanceWinnerResult, TournamentBracketService } from './tournament-bracket.service';
+import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { TournamentGameCreated, TournamentGameService } from './tournament-game.service';
 
 export const CHECK_IN_SWEEP_INTERVAL_MS = 10_000;
@@ -49,7 +50,8 @@ export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly prisma: PrismaService,
     private readonly bracket: TournamentBracketService,
-    private readonly games: TournamentGameService) {}
+    private readonly games: TournamentGameService,
+    private readonly events: TournamentEventsPublisher) {}
 
   onModuleInit(): void {
     this.timer = setInterval(() => { void this.tick(); }, CHECK_IN_SWEEP_INTERVAL_MS);
@@ -120,6 +122,7 @@ export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
 
   async resolve(tournamentId: string, matchId: string): Promise<SweepAction> {
     let created = null as TournamentGameCreated | null; // `as`: assigned inside the transaction callback
+    let advanced = null as AdvanceWinnerResult | null;
     const action = await this.prisma.$transaction(async (tx): Promise<SweepAction> => {
       const rows = await tx.$queryRaw<LockedMatch>`
         SELECT player1_id, player2_id, player1_checked_in_at, player2_checked_in_at
@@ -136,13 +139,17 @@ export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
         return 'STARTED';
       }
       if (p1 || p2) {
-        await this.bracket.handleWalkover(tx, tournamentId, matchId, p1 ? m.player2_id : m.player1_id);
+        advanced = await this.bracket.handleWalkover(tx, tournamentId, matchId, p1 ? m.player2_id : m.player1_id);
         return 'WALKOVER';
       }
-      await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId);
+      advanced = await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId);
       return 'DOUBLE_FORFEIT';
     });
     if (created) this.games.startSession(created);
+    if (action !== 'ALREADY_RESOLVED') {
+      this.events.bracketChanged(tournamentId, advanced?.changedMatchIds ?? [matchId],
+        advanced?.tournamentFinished ?? false);
+    }
     if (action !== 'ALREADY_RESOLVED') this.logger.log(`Match ${matchId}: check-in deadline passed -> ${action}`);
     return action;
   }
