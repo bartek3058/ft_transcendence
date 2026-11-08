@@ -48,34 +48,46 @@ export class TournamentGameService implements OnModuleInit {
   }
 
   /**
-   * Starts the first game of a SCHEDULED match. Game 1: player1 (better seed
-   * in Round 1) plays White. Intended for the tournament lobby / "ready" flow.
+   * Starts the first game of a SCHEDULED match in its own transaction.
+   * The check-in flow (#161) uses createMatchGame + startSession instead.
    */
   async startMatchGame(
     tournamentId: string,
     matchId: string,
   ): Promise<TournamentGameCreated> {
-    const created = await this.prisma.$transaction(async (tx) => {
-      const match = await tx.tournamentMatch.findUnique({ where: { id: matchId } });
-      if (!match || match.tournamentId !== tournamentId) {
-        throw new NotFoundException(
-          `Match ${matchId} not found in tournament ${tournamentId}.`,
-        );
-      }
-      if (!match.player1Id || !match.player2Id) {
-        throw new ConflictException(
-          `Match ${matchId} does not have both players assigned yet.`,
-        );
-      }
-      return this.createMatchGameRow(tx, tournamentId, matchId, {
-        whitePlayerId: match.player1Id,
-        blackPlayerId: match.player2Id,
-        allowedStatuses: ['SCHEDULED'],
-      });
-    });
-
+    const created = await this.prisma.$transaction((tx) =>
+      this.createMatchGame(tx, tournamentId, matchId),
+    );
     this.startSession(created);
     return created;
+  }
+
+  /**
+   * Inside the caller's transaction: creates game 1 of a SCHEDULED match,
+   * player1 (better seed in Round 1) plays White, and moves the match to
+   * IN_PROGRESS. Call startSession(result) only after the transaction commits.
+   */
+  async createMatchGame(
+    tx: Prisma.TransactionClient,
+    tournamentId: string,
+    matchId: string,
+  ): Promise<TournamentGameCreated> {
+    const match = await tx.tournamentMatch.findUnique({ where: { id: matchId } });
+    if (!match || match.tournamentId !== tournamentId) {
+      throw new NotFoundException(
+        `Match ${matchId} not found in tournament ${tournamentId}.`,
+      );
+    }
+    if (!match.player1Id || !match.player2Id) {
+      throw new ConflictException(
+        `Match ${matchId} does not have both players assigned yet.`,
+      );
+    }
+    return this.createMatchGameRow(tx, tournamentId, matchId, {
+      whitePlayerId: match.player1Id,
+      blackPlayerId: match.player2Id,
+      allowedStatuses: ['SCHEDULED'],
+    });
   }
 
   /**
@@ -220,8 +232,8 @@ export class TournamentGameService implements OnModuleInit {
     };
   }
 
-  /** Creates the in-memory session only after the DB transaction committed. */
-  private startSession(created: TournamentGameCreated): void {
+  /** Creates the in-memory session; call only after the DB transaction committed. */
+  startSession(created: TournamentGameCreated): void {
     this.gameService.createGame({
       gameId: created.gameId,
       whitePlayerId: created.whitePlayerId,

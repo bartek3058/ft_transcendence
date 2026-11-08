@@ -32,9 +32,9 @@ export class TournamentRequestGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     context.switchToHttp().getResponse<Response>().setHeader('Cache-Control', 'no-store');
 
-    const id = req.params?.id;
-    if (id !== undefined && !UUID_FORMAT.test(id)) {
-      throw new TournamentHttpError(400, 'INVALID_ID', 'Tournament id must be a UUID.');
+    // Every route param (:id, :matchId) is a UUID.
+    if (Object.values(req.params ?? {}).some((value) => !UUID_FORMAT.test(value))) {
+      throw new TournamentHttpError(400, 'INVALID_ID', 'Ids must be UUIDs.');
     }
     if (req.method !== 'GET') this.checkWrite(context, req);
 

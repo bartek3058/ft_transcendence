@@ -1,19 +1,24 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseFilters, UseGuards } from '@nestjs/common';
+import {
+  Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseFilters, UseGuards,
+} from '@nestjs/common';
 import { AuthenticatedRequest, SessionGuard } from '../auth/session.guard';
 import { CreateTournamentDto } from './dto/create-tournament.dto';
 import { ListTournamentsQueryDto } from './dto/list-tournaments-query.dto';
 import {
   TournamentBody, TournamentRequestGuard, TournamentsExceptionFilter, TournamentUserLimitGuard,
 } from './http/tournaments-http';
+import { TournamentCheckInService } from './tournament-check-in.service';
 import { TournamentsService } from './tournaments.service';
 
 // Guard order: id format + per-IP limit (no I/O) -> session -> per-user limit -> handler (DB).
-// :id is already UUID-checked by TournamentRequestGuard; join/leave/close/cancel accept only `{}`.
+// Route params are already UUID-checked by TournamentRequestGuard; POST routes without
+// @TournamentBody accept only `{}`.
 @Controller('tournaments')
 @UseFilters(TournamentsExceptionFilter)
 @UseGuards(TournamentRequestGuard, SessionGuard, TournamentUserLimitGuard)
 export class TournamentsController {
-  constructor(private readonly tournaments: TournamentsService) {}
+  constructor(private readonly tournaments: TournamentsService,
+    private readonly checkIns: TournamentCheckInService) {}
 
   @Post()
   @TournamentBody('title', 'description', 'maxParticipants', 'registrationDeadline')
@@ -49,5 +54,11 @@ export class TournamentsController {
   @Post(':id/cancel') @HttpCode(200)
   cancel(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.tournaments.cancel(req.account.id, id);
+  }
+
+  @Post(':id/matches/:matchId/check-in') @HttpCode(200)
+  checkIn(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string,
+    @Param('matchId', ParseUUIDPipe) matchId: string) {
+    return this.checkIns.checkIn(req.account.id, id, matchId);
   }
 }

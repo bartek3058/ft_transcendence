@@ -51,6 +51,9 @@ export interface TournamentMatchView {
   winnerId: string | null;
   nextMatchId: string | null;
   nextMatchSlot: TournamentMatchSlot | null;
+  checkInDeadline: Date | null;
+  player1CheckedIn: boolean;
+  player2CheckedIn: boolean;
   gameIds: string[];
   currentGameId: string | null;
 }

@@ -90,6 +90,7 @@ export class TournamentsService {
           select: {
             id: true, round: true, matchIndex: true, identifier: true, status: true, isBye: true,
             winnerId: true, nextMatchId: true, nextMatchSlot: true,
+            checkInDeadline: true, player1CheckedInAt: true, player2CheckedInAt: true,
             player1: USER_REF, player2: USER_REF,
             games: { orderBy: [{ gameStart: 'asc' }, { id: 'asc' }], select: { id: true } },
           },
@@ -104,8 +105,10 @@ export class TournamentsService {
         userId: p.userId, username: p.user.username, seed: p.seed, seedRating: p.seedRating,
         finalRank: p.finalRank, registeredAt: p.registeredAt,
       })),
-      matches: matches.map(({ games, ...m }) => ({
+      matches: matches.map(({ games, player1CheckedInAt, player2CheckedInAt, ...m }) => ({
         ...m,
+        player1CheckedIn: player1CheckedInAt !== null,
+        player2CheckedIn: player2CheckedInAt !== null,
         status: m.status as TournamentMatchStatus,
         nextMatchSlot: m.nextMatchSlot as TournamentMatchSlot | null,
         gameIds: games.map((g) => g.id),
