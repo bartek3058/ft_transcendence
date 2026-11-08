@@ -104,6 +104,15 @@ describe('TournamentRequestGuard', () => {
     assert.deepEqual(limiter.keys, []);
   });
 
+  it('rejects a malformed matchId even when the tournament id is valid', () => {
+    const { guard, limiter } = newGuard();
+    const { context } = contextFor({ ...write(), params: { id: VALID_ID, matchId: 'R1-M1' } });
+    const err = errorOf(() => guard.canActivate(context));
+    assert.equal(err.getStatus(), 400);
+    assert.equal(codeOf(err), 'INVALID_ID');
+    assert.deepEqual(limiter.keys, []);
+  });
+
   it('admits a GET with a valid id and counts it per IP', () => {
     const { guard, limiter } = newGuard();
     const { context } = contextFor({ ...write(), method: 'GET', params: { id: VALID_ID } });

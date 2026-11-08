@@ -113,7 +113,42 @@ If both players are absent, both lose and nobody advances:
   - `ABANDONMENT` with a winner -> `handleWalkover()` for the absent player; `ABANDONMENT` without a winner -> `handleDoubleForfeit()` (no replay).
   - `ABORTED` -> bracket unchanged (logged).
   - A `409` from the bracket service means "already applied" and is logged as a no-op.
-- `startMatchGame(tournamentId, matchId)` starts game 1 of a `SCHEDULED` match (player1 plays White) and moves the match to `IN_PROGRESS`. It is meant to be called by the tournament lobby / ready flow (not yet implemented).
+- `startMatchGame(tournamentId, matchId)` starts game 1 of a `SCHEDULED` match (player1 plays White) and moves the match to `IN_PROGRESS`. The check-in flow uses the same logic through `createMatchGame(tx, ...)` (inside the caller's transaction) and `startSession(...)` (after commit).
+
+### 5. Match Check-in (#161)
+
+A `SCHEDULED` match has no game until both players check in. Without check-in a no-show would leave the match `SCHEDULED` forever and block the bracket.
+
+**Schema** (migration `20261108120000_tournament_match_check_in`) on `tournament_matches`: `check_in_deadline`, `player1_checked_in_at`, `player2_checked_in_at` (all `TIMESTAMPTZ NULL`) and an index on `(status, check_in_deadline)`. Matches that were already `SCHEDULED` get a fresh 5 minute window from the migration.
+
+**Deadline:** set by the server whenever a match becomes `SCHEDULED`: in `generateAndSaveBracket` (Round 1, and Round 2 matches filled by Byes) and in `feedNextMatch` (progression). The window is `TOURNAMENT_CHECK_IN_WINDOW_MS = 300_000` (`tournament-rules.ts`). Draw replays stay `IN_PROGRESS` and need no new check-in.
+
+```mermaid
+flowchart TD
+    Scheduled["Match SCHEDULED, deadline = now + 5 min"] --> CheckIn{"POST .../check-in"}
+    CheckIn -- "first player" --> Waiting["Waiting for the opponent"]
+    Waiting --> CheckIn
+    CheckIn -- "second player" --> Start["Game created in the same transaction, player1 = White"]
+    Scheduled --> Sweep{"Deadline passed (sweep every 10 s)"}
+    Waiting --> Sweep
+    Sweep -- "one checked in" --> Walkover["handleWalkover() for the absent player"]
+    Sweep -- "nobody" --> Double["handleDoubleForfeit() (cascades)"]
+    Sweep -- "both, no game (old data)" --> Start
+```
+
+**Check-in (`TournamentCheckInService`)** — `POST /api/tournaments/:id/matches/:matchId/check-in`:
+- The caller is the session user; 403 `NOT_MATCH_PLAYER` if they are not player1/player2, 404 `MATCH_NOT_FOUND` if the match is not in the tournament, 409 `TOURNAMENT_NOT_IN_PROGRESS`.
+- One conditional update: `SET playerX_checked_in_at = now() WHERE status = 'SCHEDULED' AND check_in_deadline > now() AND playerX_checked_in_at IS NULL`. The row lock serialises the two players and the sweep.
+- No row updated: a repeated check-in returns 200 with the current state; otherwise 409 `MATCH_NOT_SCHEDULED` or `CHECK_IN_CLOSED`.
+- The transaction that sees both timestamps creates the game (`createMatchGame`); the in-memory session starts after commit. The partial unique index `games_tournament_match_active_key` is a second guard against two live games.
+
+**Deadline sweep (`TournamentCheckInSweeper`)** — `setInterval` every 10 s, `isExecuting` guard, state only in the DB:
+- Selects `SCHEDULED` matches with an expired deadline, both players set, no winner, in an `IN_PROGRESS` tournament.
+- Each match in its own transaction, locked with `SELECT ... FOR UPDATE` while it is still expired and `SCHEDULED`. If a check-in won the race, the row no longer matches and the sweep skips it.
+- One player checked in -> `handleWalkover()`; nobody -> `handleDoubleForfeit()`; both but no game -> start the game.
+- Any error after the lock means inconsistent data (for example the next match slot is already taken, or a live game exists for a `SCHEDULED` match). It is logged; after 5 failures in a row (`MAX_SWEEP_ATTEMPTS`) the match is no longer retried and is reported for a manual fix. Nobody is forfeited because of a data problem. The count and the skip list are in memory; a restart clears them.
+
+**Final-round guard:** a match without `next_match_id` concludes the tournament only if it is in the last round. A lost bracket link (`next_match_id` is `ON DELETE SET NULL`) now gives a 409 and rolls back instead of finishing the tournament after a semifinal.
 
 ---
 
@@ -143,6 +178,10 @@ docker compose run --rm -e DATABASE_URL="postgresql://<owner-user>:<owner-secret
 #     Then run the suite with the APPLICATION role (never owner credentials):
 docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-with-app-secret@postgres:5432/chess_test" backend npm run test:tournament:db
 #     P2021 "table public.tournaments does not exist" = migrations not applied to chess_test.
+# 2e. Match check-in (#161): sweep decisions, then check-in / sweep against PostgreSQL
+#     (apply the 20261108120000_tournament_match_check_in migration to chess_test first):
+docker compose run --rm backend npm run test:tournament-checkin
+docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-with-app-secret@postgres:5432/chess_test" backend npm run test:tournament-checkin:db
 
 # 3. Run full backend regression suite (39 test cases):
 docker compose run --rm backend npm test

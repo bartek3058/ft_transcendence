@@ -40,3 +40,11 @@ export function checkRegistrationDeadline(deadline: Date, now: Date): DeadlinePr
   if (lead > REGISTRATION_WINDOW.maxHorizonMs) return 'TOO_FAR';
   return null;
 }
+
+/** Time both players have to check in once a match becomes SCHEDULED (#161). */
+export const TOURNAMENT_CHECK_IN_WINDOW_MS = 5 * 60_000;
+
+/** Check-in deadline for a match that becomes SCHEDULED now. */
+export function checkInDeadlineFrom(now: Date): Date {
+  return new Date(now.getTime() + TOURNAMENT_CHECK_IN_WINDOW_MS);
+}

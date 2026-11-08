@@ -57,6 +57,11 @@ Validation errors (`400 INVALID_INPUT`) may add `fields: [{ field, code }]`.
 | 409 | `NOT_JOINED` | leave without being registered |
 | 409 | `REGISTRATION_CLOSED` | join/leave/close after the deadline or once registration is closed |
 | 409 | `TOURNAMENT_NOT_CANCELLABLE` | cancel once the tournament has started, finished or was cancelled |
+| 403 | `NOT_MATCH_PLAYER` | check-in by someone who is not a player of the match |
+| 404 | `MATCH_NOT_FOUND` | unknown match, or a match of another tournament |
+| 409 | `TOURNAMENT_NOT_IN_PROGRESS` | check-in while the tournament is not running |
+| 409 | `MATCH_NOT_SCHEDULED` | check-in for a match that is not waiting for players |
+| 409 | `CHECK_IN_CLOSED` | check-in after the match's deadline |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | `POST` without `application/json` |
 | 429 | `RATE_LIMITED` | limit exceeded |
 | 503 | `TOURNAMENTS_BUSY` / `TOURNAMENTS_UNAVAILABLE` | overload or temporary failure; retry later |
@@ -165,6 +170,9 @@ matches: {
   winnerId: string | null;
   nextMatchId: string | null; // where the winner goes; null for the final
   nextMatchSlot: 'player1' | 'player2' | null;
+  checkInDeadline: string | null; // set while SCHEDULED: both players must check in before it
+  player1CheckedIn: boolean;
+  player2CheckedIn: boolean;
   gameIds: string[];          // games of this match in play order (replays after draws)
   currentGameId: string | null;
 }[];                          // ordered by round, then matchIndex; empty before the start
@@ -198,6 +206,31 @@ Errors: `403 FORBIDDEN`, `404`, `409 REGISTRATION_CLOSED`.
 Body `{}`. Creator or admin only. Returns `{ "status": "CANCELLED" }`.
 
 Errors: `403 FORBIDDEN`, `404`, `409 TOURNAMENT_NOT_CANCELLABLE`.
+
+### `POST /api/tournaments/:id/matches/:matchId/check-in` (200)
+
+Body `{}`. Only player1 or player2 of the match. When a match becomes `SCHEDULED`,
+both players have 5 minutes (`checkInDeadline`) to check in. The second check-in
+starts the game at once (player1 plays White); the frontend can call this when the
+match page opens and then join `gameId`.
+
+```ts
+{
+  matchId: string;
+  status: 'SCHEDULED' | 'IN_PROGRESS' | ...;
+  checkInDeadline: string | null;
+  player1CheckedIn: boolean;
+  player2CheckedIn: boolean;
+  gameId: string | null;      // set once the game started
+}
+```
+
+A repeated call returns the current state, so it is safe to retry. After the
+deadline the server resolves the match within about 10 seconds: the player who
+checked in wins by walkover; if nobody checked in, both lose.
+
+Errors: `403 NOT_MATCH_PLAYER`, `404 MATCH_NOT_FOUND`, `409 TOURNAMENT_NOT_IN_PROGRESS`,
+`409 MATCH_NOT_SCHEDULED`, `409 CHECK_IN_CLOSED`.
 
 ## Backend internals
 
@@ -323,10 +356,12 @@ changes afterwards. No tournament response selects `users.rating`.
 | Script | Covers | Cases |
 |---|---|---|
 | `test:tournaments:dto` | DTO validation through the real global pipe | 13 |
-| `test:tournaments:http` | guard order, headers, body keys, limits, error filter | 13 |
+| `test:tournaments:http` | guard order, headers, body keys, limits, error filter | 14 |
 | `test:tournaments:events` | deferred delivery, listener isolation, channels, unsubscribe | 4 |
 | `test:tournaments:scheduler` | tick order, lost races, overlap guard, retry limit, timer | 7 |
 | `test:tournaments:db` | real PostgreSQL: all routes, races, scheduler, events, cancel | 33 |
+| `test:tournament-checkin` | check-in sweep decisions, retry limit, overlap guard, timer | 6 |
+| `test:tournament-checkin:db` | real PostgreSQL: deadlines, check-in, concurrent check-ins, sweep races, walkover / double forfeit, final-round guard | 14 |
 
 The PostgreSQL suite only touches its own fixtures, but scheduler ticks also close
 other expired tournaments in `chess_test`, so its assertions check each tournament
@@ -334,7 +369,6 @@ by id.
 
 ## Not covered here
 
-- Match check-in and starting tournament games: #161.
 - Live updates: the backend publishes in-process events after a close or cancel
   (`TournamentEventsPublisher`), but no WebSocket channel sends them yet. Until then
   the UI should reload the list or detail after an action, or poll.
