@@ -7,6 +7,7 @@ import { RatingService } from '../../src/rating/rating.service';
 import { GameService } from '../../src/game/game.service';
 import { TournamentBracketService } from '../../src/tournament/tournament-bracket.service';
 import { TournamentGameService } from '../../src/tournament/tournament-game.service';
+import { TournamentEventsPublisher } from '../../src/tournament/tournament-events.publisher';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
 // Real PostgreSQL integration test for the tournament engine (#68):
@@ -184,7 +185,7 @@ describe('Tournament engine against PostgreSQL (#68)', () => {
     const { tournamentId, players } = await createTournament(4);
     await start(tournamentId);
     const games = new GameService(prisma, rating);
-    const tournamentGames = new TournamentGameService(prisma, games, bracket);
+    const tournamentGames = new TournamentGameService(prisma, games, bracket, new TournamentEventsPublisher());
     tournamentGames.onModuleInit();
 
     const [s1, s2, s3, s4] = players.map((p) => p.id);
@@ -246,7 +247,7 @@ describe('Tournament engine against PostgreSQL (#68)', () => {
     const { tournamentId, players } = await createTournament(2);
     await start(tournamentId);
     const games = new GameService(prisma, rating);
-    const tournamentGames = new TournamentGameService(prisma, games, bracket);
+    const tournamentGames = new TournamentGameService(prisma, games, bracket, new TournamentEventsPublisher());
     tournamentGames.onModuleInit();
     const final = await matchByIdentifier(tournamentId, 'R1-M1');
 
@@ -285,7 +286,7 @@ describe('Tournament engine against PostgreSQL (#68)', () => {
     const { tournamentId, players } = await createTournament(2);
     await start(tournamentId);
     const games = new GameService(prisma, rating);
-    const tournamentGames = new TournamentGameService(prisma, games, bracket);
+    const tournamentGames = new TournamentGameService(prisma, games, bracket, new TournamentEventsPublisher());
     tournamentGames.onModuleInit();
     const final = await matchByIdentifier(tournamentId, 'R1-M1');
 

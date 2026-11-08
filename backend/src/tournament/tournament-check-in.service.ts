@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { TournamentHttpError } from './http/tournament.errors';
+import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { TournamentGameCreated, TournamentGameService } from './tournament-game.service';
 import { TournamentMatchStatus } from './types/tournament.types';
 
@@ -26,10 +27,12 @@ type CheckedIn = { player1_checked_in_at: Date | null; player2_checked_in_at: Da
 @Injectable()
 export class TournamentCheckInService {
   constructor(private readonly prisma: PrismaService,
-    private readonly games: TournamentGameService) {}
+    private readonly games: TournamentGameService,
+    private readonly events: TournamentEventsPublisher) {}
 
   async checkIn(userId: string, tournamentId: string, matchId: string): Promise<CheckInState> {
     let created = null as TournamentGameCreated | null; // `as`: assigned inside the transaction callback
+    let changed = false;
     const state = await this.prisma.$transaction(async (tx) => {
       const match = await tx.tournamentMatch.findUnique({
         where: { id: matchId },
@@ -66,6 +69,7 @@ export class TournamentCheckInService {
         throw new TournamentHttpError(409, 'CHECK_IN_CLOSED', 'The check-in deadline has passed.');
       }
 
+      changed = true;
       if (rows[0].player1_checked_in_at && rows[0].player2_checked_in_at) {
         // Second player in: start the game in the same transaction (player1 = White).
         created = await this.games.createMatchGame(tx, tournamentId, matchId);
@@ -75,6 +79,8 @@ export class TournamentCheckInService {
 
     // In-memory session only after the commit.
     if (created) this.games.startSession(created);
+    // A repeated check-in changed nothing and announces nothing.
+    if (changed) this.events.bracketChanged(tournamentId, [matchId], false);
     return state;
   }
 

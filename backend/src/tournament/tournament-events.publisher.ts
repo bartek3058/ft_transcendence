@@ -28,12 +28,37 @@ export interface InvitationAnsweredEvent extends InvitationReceivedEvent {
   status: 'ACCEPTED' | 'DECLINED';
 }
 
+export interface ParticipantChangedEvent {
+  tournamentId: string;
+  userId: string;
+  username: string;
+  currentParticipants: number;
+  maxParticipants: number;
+  at: Date;
+}
+
+export interface MatchesUpdatedEvent {
+  tournamentId: string;
+  /** Every match changed by one committed transaction (cascades included). */
+  matchIds: string[];
+  at: Date;
+}
+
+export interface TournamentFinishedEvent {
+  tournamentId: string;
+  at: Date;
+}
+
 type Listener<T> = (event: T) => void | Promise<void>;
 
 const REGISTRATION_CLOSED = 'registration-closed';
 const CANCELLED = 'cancelled';
 const INVITATION_RECEIVED = 'invitation-received';
 const INVITATION_ANSWERED = 'invitation-answered';
+const PARTICIPANT_JOINED = 'participant-joined';
+const PARTICIPANT_LEFT = 'participant-left';
+const MATCHES_UPDATED = 'matches-updated';
+const FINISHED = 'finished';
 
 /**
  * In-process tournament notifications. Publish only after the transaction commits.
@@ -61,6 +86,49 @@ export class TournamentEventsPublisher implements OnModuleDestroy {
   /** Accepted (through respond or a direct join) or declined. */
   invitationAnswered(event: InvitationAnsweredEvent): void {
     setImmediate(() => this.events.emit(INVITATION_ANSWERED, event));
+  }
+
+  participantJoined(event: ParticipantChangedEvent): void {
+    setImmediate(() => this.events.emit(PARTICIPANT_JOINED, event));
+  }
+
+  participantLeft(event: ParticipantChangedEvent): void {
+    setImmediate(() => this.events.emit(PARTICIPANT_LEFT, event));
+  }
+
+  matchesUpdated(event: MatchesUpdatedEvent): void {
+    setImmediate(() => this.events.emit(MATCHES_UPDATED, event));
+  }
+
+  tournamentFinished(event: TournamentFinishedEvent): void {
+    setImmediate(() => this.events.emit(FINISHED, event));
+  }
+
+  /** After a committed bracket change: matches updated, and finished when the Final ended. */
+  bracketChanged(tournamentId: string, matchIds: string[], finished: boolean): void {
+    const at = new Date();
+    if (matchIds.length) this.matchesUpdated({ tournamentId, matchIds: [...new Set(matchIds)], at });
+    if (finished) this.tournamentFinished({ tournamentId, at });
+  }
+
+  /** Returns an unsubscribe function. */
+  onParticipantJoined(listener: Listener<ParticipantChangedEvent>): () => void {
+    return this.subscribe(PARTICIPANT_JOINED, listener);
+  }
+
+  /** Returns an unsubscribe function. */
+  onParticipantLeft(listener: Listener<ParticipantChangedEvent>): () => void {
+    return this.subscribe(PARTICIPANT_LEFT, listener);
+  }
+
+  /** Returns an unsubscribe function. */
+  onMatchesUpdated(listener: Listener<MatchesUpdatedEvent>): () => void {
+    return this.subscribe(MATCHES_UPDATED, listener);
+  }
+
+  /** Returns an unsubscribe function. */
+  onTournamentFinished(listener: Listener<TournamentFinishedEvent>): () => void {
+    return this.subscribe(FINISHED, listener);
   }
 
   /** Returns an unsubscribe function. */

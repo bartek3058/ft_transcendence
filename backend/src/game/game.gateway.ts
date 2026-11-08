@@ -154,10 +154,19 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     const session = this.game.getGameSession(gameId);
 
     if (!session) {
-      client.emit('game:error', {
-        code: 'GAME_NOT_FOUND',
-      });
-
+      // The game may have finished while this client was disconnected.
+      // Only its participants may retrieve the persisted result.
+      try {
+        const finished = await this.game.getFinishedGameForPlayer(gameId, userId);
+        if (finished) {
+          client.emit('game:finished', finished);
+          return;
+        }
+      } catch {
+        client.emit('game:error', { code: 'GAME_RESULT_LOOKUP_FAILED' });
+        return;
+      }
+      client.emit('game:error', { code: 'GAME_NOT_FOUND' });
       return;
     }
 
