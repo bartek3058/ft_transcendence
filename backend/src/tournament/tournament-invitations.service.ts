@@ -164,7 +164,7 @@ export class TournamentInvitationsService {
       throw mapJoinError(error);
     }
 
-    if (joined) this.tournaments.publishAccepted(userId, answer.tournamentId, joined);
+    if (joined) this.tournaments.publishJoined(userId, answer.tournamentId, joined);
     if (declined) {
       this.events.invitationAnswered({
         invitationId, tournamentId: declined.tournamentId, senderId: declined.senderId, recipientId: userId,

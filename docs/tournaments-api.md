@@ -393,8 +393,8 @@ Details:
 Events are published only after the transaction commits, so a listener that reads the
 database already sees the new state. Delivery uses `setImmediate`, so the request never
 waits for listeners; a listener that throws or rejects is logged and does not affect
-others. Every subscribe method returns an unsubscribe function. Nothing subscribes yet;
-the WebSocket gateway of #168 will listen here.
+others. Every subscribe method returns an unsubscribe function. The only listener
+is `TournamentsGateway` (#168), see [tournaments-realtime.md](tournaments-realtime.md).
 
 ### Invitations internals
 
@@ -449,6 +449,8 @@ changes afterwards. No tournament response selects `users.rating`.
 | `test:tournaments:db` | real PostgreSQL: all routes, races, scheduler, events, cancel | 33 |
 | `test:tournament-checkin` | check-in sweep decisions, retry limit, overlap guard, timer | 6 |
 | `test:tournament-checkin:db` | real PostgreSQL: deadlines, check-in, concurrent check-ins, sweep races, walkover / double forfeit, final-round guard | 14 |
+| `test:tournament-recovery` | recovery decisions, retry limit, overlap guard, startup abort | 8 |
+| `test:tournament-recovery:db` | real PostgreSQL: lost result applied once, lost draw starts the replay, restart and aborted game back to check-in, grace period, race with the listener, retry limit | 7 |
 | `test:tournament-invitations` | invitation DTOs through the real global pipe | 4 |
 | `test:tournament-invitations:db` | real PostgreSQL: permissions, friendship, re-invite, `me`, accept/decline, races (last slot, close, cancel, two senders), expiry, events | 15 |
 
@@ -458,9 +460,8 @@ by id.
 
 ## Not covered here
 
-- Live updates: the backend publishes in-process events after a close, cancel or
-  invitation change (`TournamentEventsPublisher`), but no WebSocket channel sends them
-  yet (#168). Until then
+- Live updates: Socket.IO namespace `/tournaments`, see
+  [tournaments-realtime.md](tournaments-realtime.md) (#168). Until then
   the UI should reload the list or detail after an action, or poll.
 
 ## Tests

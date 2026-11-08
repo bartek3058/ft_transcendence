@@ -6,6 +6,7 @@ import { ConflictException } from '@nestjs/common';
 import { GameService } from '../src/game/game.service';
 import { GameConclusionEvent } from '../src/game/types/chess.types';
 import { TournamentGameService } from '../src/tournament/tournament-game.service';
+import { TournamentEventsPublisher } from '../src/tournament/tournament-events.publisher';
 
 // Unit tests for the game -> tournament integration (#68). Control flow only;
 // SQL validity (partial unique index, conditional updates) needs a Postgres test.
@@ -171,7 +172,7 @@ function makeTournamentGameService(opts: {
     },
   };
 
-  const service = new TournamentGameService(prisma, gameService, bracket);
+  const service = new TournamentGameService(prisma, gameService, bracket, new TournamentEventsPublisher());
   service.onModuleInit();
   return { service, calls, match, fire: (e: GameConclusionEvent) => listener!(e) };
 }

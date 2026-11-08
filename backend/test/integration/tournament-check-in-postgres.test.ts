@@ -25,10 +25,11 @@ const prisma = new PrismaService({
   datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
 });
 const bracket = new TournamentBracketService(prisma);
-const tournamentGames = new TournamentGameService(prisma, new GameService(prisma, new RatingService(prisma)), bracket);
-const lifecycle = new TournamentLifecycleService(prisma, bracket, new TournamentEventsPublisher());
-const checkIns = new TournamentCheckInService(prisma, tournamentGames);
-const newSweeper = () => new TournamentCheckInSweeper(prisma, bracket, tournamentGames);
+const publisher = new TournamentEventsPublisher();
+const tournamentGames = new TournamentGameService(prisma, new GameService(prisma, new RatingService(prisma)), bracket, publisher);
+const lifecycle = new TournamentLifecycleService(prisma, bracket, publisher);
+const checkIns = new TournamentCheckInService(prisma, tournamentGames, publisher);
+const newSweeper = () => new TournamentCheckInSweeper(prisma, bracket, tournamentGames, publisher);
 
 const userIds: string[] = [];
 const tournamentIds: string[] = [];

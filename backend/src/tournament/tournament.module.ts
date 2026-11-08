@@ -3,6 +3,8 @@ import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { GameModule } from '../game/game.module';
 import { TournamentRateLimiter } from './http/tournament-rate-limiter';
+import { TournamentRealtimePayloads } from './realtime/tournament-realtime.payloads';
+import { TournamentsGateway } from './realtime/tournaments.gateway';
 import { TournamentRequestGuard, TournamentsExceptionFilter, TournamentUserLimitGuard } from './http/tournaments-http';
 import { TournamentBracketService } from './tournament-bracket.service';
 import { TournamentCheckInService } from './tournament-check-in.service';
@@ -13,6 +15,7 @@ import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { TournamentInvitationsController } from './tournament-invitations.controller';
 import { TournamentInvitationsService } from './tournament-invitations.service';
 import { TournamentLifecycleService } from './tournament-lifecycle.service';
+import { TournamentRecoveryService } from './tournament-recovery.service';
 import { TournamentsController } from './tournaments.controller';
 import { TournamentsService } from './tournaments.service';
 
@@ -24,7 +27,7 @@ import { TournamentsService } from './tournaments.service';
   providers: [
     TournamentBracketService, TournamentGameService, TournamentLifecycleService, TournamentsService,
     TournamentEventsPublisher, TournamentDeadlineScheduler, TournamentCheckInService, TournamentCheckInSweeper,
-    TournamentInvitationsService,
+    TournamentInvitationsService, TournamentRealtimePayloads, TournamentsGateway, TournamentRecoveryService,
     TournamentRateLimiter,
     TournamentRequestGuard, TournamentUserLimitGuard, TournamentsExceptionFilter,
   ],
