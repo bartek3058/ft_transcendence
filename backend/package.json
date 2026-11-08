@@ -31,6 +31,8 @@
     "test:tournament-invitations:db": "ts-node --project tsconfig.tools.json test/integration/tournament-invitations-postgres.test.ts",
     "test:tournaments:gateway": "ts-node --project tsconfig.tools.json test/tournaments-gateway.test.ts",
     "test:tournaments:realtime:db": "npm run build && node --test test/integration/tournaments-realtime-postgres.test.cjs",
+    "test:tournament-recovery": "ts-node --project tsconfig.tools.json test/tournament-recovery.test.ts",
+    "test:tournament-recovery:db": "ts-node --project tsconfig.tools.json test/integration/tournament-recovery-postgres.test.ts",
     "test:tournaments:db":"ts-node --project tsconfig.tools.json test/integration/tournaments-service-postgres.test.ts",
     "test:public-api": "ts-node --project tsconfig.tools.json test/public-api-matches-and-crud.test.ts",
     "test:matchmaking": "ts-node --project tsconfig.tools.json test/matchmaking-pairing.test.ts",

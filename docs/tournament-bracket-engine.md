@@ -150,6 +150,25 @@ flowchart TD
 
 **Final-round guard:** a match without `next_match_id` concludes the tournament only if it is in the last round. A lost bracket link (`next_match_id` is `ON DELETE SET NULL`) now gives a 409 and rolls back instead of finishing the tournament after a semifinal.
 
+### 6. Recovery (`TournamentRecoveryService`)
+
+Found in the review of PR #173. Live games exist only in memory, and the tournament listener runs after the game result is already saved. Three cases used to leave a match `IN_PROGRESS` forever:
+
+1. The listener failed (for example a DB error): the result was saved but never applied to the bracket.
+2. The backend restarted during a game: the `games` row stayed `IN_PROGRESS` with no session.
+3. A game was removed before it ended (`ABORTED`): the listener ignores `ABORTED`.
+
+How they are handled:
+
+- **Startup** (`onApplicationBootstrap`): every tournament game still `IN_PROGRESS` is orphaned (no session can exist yet), so it is set to `ABORTED` with `end_reason = 'SERVER_RESTART'`. Regular games are not touched. This assumes a single backend instance.
+- **Every 30 s:** find `IN_PROGRESS` matches of an `IN_PROGRESS` tournament whose latest game is not live and ended more than 30 s ago. The grace period leaves the normal path to the listener.
+  - **Finished game** (win, draw, abandonment): `TournamentGameService.applyGameResult()` runs again. It is the same code the listener uses, so a draw starts its replay with swapped colours. Every bracket write is conditional, so a result is never applied twice: a racing listener gets a 409, which it logs as a no-op.
+  - **`ABORTED` game:** the match goes back to `SCHEDULED` with check-ins cleared and a new 5 minute deadline. This is a conditional update (still `IN_PROGRESS`, no winner, no live game). From there the check-in rules apply. Draw replays already played still count.
+  - Every change sends `match_updated` after commit (#168).
+- **Errors:** counted per match. After 5 in a row (`MAX_RECOVERY_ATTEMPTS`) the match is no longer retried and is reported for a manual fix, the same policy as the check-in sweep.
+
+No migration: `ABORTED` is already an allowed result and `end_reason` has no check constraint.
+
 ---
 
 ## 4. Developer Verification & Test Suites
@@ -182,6 +201,9 @@ docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-wit
 #     (apply the 20261108120000_tournament_match_check_in migration to chess_test first):
 docker compose run --rm backend npm run test:tournament-checkin
 docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-with-app-secret@postgres:5432/chess_test" backend npm run test:tournament-checkin:db
+# 2f. Recovery: decisions, then lost results / restart / aborted games against PostgreSQL:
+docker compose run --rm backend npm run test:tournament-recovery
+docker compose run --rm -e TEST_DATABASE_URL="postgresql://chess_app:replace-with-app-secret@postgres:5432/chess_test" backend npm run test:tournament-recovery:db
 
 # 3. Run full backend regression suite (39 test cases):
 docker compose run --rm backend npm test

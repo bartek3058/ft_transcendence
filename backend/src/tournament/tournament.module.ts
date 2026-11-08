@@ -15,6 +15,7 @@ import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { TournamentInvitationsController } from './tournament-invitations.controller';
 import { TournamentInvitationsService } from './tournament-invitations.service';
 import { TournamentLifecycleService } from './tournament-lifecycle.service';
+import { TournamentRecoveryService } from './tournament-recovery.service';
 import { TournamentsController } from './tournaments.controller';
 import { TournamentsService } from './tournaments.service';
 
@@ -26,7 +27,7 @@ import { TournamentsService } from './tournaments.service';
   providers: [
     TournamentBracketService, TournamentGameService, TournamentLifecycleService, TournamentsService,
     TournamentEventsPublisher, TournamentDeadlineScheduler, TournamentCheckInService, TournamentCheckInSweeper,
-    TournamentInvitationsService, TournamentRealtimePayloads, TournamentsGateway,
+    TournamentInvitationsService, TournamentRealtimePayloads, TournamentsGateway, TournamentRecoveryService,
     TournamentRateLimiter,
     TournamentRequestGuard, TournamentUserLimitGuard, TournamentsExceptionFilter,
   ],

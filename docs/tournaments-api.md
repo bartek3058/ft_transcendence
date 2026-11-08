@@ -449,6 +449,8 @@ changes afterwards. No tournament response selects `users.rating`.
 | `test:tournaments:db` | real PostgreSQL: all routes, races, scheduler, events, cancel | 33 |
 | `test:tournament-checkin` | check-in sweep decisions, retry limit, overlap guard, timer | 6 |
 | `test:tournament-checkin:db` | real PostgreSQL: deadlines, check-in, concurrent check-ins, sweep races, walkover / double forfeit, final-round guard | 14 |
+| `test:tournament-recovery` | recovery decisions, retry limit, overlap guard, startup abort | 8 |
+| `test:tournament-recovery:db` | real PostgreSQL: lost result applied once, lost draw starts the replay, restart and aborted game back to check-in, grace period, race with the listener, retry limit | 7 |
 | `test:tournament-invitations` | invitation DTOs through the real global pipe | 4 |
 | `test:tournament-invitations:db` | real PostgreSQL: permissions, friendship, re-invite, `me`, accept/decline, races (last slot, close, cancel, two senders), expiry, events | 15 |
 
