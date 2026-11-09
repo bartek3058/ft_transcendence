@@ -17,7 +17,7 @@ function TextLength(min: number, max: number) {
   });
 }
 
-// Full date-time with an explicit offset: a bare date or local time is ambiguous.
+// needs an explicit offset, a bare date or local time is ambiguous
 const DATE_TIME_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export class CreateTournamentDto {
@@ -27,7 +27,7 @@ export class CreateTournamentDto {
   @Matches(/^[^\p{Cc}]*$/u) // no control characters
   title!: string;
 
-  // Empty after trimming is stored as null by the service.
+  // empty after trim is stored as null
   @IsOptional()
   @Transform(trim)
   @IsString()

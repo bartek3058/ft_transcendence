@@ -12,18 +12,14 @@ export interface CheckInState {
   checkInDeadline: Date | null;
   player1CheckedIn: boolean;
   player2CheckedIn: boolean;
-  /** Live game of the match (or the last one played); null until the game starts. */
+  // null until the game starts
   gameId: string | null;
 }
 
 type CheckedIn = { player1_checked_in_at: Date | null; player2_checked_in_at: Date | null }[];
 
-/**
- * Match check-in (#161). The caller is always the session user. The conditional
- * UPDATE (still SCHEDULED, before the deadline, not yet checked in) locks the match
- * row, so a check-in cannot race the deadline sweep or the other player's check-in:
- * exactly one transaction sees both players checked in and creates the game.
- */
+// Match check-in (#161). The conditional UPDATE locks the row, so exactly one
+// transaction sees both players in and creates the game.
 @Injectable()
 export class TournamentCheckInService {
   constructor(private readonly prisma: PrismaService,
@@ -71,15 +67,15 @@ export class TournamentCheckInService {
 
       changed = true;
       if (rows[0].player1_checked_in_at && rows[0].player2_checked_in_at) {
-        // Second player in: start the game in the same transaction (player1 = White).
+        // second player in, start the game in the same transaction
         created = await this.games.createMatchGame(tx, tournamentId, matchId);
       }
       return this.readState(tx, matchId);
     });
 
-    // In-memory session only after the commit.
+    // session only after the commit
     if (created) this.games.startSession(created);
-    // A repeated check-in changed nothing and announces nothing.
+    // a repeated check-in changes nothing
     if (changed) this.events.bracketChanged(tournamentId, [matchId], false);
     return state;
   }

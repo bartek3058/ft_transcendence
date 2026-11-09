@@ -17,10 +17,7 @@ export const TAB_STATUSES: Readonly<Record<TournamentTab, readonly TournamentSta
 });
 export const PAGE = Object.freeze({ defaultLimit: 20, maxLimit: 50 });
 
-/**
- * Length in code points (what PostgreSQL char_length / VARCHAR(n) count), or -1 when the
- * string contains a lone surrogate (not valid UTF-8; the driver would reject it).
- */
+// Length in code points like Postgres counts it, -1 for a lone surrogate.
 export function codePointLength(value: string): number {
   let length = 0;
   for (const character of value) {
@@ -33,7 +30,7 @@ export function codePointLength(value: string): number {
 
 export type DeadlineProblem = 'TOO_SOON' | 'TOO_FAR';
 
-/** Deadline window check; depends on the clock, so it runs in the service, not the DTO. */
+// depends on the clock, so it's checked in the service, not the DTO
 export function checkRegistrationDeadline(deadline: Date, now: Date): DeadlineProblem | null {
   const lead = deadline.getTime() - now.getTime();
   if (lead < REGISTRATION_WINDOW.minLeadMs) return 'TOO_SOON';
@@ -41,10 +38,9 @@ export function checkRegistrationDeadline(deadline: Date, now: Date): DeadlinePr
   return null;
 }
 
-/** Time both players have to check in once a match becomes SCHEDULED (#161). */
+// time to check in once a match is SCHEDULED (#161)
 export const TOURNAMENT_CHECK_IN_WINDOW_MS = 5 * 60_000;
 
-/** Check-in deadline for a match that becomes SCHEDULED now. */
 export function checkInDeadlineFrom(now: Date): Date {
   return new Date(now.getTime() + TOURNAMENT_CHECK_IN_WINDOW_MS);
 }

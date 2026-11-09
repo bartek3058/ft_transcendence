@@ -22,12 +22,7 @@ type LockedInvitation = {
   expires_at: Date;
 }[];
 
-/**
- * Tournament invitations (#154). One recipient per request; only accepted friends can
- * be invited, by the creator or a registered participant, while registration is open.
- * Accepting reuses the #102 join, so an invitation can never overbook a tournament.
- * Events are published after commit (TournamentEventsPublisher); #168 delivers them.
- */
+// Tournament invitations (#154). Only friends can be invited, accepting reuses the #102 join.
 @Injectable()
 export class TournamentInvitationsService {
   constructor(private readonly prisma: PrismaService,
@@ -39,8 +34,7 @@ export class TournamentInvitationsService {
       throw new TournamentHttpError(400, 'SELF_INVITE', 'You cannot invite yourself.');
     }
     const created = await this.prisma.$transaction(async (tx) => {
-      // FOR SHARE: a concurrent close/cancel (UPDATE) waits for this transaction or
-      // commits first, in which case the status check below fails.
+      // FOR SHARE: a concurrent close/cancel waits for us or commits first and the check below fails
       const tournaments = await tx.$queryRaw<{ status: string; registration_deadline: Date; creator_id: string }[]>`
         SELECT status, registration_deadline, creator_id FROM tournaments
         WHERE id = ${tournamentId}::uuid FOR SHARE`;
@@ -65,8 +59,7 @@ export class TournamentInvitationsService {
         throw new TournamentHttpError(409, 'ALREADY_JOINED', 'This player already joined the tournament.');
       }
 
-      // New invitation, or a fresh one over a declined / expired / accepted-then-left row.
-      // A live pending invitation is left alone (concurrent senders: the second gets 0 rows).
+      // a live pending invite is left alone, a second concurrent sender gets 0 rows
       const rows = await tx.$queryRaw<{ id: string; expires_at: Date }[]>`
         INSERT INTO tournament_invitations (id, tournament_id, sender_id, recipient_id, status, created_at, expires_at)
         VALUES (gen_random_uuid(), ${tournamentId}::uuid, ${senderId}::uuid, ${recipientId}::uuid,
@@ -88,7 +81,6 @@ export class TournamentInvitationsService {
     return { ...created, tournamentId, recipientId, status: 'PENDING' };
   }
 
-  /** Pending, unexpired invitations of the caller for tournaments that are still open. */
   async mine(userId: string, query: InvitationsQueryDto): Promise<MyInvitationsPage> {
     const limit = query.limit ? Number(query.limit) : PAGE.defaultLimit;
     const offset = query.offset ? Number(query.offset) : 0;
@@ -120,7 +112,7 @@ export class TournamentInvitationsService {
   }
 
   async respond(userId: string, invitationId: string, response: InvitationResponse): Promise<InvitationAnswer> {
-    // `as`: assigned inside the transaction callback (avoids TS narrowing them to null).
+    // `as` stops TS from narrowing it to null
     let joined = null as JoinResult | null;
     let declined = null as { tournamentId: string; senderId: string } | null;
     let answer: InvitationAnswer;
@@ -130,8 +122,7 @@ export class TournamentInvitationsService {
           where: { id: invitationId, recipientId: userId }, select: { tournamentId: true },
         });
         if (!target) throw notFound(); // also for someone else's invitation
-        // Lock order everywhere: tournament row first, then invitations (join, invite,
-        // close and cancel do the same), so respond can never deadlock with them.
+        // same lock order as join/invite/close/cancel (tournament, then invitations) to avoid deadlocks
         await tx.$queryRaw`SELECT id FROM tournaments WHERE id = ${target.tournamentId}::uuid FOR NO KEY UPDATE`;
         const rows = await tx.$queryRaw<LockedInvitation>`
           SELECT id, tournament_id, sender_id, status, expires_at FROM tournament_invitations
@@ -154,9 +145,7 @@ export class TournamentInvitationsService {
           declined = { tournamentId: inv.tournament_id, senderId: inv.sender_id };
           return { ...base, status: 'DECLINED' };
         }
-        // Same conditional join as POST /join; it also marks this invitation ACCEPTED.
-        // Full / closed / past deadline -> 409 and the whole transaction (invitation
-        // included) rolls back, so the invitation stays PENDING.
+        // if the join fails the whole thing rolls back and the invite stays PENDING
         joined = await this.tournaments.joinInTx(tx, userId, inv.tournament_id);
         return { ...base, status: 'ACCEPTED', currentParticipants: joined.currentParticipants };
       });

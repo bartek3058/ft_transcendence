@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { SlidingWindowLimiter } from '../../common/sliding-window-limiter';
 import { PublicApiRetryException } from './public-api.errors';
 
-/** Public API limiter: shared sliding-window logic + public API error format. */
 @Injectable()
 export class ApiKeyRateLimiter {
   private readonly limiter = new SlidingWindowLimiter((status, retryAfter, limit, windowMs) =>

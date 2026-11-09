@@ -1,8 +1,4 @@
-/**
- * True when an HttpException body already uses the shared `{ error: { code, message } }` envelope.
- * Nest's default bodies are `{ message, error: 'Conflict', statusCode }` (error is a string),
- * so only an object `error` with a string `code` counts.
- */
+// Nest's default body has `error` as a string, ours is an object with a `code`.
 export function hasErrorEnvelope(body: unknown): boolean {
   if (typeof body !== 'object' || body === null || !('error' in body)) return false;
   const envelope = (body as { error: unknown }).error;

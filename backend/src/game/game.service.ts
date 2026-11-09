@@ -46,8 +46,7 @@ import {
 //Default time control: 10 minutes (600,000 ms) per player.
 const DEFAULT_INITIAL_TIME_MS = 10 * 60 * 1000;
 
-// `games.id` is a PostgreSQL UUID column: check the format before any I/O so a malformed
-// id never reaches the database (would otherwise raise 22P02 invalid_text_representation).
+// games.id is a UUID column, check the format first so a bad id never hits Postgres (22P02)
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -66,18 +65,16 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
     private isFlushingQueue = false;
-    // Game ids whose conclusion is currently being persisted (guards concurrent removeGame calls).
+    // guards against two removeGame() calls for the same game
     private readonly concludingGames = new Set<string>();
-    /** Poison records rejected permanently by the database (bounded, for inspection). */
+    // moves Postgres rejected for good, kept for debugging
     private readonly deadLetterMoves: DeadLetterMove[] = [];
-    /** Single in-flight drain; concurrent callers share it. */
     private flushPromise: Promise<void> | null = null;
     private flushTimer: NodeJS.Timeout | null = null;
     private retryTimer: NodeJS.Timeout | null = null;
     private consecutiveFailures = 0;
     private queueCapWarned = false;
     private missingPrismaWarned = false;
-    /** Called after a game's result is persisted (see onGameConcluded). */
     private readonly conclusionListeners: GameConclusionListener[] = [];
     constructor(
       private readonly prisma: PrismaService,
@@ -85,11 +82,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       @Optional() private readonly sessionService?: SessionService,
     ) {}
 
-  /**
-   * Startup recovery (#76). Live sessions exist only in RAM, so a restart drops them
-   * while their `games` rows stay IN_PROGRESS. Runs before the server accepts clients.
-   * Errors are logged and never block the boot.
-   */
+  // Bring back games lost by a restart (#76). Never blocks the boot.
   public async onApplicationBootstrap(): Promise<void> {
     try {
       await this.recoverInterruptedGames();
@@ -100,12 +93,8 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  /**
-   * Tournament games are left to TournamentRecoveryService. AI games are aborted
-   * (the bot side is not restored). Casual games are rebuilt from `game_moves`, so
-   * players can rejoin with game:resume / game:join. The clock of the side to move
-   * restarts at boot: the outage costs nobody time.
-   */
+  // Tournament games are handled by TournamentRecoveryService, AI games get aborted,
+  // casual games are replayed from game_moves. Clock of the side to move restarts at boot.
   public async recoverInterruptedGames(): Promise<{ restored: number; aborted: number; concluded: number }> {
     const summary = { restored: 0, aborted: 0, concluded: 0 };
     if (!this.prisma) return summary;
@@ -146,7 +135,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       }
       this.activeGames.set(game.id, session);
       if (session.isFinished) {
-        // The final move was saved but the result was not: conclude it now.
+        // last move was saved but the result wasn't
         if (await this.removeGame(game.id)) summary.concluded++;
         continue;
       }
@@ -158,7 +147,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     return summary;
   }
 
-  /** Replays the persisted moves. Returns null when the history cannot be trusted. */
+  // null when the saved history doesn't replay cleanly
   private rebuildSession(
     game: {
       id: string;
@@ -297,11 +286,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       }
       return null;
     }
-    /**
-     * Registers a callback fired exactly once per game, right after its result
-     * row was written by removeGame(). Listener errors are logged and never
-     * block the session purge.
-     */
+    // Called once per game after removeGame() saved the result.
     public onGameConcluded(listener: GameConclusionListener): void {
       this.conclusionListeners.push(listener);
     }
@@ -382,11 +367,10 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
   public getActiveGamesCount(): number {
     return this.activeGames.size;
   }
-  //Enqueues a verified move into the Cold-Path buffer and schedules non-blocking persistence.
   public enqueueMoveForPersistence(moveRecord: PendingMoveRecord): void {
     this.pendingMovesQueue.push(moveRecord);
 
-    // Soft cap: never drop plies (data loss), but make a runaway buffer loud.
+    // never drop moves, just complain loudly
     if (this.pendingMovesQueue.length > MOVE_PERSISTENCE_CONFIG.maxQueueSize) {
       if (!this.queueCapWarned) {
         this.queueCapWarned = true;
@@ -398,21 +382,19 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       this.queueCapWarned = false;
     }
 
-    // Never awaited: the WebSocket event loop must not wait for PostgreSQL.
+    // not awaited on purpose, sockets shouldn't wait for the DB
     this.scheduleFlush();
   }
 
-  //Number of plies still waiting for database confirmation (all games).
   public getPendingMovesCount(): number {
     return this.pendingMovesQueue.length;
   }
 
-  //Plies the database rejected permanently (bad data / missing parent row).
   public getDeadLetterMoves(): readonly DeadLetterMove[] {
     return this.deadLetterMoves;
   }
 
-  //Debounced trigger: several plies arriving together share one INSERT.
+  // debounced, so moves arriving together go in one INSERT
   private scheduleFlush(): void {
     if (!this.prisma) {
       if (!this.missingPrismaWarned) {
@@ -423,7 +405,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       }
       return;
     }
-    // While backing off after a failure, the retry timer owns the schedule.
+    // during backoff the retry timer decides when to flush
     if (this.retryTimer || this.flushPromise) {
       return;
     }
@@ -456,8 +438,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  //Asynchronous Cold-Path worker: drains the buffer into PostgreSQL in batches.
-  //Concurrent callers share one in-flight drain, so awaiting it is always safe.
+  // Concurrent callers share the same flush.
   public flushPendingMoves(): Promise<void> {
     if (!this.prisma || this.pendingMovesQueue.length === 0) {
       return this.flushPromise ?? Promise.resolve();
@@ -466,7 +447,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       this.clearFlushTimer();
       this.flushPromise = this.drainQueue().finally(() => {
         this.flushPromise = null;
-        // A ply enqueued while the drain was finishing must not be stranded.
+        // a move added while the flush was finishing
         if (this.pendingMovesQueue.length > 0 && !this.retryTimer) {
           this.scheduleFlush();
         }
@@ -487,19 +468,13 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  /**
-   * Writes one batch. Returns true when every record of the batch was either
-   * stored or dead-lettered (and removed from RAM); false when a transient
-   * failure requires a later retry (unpersisted records stay at the queue head).
-   *
-   * Only this method removes records, and only from the head, so the
-   * records at index [0, n) always match the batch we just wrote.
-   */
+  // false = transient error, records stay at the head of the queue for a retry.
+  // Only removes from the head, so [0, n) is always the batch just written.
   private async persistBatch(batch: PendingMoveRecord[]): Promise<boolean> {
     try {
       await this.prisma!.gameMove.createMany({
         data: batch.map(toGameMoveCreateInput),
-        // A retry after a lost acknowledgement must not fail on UNIQUE(game_id, ply).
+        // a retry after a lost ack must not fail on UNIQUE(game_id, ply)
         skipDuplicates: true,
       });
       this.pendingMovesQueue.splice(0, batch.length);
@@ -518,7 +493,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       return this.persistRowByRow(batch);
     }
   }
-  //Fallback after a permanent batch error: one bad ply must not block the others.
+  // one bad move shouldn't block the rest of the batch
   private async persistRowByRow(batch: PendingMoveRecord[]): Promise<boolean> {
     for (const record of batch) {
       try {
@@ -572,12 +547,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     return this.pendingMovesQueue.some((m) => m.gameId === gameId);
   }
 
-  /**
-   * Waits (bounded) until the buffer holds no more plies of `gameId`
-   * (or, without gameId, no plies at all). Forces a flush attempt on each
-   * round so a pending backoff timer does not delay the caller.
-   * Returns false on timeout; the plies then stay buffered and keep retrying.
-   */
+  // Returns false on timeout, the moves stay buffered and keep retrying.
   private async waitForPersistence(
     timeoutMs: number,
     gameId?: string,
@@ -594,7 +564,6 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       if (!pending()) {
         break;
       }
-      // The attempt failed transiently: wait a little before trying again.
       if (Date.now() >= deadline) {
         return false;
       }
@@ -604,18 +573,8 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     return true;
   }
 
-  /**
-   * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Internal Game Over Pipeline (#117/#118)]
-   * Concludes a match and frees its in-memory session (#143):
-   *  1. Resolves the final result (explicit conclusion > session state > engine state > ABORTED).
-   *  2. Freezes the session so no further moves are accepted.
-   *  3. Waits (bounded) until every ply of the game reached the database (#140).
-   *  4. Writes result / end_reason / game_end to `games`.
-   *  5. Triggers RatingService.applyGameResult (atomic Elo update) for rated results.
-   *  6. Purges the session from RAM.
-   * If the result cannot be written, the session is KEPT (frozen) and `false` is returned,
-   * so the caller can retry without losing the outcome.
-   */
+  // Saves the result, rates the game and drops the session (#143).
+  // If the save fails, the frozen session stays and it returns false, so the caller can retry.
   public async removeGame(
     gameId: string,
     conclusion?: GameConclusion,
@@ -632,14 +591,12 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
 
     try {
       const final = this.resolveConclusion(session, conclusion);
-      // Freeze the session first: authorizeMove() rejects every move from now on.
+      // freeze first so no more moves get in
       session.isFinished = true;
       session.winnerColor = final.winnerColor;
       session.gameOverReason = final.endReason;
 
-      // Every ply of this game must reach the database before the game row is
-      // closed and rated (the ELO/results pipeline relies on a complete history).
-      // On timeout the records stay in the buffer and keep retrying in the background.
+      // all moves must be saved before the game is closed and rated
       const movesPersisted = await this.waitForPersistence(
         MOVE_PERSISTENCE_CONFIG.removeGameWaitMs,
         gameId,
@@ -650,7 +607,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
         );
       }
 
-      //INTEGRATION - HOOK for @tszyman (Saving played matches #87) & @Alaxea (Ranking #99)
+      // save the result (#87), rating runs after (#99)
       const concluded = await this.persistGameConclusion(gameId, final);
       if (!concluded) {
         this.logger.error(`Could not persist conclusion of game [${gameId}]; retaining session for retry.`);
@@ -675,16 +632,12 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
       );
       return false;
     } finally {
-      // Released only after the purge (or failure), so a duplicate call cannot slip in.
+      // release only after the purge, so a duplicate call can't slip in
       this.concludingGames.delete(gameId);
     }
   }
 
-  /**
-   * Determines the final result of a session. Priority:
-   * explicit conclusion (TIMEOUT / RESIGNATION / ABANDONMENT...) > already-finished session
-   * > position detected by chess.js > ABORTED (removed before any conclusion, never rated).
-   */
+  // explicit conclusion > finished session > board position > ABORTED
   private resolveConclusion(
     session: GameSession,
     conclusion?: GameConclusion,
@@ -698,7 +651,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
 
     const engine = session.engine;
     if (engine.isCheckmate()) {
-      // The side to move is the one that has been mated.
+      // side to move is the one mated
       return this.toPersistedConclusion(engine.turn() === 'w' ? 'b' : 'w', 'CHECKMATE');
     }
     const drawReason = this.detectDrawReason(engine);
@@ -721,18 +674,14 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     winnerColor: PlayerColor | null,
     reason: GameOverReason,
   ): PersistedGameConclusion {
-    // Draw reasons can never have a winner, whatever the caller passed.
+    // draws never have a winner
     const winner = DRAW_REASONS.includes(reason) ? null : winnerColor;
     if (winner === 'w') return { result: 'WHITE_WON', endReason: reason, winnerColor: 'w' };
     if (winner === 'b') return { result: 'BLACK_WON', endReason: reason, winnerColor: 'b' };
     return { result: 'DRAW', endReason: reason, winnerColor: null };
   }
 
-  /**
-   * Writes the final result to `games`. Only an IN_PROGRESS row is updated, so a finished
-   * game is never overwritten and the rating trigger can fire at most once per game.
-   * Returns true when exactly this call closed the row.
-   */
+  // Only touches an IN_PROGRESS row, so the rating can't fire twice for one game.
   private async persistGameConclusion(
     gameId: string,
     final: PersistedGameConclusion,
@@ -767,8 +716,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     return true;
   }
 
-  // The result is already stored at this point and applyGameResult skips already-rated
-  // games, so a rating failure is logged (and can be re-run) without blocking the purge.
+  // Result is already saved and applyGameResult skips rated games, so just log a failure.
   private async triggerRatingUpdate(gameId: string): Promise<void> {
     try {
       await this.ratingService.applyGameResult(gameId);
@@ -779,7 +727,6 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  // Listeners run sequentially; a failing listener is logged so the purge still happens.
   private async notifyConclusionListeners(event: GameConclusionEvent): Promise<void> {
     for (const listener of this.conclusionListeners) {
       try {
@@ -792,7 +739,7 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  //NestJS shutdown hook: best-effort drain so a deploy does not lose buffered plies.
+  // flush what's left on shutdown
   public async onModuleDestroy(): Promise<void> {
     this.clearFlushTimer();
     this.clearRetryTimer();

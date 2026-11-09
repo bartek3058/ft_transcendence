@@ -6,9 +6,9 @@ import { TournamentGameService } from './tournament-game.service';
 import { TOURNAMENT_CHECK_IN_WINDOW_MS } from './tournament-rules';
 
 export const RECOVERY_INTERVAL_MS = 30_000;
-/** A finished game is left to the normal conclusion listener for this long. */
+// give the normal conclusion listener this long first
 export const RECOVERY_GRACE_MS = 30_000;
-/** Consecutive failures after which a match is no longer retried (needs a manual fix). */
+// after this many failures in a row it needs a manual fix
 export const MAX_RECOVERY_ATTEMPTS = 5;
 export { SERVER_RESTART_REASON };
 
@@ -23,7 +23,6 @@ export interface RecoveryTickResult {
   quarantined: number;
 }
 
-/** An IN_PROGRESS match whose latest game is no longer live. */
 export interface StuckMatch {
   match_id: string;
   tournament_id: string;
@@ -34,23 +33,9 @@ export interface StuckMatch {
   black_id: string | null;
 }
 
-/**
- * Recovery for tournament matches stuck IN_PROGRESS (PR #173 review, #168):
- *
- * 1. Startup: games live only in memory, so after a restart every tournament game
- *    still IN_PROGRESS in the database is orphaned. It is marked ABORTED
- *    (end_reason SERVER_RESTART). Single backend instance assumed.
- * 2. Every 30 s: IN_PROGRESS matches whose latest game is no longer live and ended
- *    more than 30 s ago (the normal listener had its chance):
- *    - finished game (win, draw, abandonment) -> the result is applied again through
- *      the same code as the listener. Bracket writes are conditional, so a result is
- *      never applied twice;
- *    - ABORTED game (restart, or removed before it ended) -> the match goes back to
- *      SCHEDULED with a new check-in window; the check-in rules take over.
- *
- * Errors are counted per match; after MAX_RECOVERY_ATTEMPTS in a row the match is no
- * longer retried and is reported for a manual fix (same policy as the check-in sweep).
- */
+// Fixes tournament matches stuck IN_PROGRESS (#168). On startup, games lost by a restart
+// are aborted. Every 30 s, finished games get their result applied again and aborted
+// ones send the match back to check-in. Assumes a single backend instance.
 @Injectable()
 export class TournamentRecoveryService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(TournamentRecoveryService.name);
@@ -67,7 +52,7 @@ export class TournamentRecoveryService implements OnApplicationBootstrap, OnModu
     try {
       await this.abortOrphanedGames();
     } catch (error) {
-      // The periodic job cannot help an orphaned live game; log loudly and keep booting.
+      // nothing else will fix an orphaned game, so log it and keep booting
       this.logger.error(`Could not abort orphaned tournament games: ${describe(error)}`);
     }
     this.timer = setInterval(() => { void this.tick(); }, RECOVERY_INTERVAL_MS);
@@ -79,7 +64,7 @@ export class TournamentRecoveryService implements OnApplicationBootstrap, OnModu
     this.timer = undefined;
   }
 
-  /** Startup only: no tournament game session can exist in memory yet. */
+  // startup only, no session can be in memory yet
   async abortOrphanedGames(): Promise<number> {
     const { count } = await this.prisma.game.updateMany({
       where: { tournamentMatchId: { not: null }, result: 'IN_PROGRESS' },
@@ -141,8 +126,7 @@ export class TournamentRecoveryService implements OnApplicationBootstrap, OnModu
     if (!stuck.white_id || !stuck.black_id) {
       throw new Error(`Game ${stuck.game_id} has no player ids; cannot re-apply its result.`);
     }
-    // Same code path as the listener; a ConflictException means the result is already
-    // in the bracket (or the match moved on) and is counted as a failure only if it repeats.
+    // a ConflictException means the result is already in, only counts if it repeats
     await this.games.applyGameResult(stuck.tournament_id, stuck.match_id, {
       gameId: stuck.game_id,
       result: stuck.result,
@@ -154,7 +138,6 @@ export class TournamentRecoveryService implements OnApplicationBootstrap, OnModu
     return 'REAPPLIED';
   }
 
-  /** Back to SCHEDULED with fresh check-ins, only while it is still stuck. */
   private async reopenCheckIn(stuck: StuckMatch): Promise<RecoveryAction> {
     const deadline = new Date(Date.now() + TOURNAMENT_CHECK_IN_WINDOW_MS);
     const updated = await this.prisma.$executeRaw`

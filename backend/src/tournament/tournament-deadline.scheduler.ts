@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { TournamentLifecycleService } from './tournament-lifecycle.service';
 
 export const DEADLINE_SCHEDULER_INTERVAL_MS = 60_000;
-/** Consecutive failed start attempts before the scheduler cancels the tournament. */
+// after this many failed starts the tournament is cancelled
 export const MAX_START_ATTEMPTS = 5;
 
 export interface SchedulerTickResult {
@@ -14,15 +14,7 @@ export interface SchedulerTickResult {
   cancelled: number;
 }
 
-/**
- * Closes expired registrations and retries tournaments left in REGISTRATION_CLOSED.
- * Zero-dependency setInterval (same pattern as SessionService). Tournament state is in
- * the DB; each tournament runs in its own transaction, and the conditional status
- * updates make concurrent ticks / manual closes / other instances safe.
- *
- * Failed attempts are counted per tournament in memory (a restart starts the count
- * again). After MAX_START_ATTEMPTS consecutive failures the tournament is cancelled.
- */
+// Closes expired registrations and retries stuck starts. Failure counts are in memory only.
 @Injectable()
 export class TournamentDeadlineScheduler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TournamentDeadlineScheduler.name);
@@ -73,7 +65,7 @@ export class TournamentDeadlineScheduler implements OnModuleInit, OnModuleDestro
     return result;
   }
 
-  /** One tournament; never throws, so a failure cannot stop the rest of the tick. */
+  // never throws, one bad tournament can't stop the tick
   private async run(id: string, action: () => Promise<unknown>,
     counter: 'closed' | 'restarted', result: SchedulerTickResult): Promise<void> {
     try {
@@ -84,7 +76,7 @@ export class TournamentDeadlineScheduler implements OnModuleInit, OnModuleDestro
     } catch (error) {
       result.failed++;
       if (error instanceof HttpException && (error.getStatus() === 404 || error.getStatus() === 409)) {
-        // Lost a race (manual close, cancel, another tick or instance): nothing to do.
+        // lost a race, someone else handled it
         this.failures.delete(id);
         this.logger.log(`Tournament ${id} already handled elsewhere (${error.getStatus()}).`);
         return;
@@ -98,7 +90,7 @@ export class TournamentDeadlineScheduler implements OnModuleInit, OnModuleDestro
       if (await this.lifecycle.cancelUnstartable(id)) result.cancelled++;
       this.failures.delete(id);
     } catch (error) {
-      // Counter kept at the limit: the cancel is retried on the next tick.
+        // counter stays at the limit, so the cancel is retried next tick
       this.logger.error(`Tournament ${id} could not be cancelled: ${describe(error)}`);
     }
   }

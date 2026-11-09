@@ -19,10 +19,10 @@ export type GameOverReason =
 | 'RESIGNATION'
 | 'ABANDONMENT';
 
-// `games.end_reason` of a game aborted because a backend restart interrupted it.
+// end_reason for games cut off by a backend restart
 export const SERVER_RESTART_REASON = 'SERVER_RESTART';
 
-// Reasons where nobody wins: a conclusion with one of these is always persisted as DRAW.
+// these are always saved as DRAW
 export const DRAW_REASONS: readonly GameOverReason[] = [
   'STALEMATE',
   'INSUFFICIENT_MATERIAL',
@@ -30,19 +30,13 @@ export const DRAW_REASONS: readonly GameOverReason[] = [
   'FIFTY_MOVE_RULE',
 ];
 
-/**
- * [INTEGRATION - EXPOSED API for @piomam21 (#92) & Game Over Pipeline (#117/#118)]
- * Explicit match conclusion passed to GameService.removeGame for endings the chess
- * engine cannot detect on its own (TIMEOUT, RESIGNATION, ABANDONMENT).
- * winnerColor = null means a draw.
- */
+// For endings chess.js can't detect (timeout, resignation, abandonment). winnerColor null = draw.
 export interface GameConclusion
 {
     winnerColor: PlayerColor | null;
     gameOverReason: GameOverReason;
 }
 
-// Final result as written to the `games` table (#143).
 export interface PersistedGameConclusion
 {
     result: Exclude<DatabaseGameResult, 'IN_PROGRESS'>;
@@ -50,11 +44,7 @@ export interface PersistedGameConclusion
     winnerColor: PlayerColor | null;
 }
 
-/**
- * Emitted once per game, after its result row was written (and rated).
- * Lets other modules (e.g. tournaments, #68) react to a finished game without
- * GameService depending on them.
- */
+// Sent once per game after the result is saved, lets tournaments react (#68).
 export interface GameConclusionEvent
 {
     gameId: string;
