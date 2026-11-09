@@ -10,6 +10,9 @@ export class LeaderboardItemDto {
   @ApiProperty({ example: 'grandmaster_bob', description: 'Player username' })
   username!: string;
 
+  @ApiProperty({ type: String, nullable: true, example: 'Grand Master ♞', description: 'Display name, null when not set (show the username)' })
+  displayName!: string | null;
+
   @ApiProperty({ example: 1850, description: 'Current ELO rating' })
   rating!: number;
 
@@ -50,6 +53,9 @@ export class TopPlayerDto {
   @ApiProperty({ example: 'grandmaster_bob', description: 'Username of rank #1 player' })
   username!: string;
 
+  @ApiProperty({ type: String, nullable: true, example: 'Grand Master ♞', description: 'Display name, null when not set (show the username)' })
+  displayName!: string | null;
+
   @ApiProperty({ example: 2150, description: 'Rating of rank #1 player' })
   rating!: number;
 }
@@ -80,6 +86,9 @@ export class PlayerRankingDto {
 
   @ApiProperty({ example: 'chess_wizard', description: 'Player username' })
   username!: string;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Grand Master ♞', description: 'Display name, null when not set (show the username)' })
+  displayName!: string | null;
 
   @ApiProperty({ example: 1680, description: 'Current ELO rating' })
   rating!: number;

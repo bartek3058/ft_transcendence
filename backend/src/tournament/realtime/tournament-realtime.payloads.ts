@@ -30,7 +30,7 @@ export interface StartedPayload {
 export interface FinishedPayload {
   tournamentId: string;
   championId: string | null;
-  finalRanks: { userId: string; username: string; finalRank: number }[];
+  finalRanks: { userId: string; username: string; displayName: string | null; finalRank: number }[];
 }
 
 export interface InvitationReceivedPayload {
@@ -38,7 +38,7 @@ export interface InvitationReceivedPayload {
     id: string;
     tournamentId: string;
     title: string;
-    sender: { userId: string; username: string };
+    sender: { userId: string; username: string; displayName: string | null };
     expiresAt: Date;
   };
 }
@@ -48,7 +48,7 @@ export interface InvitationAnsweredPayload {
     id: string;
     tournamentId: string;
     title: string;
-    recipient: { userId: string; username: string };
+    recipient: { userId: string; username: string; displayName: string | null };
     status: 'ACCEPTED' | 'DECLINED';
   };
 }
@@ -91,14 +91,16 @@ export class TournamentRealtimePayloads {
         participants: {
           where: { finalRank: { not: null } },
           orderBy: [{ finalRank: 'asc' }, { seed: 'asc' }],
-          select: { userId: true, finalRank: true, user: { select: { username: true } } },
+          select: { userId: true, finalRank: true, user: { select: { username: true, displayName: true } } },
         },
       },
     });
     return {
       tournamentId,
       championId: t.championId,
-      finalRanks: t.participants.map((p) => ({ userId: p.userId, username: p.user.username, finalRank: p.finalRank! })),
+      finalRanks: t.participants.map((p) => ({
+        userId: p.userId, username: p.user.username, displayName: p.user.displayName, finalRank: p.finalRank!,
+      })),
     };
   }
 
@@ -107,12 +109,12 @@ export class TournamentRealtimePayloads {
       where: { id: invitationId },
       select: {
         id: true, tournamentId: true, expiresAt: true,
-        tournament: { select: { title: true } }, sender: { select: { id: true, username: true } },
+        tournament: { select: { title: true } }, sender: { select: { id: true, username: true, displayName: true } },
       },
     });
     return { invitation: {
       id: inv.id, tournamentId: inv.tournamentId, title: inv.tournament.title,
-      sender: { userId: inv.sender.id, username: inv.sender.username }, expiresAt: inv.expiresAt,
+      sender: { userId: inv.sender.id, username: inv.sender.username, displayName: inv.sender.displayName }, expiresAt: inv.expiresAt,
     } };
   }
 
@@ -121,12 +123,13 @@ export class TournamentRealtimePayloads {
       where: { id: invitationId },
       select: {
         id: true, tournamentId: true,
-        tournament: { select: { title: true } }, recipient: { select: { id: true, username: true } },
+        tournament: { select: { title: true } }, recipient: { select: { id: true, username: true, displayName: true } },
       },
     });
     return { invitation: {
       id: inv.id, tournamentId: inv.tournamentId, title: inv.tournament.title,
-      recipient: { userId: inv.recipient.id, username: inv.recipient.username }, status,
+      recipient: { userId: inv.recipient.id, username: inv.recipient.username, displayName: inv.recipient.displayName },
+      status,
     } };
   }
 

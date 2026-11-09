@@ -151,11 +151,11 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
     this.unsubscribe.push(
       e.onParticipantJoined((ev) => this.toTournament(ev.tournamentId, 'tournament:participant_joined', {
         tournamentId: ev.tournamentId, currentParticipants: ev.currentParticipants,
-        maxParticipants: ev.maxParticipants, participant: { userId: ev.userId, username: ev.username },
+        maxParticipants: ev.maxParticipants, participant: { userId: ev.userId, username: ev.username, displayName: ev.displayName },
       })),
       e.onParticipantLeft((ev) => this.toTournament(ev.tournamentId, 'tournament:participant_left', {
         tournamentId: ev.tournamentId, currentParticipants: ev.currentParticipants,
-        maxParticipants: ev.maxParticipants, participant: { userId: ev.userId, username: ev.username },
+        maxParticipants: ev.maxParticipants, participant: { userId: ev.userId, username: ev.username, displayName: ev.displayName },
       })),
       e.onRegistrationClosed(async (ev) => {
         this.toTournament(ev.tournamentId, 'tournament:registration_closed', {

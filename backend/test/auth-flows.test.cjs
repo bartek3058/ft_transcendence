@@ -22,7 +22,8 @@ test('register → login → me → logout, with safe responses and hashed sessi
   const registration = await register(h);
   assert.equal(registration.headers.get('set-cookie'), null);
   const { user } = await registration.json();
-  assert.deepEqual(Object.keys(user).sort(), ['createdAt', 'email', 'id', 'username']);
+  assert.deepEqual(Object.keys(user).sort(), ['createdAt', 'displayName', 'email', 'id', 'username']);
+  assert.equal(user.displayName, null);
   assert.equal(user.email, 'alice@example.com');
   assert.equal(user.username, 'chess_fan');
   assert.match(h.repository.accounts.get(user.id).passwordHash, /^\$argon2id\$/);

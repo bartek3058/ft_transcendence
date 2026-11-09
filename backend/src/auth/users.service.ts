@@ -3,7 +3,8 @@ import { Account, AccountConflictError, AuthRepository, NewAccount, SafeAccount 
 import { storageUnavailable } from './auth.errors';
 
 export function safeAccount(account: SafeAccount): SafeAccount {
-  return { id: account.id, email: account.email, username: account.username, createdAt: account.createdAt };
+  return { id: account.id, email: account.email, username: account.username,
+    displayName: account.displayName ?? null, createdAt: account.createdAt };
 }
 
 @Injectable()

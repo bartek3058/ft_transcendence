@@ -149,7 +149,7 @@ test('registration, invitations, start and check-in events reach the right rooms
   assert.equal((await h.request(bob, `tournaments/invitations/${inv.id}/respond`, 'POST', { response: 'ACCEPT' })).status, 200);
   assert.deepEqual((await answered).invitation.status, 'ACCEPTED');
   assert.deepEqual(await joined, {
-    tournamentId: id, currentParticipants: 1, maxParticipants: 4, participant: { userId: bob.id, username: bob.username },
+    tournamentId: id, currentParticipants: 1, maxParticipants: 4, participant: { userId: bob.id, username: bob.username, displayName: null },
   });
 
   // Join / leave; a rolled-back join announces nothing.

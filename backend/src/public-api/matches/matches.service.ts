@@ -43,8 +43,8 @@ export class MatchesService {
           blackRatingChange: true,
           gameStart: true,
           gameEnd: true,
-          whitePlayer: { select: { id: true, username: true } },
-          blackPlayer: { select: { id: true, username: true } },
+          whitePlayer: { select: { id: true, username: true, displayName: true } },
+          blackPlayer: { select: { id: true, username: true, displayName: true } },
         },
         orderBy: { gameStart: 'desc' },
         skip,
@@ -82,8 +82,8 @@ export class MatchesService {
         pgn: true,
         gameStart: true,
         gameEnd: true,
-        whitePlayer: { select: { id: true, username: true } },
-        blackPlayer: { select: { id: true, username: true } },
+        whitePlayer: { select: { id: true, username: true, displayName: true } },
+        blackPlayer: { select: { id: true, username: true, displayName: true } },
         moves: {
           select: {
             ply: true,

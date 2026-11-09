@@ -12,6 +12,9 @@ model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique(map: "users_email_key") @db.VarChar(254)
   username     String     @unique(map: "users_username_key") @db.VarChar(20)
+  // display name rules and the NFKC + lower-case key are in src/auth/validation/display-name.ts
+  displayName    String? @map("display_name") @db.VarChar(20)
+  displayNameKey String? @unique(map: "users_display_name_key_key") @map("display_name_key")
   rating       Int        @default(1200)
   passwordHash String     @map("password_hash") @db.Text
   role         String     @default("user") @db.VarChar(20)

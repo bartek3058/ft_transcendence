@@ -25,7 +25,7 @@ export class LeaderboardService {
         orderBy: [{ rating: 'desc' }, { username: 'asc' }],
         skip: offset,
         take: safeLimit,
-        select: { id: true, username: true, rating: true },
+        select: { id: true, username: true, displayName: true, rating: true },
       }),
     ]);
 
@@ -37,6 +37,7 @@ export class LeaderboardService {
         rank: offset + i + 1,
         userId: u.id,
         username: u.username,
+        displayName: u.displayName,
         rating: u.rating,
         gamesPlayed: s.games,
         wins: s.wins,
@@ -71,7 +72,7 @@ export class LeaderboardService {
       this.prisma.user.findFirst({
         where: RANKED_USER_WHERE,
         orderBy: [{ rating: 'desc' }, { username: 'asc' }],
-        select: { username: true, rating: true },
+        select: { username: true, displayName: true, rating: true },
       }),
     ]);
 
@@ -80,7 +81,7 @@ export class LeaderboardService {
       totalMatches,
       averageRating: ratingAgg._avg.rating != null ? Math.round(ratingAgg._avg.rating) : 1200,
       highestRating: ratingAgg._max.rating ?? 1200,
-      topPlayer: topUser ? { username: topUser.username, rating: topUser.rating } : null,
+      topPlayer: topUser ? { username: topUser.username, displayName: topUser.displayName, rating: topUser.rating } : null,
     };
   }
 
@@ -95,7 +96,7 @@ export class LeaderboardService {
 
     const user = await this.prisma.user.findFirst({
       where: { username: normalized, ...RANKED_USER_WHERE },
-      select: { id: true, username: true, rating: true },
+      select: { id: true, username: true, displayName: true, rating: true },
     });
 
     // fixed message, don't echo input back
@@ -123,6 +124,7 @@ export class LeaderboardService {
       rank: higherCount + 1,
       userId: user.id,
       username: user.username,
+      displayName: user.displayName,
       rating: user.rating,
       gamesPlayed: record.games,
       wins: record.wins,

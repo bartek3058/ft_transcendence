@@ -70,10 +70,10 @@ test('friends API: lifecycle, private data, validation, permissions and CSRF', a
   assert.equal((await h.request(alice, 'friends/requests', 'POST', { targetUserId: bob.id }, { Origin: 'https://evil.example' })).status, 403);
   assert.equal((await h.request(alice, 'friends/requests', 'POST', { targetUserId: randomUUID() })).status, 404);
   const search = await (await h.request(alice, `users/search?q=${bob.username}`)).json();
-  assert.deepEqual(Object.keys(search.items[0]).sort(), ['id', 'rating', 'username']);
+  assert.deepEqual(Object.keys(search.items[0]).sort(), ['displayName', 'id', 'rating', 'username']);
   assert.equal(search.items[0].id, bob.id);
   const profile = await (await h.request(alice, `users/${bob.id}`)).json();
-  assert.deepEqual(Object.keys(profile.user).sort(), ['id', 'rating', 'username']);
+  assert.deepEqual(Object.keys(profile.user).sort(), ['displayName', 'id', 'rating', 'username']);
   let response = await h.request(alice, 'friends/requests', 'POST', { targetUserId: bob.id.toUpperCase() });
   assert.equal(response.status, 201);
   const id = (await response.json()).request.id;

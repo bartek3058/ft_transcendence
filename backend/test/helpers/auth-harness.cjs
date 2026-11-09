@@ -20,15 +20,44 @@ class MemoryAuthRepository {
   async createAccount(input) {
     this.check('createAccount');
     for (const account of this.accounts.values()) {
-      if (input.email === account.email || input.username === account.username) throw new AccountConflictError();
+      if (input.email === account.email || input.username === account.username
+        || input.username === account.displayNameKey) throw new AccountConflictError();
     }
-    const account = { id: randomUUID(), createdAt: new Date(), ...input };
+    const account = { id: randomUUID(), createdAt: new Date(), displayName: null, displayNameKey: null, ...input };
     this.accounts.set(account.id, account);
     return account;
   }
   async findAccountByEmail(email) {
     this.check('findAccount');
     return [...this.accounts.values()].find((account) => account.email === email) ?? null;
+  }
+  async findAccountById(id) {
+    this.check('findAccount');
+    return this.accounts.get(id) ?? null;
+  }
+  async updateDisplayName(id, displayName, key) {
+    this.check('updateDisplayName');
+    const account = this.accounts.get(id);
+    if (!account) return null;
+    for (const other of this.accounts.values()) {
+      if (other.id !== id && key !== null && (other.displayNameKey === key || other.username === key)) {
+        throw new AccountConflictError();
+      }
+    }
+    Object.assign(account, { displayName, displayNameKey: key });
+    return { id, email: account.email, username: account.username, displayName, createdAt: account.createdAt };
+  }
+  async changePassword(userId, expectedHash, passwordHash, session) {
+    this.check('changePassword');
+    const account = this.accounts.get(userId);
+    if (!account || account.passwordHash !== expectedHash) return null;
+    account.passwordHash = passwordHash;
+    const dropped = [];
+    for (const [hash, stored] of this.sessions) {
+      if (stored.userId === userId) { this.sessions.delete(hash); dropped.push(hash); }
+    }
+    this.sessions.set(session.tokenHash, { ...session });
+    return dropped;
   }
   async replaceSession(previous, session) {
     this.check('replaceSession');

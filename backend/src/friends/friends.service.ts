@@ -4,7 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { PresenceService } from './presence.service';
 import { PageDto, RequestsDto, SearchDto } from './friends.dto';
 
-const publicUser = { id: true, username: true, rating: true } as const;
+const publicUser = { id: true, username: true, displayName: true, rating: true } as const;
 const membership = (id: string) => ({ OR: [{ userLowId: id }, { userHighId: id }] });
 const notFound = () => new NotFoundException({ error: { code: 'NOT_FOUND', message: 'User or relationship not found.' } });
 const conflict = () => new ConflictException({ error: { code: 'FRIENDSHIP_CONFLICT', message: 'Relationship already exists or has changed. Refresh and retry.' } });

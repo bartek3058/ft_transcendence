@@ -13,7 +13,7 @@ import {
 import { TournamentMatchSlot, TournamentMatchStatus, TournamentStatus } from './types/tournament.types';
 
 // never select users.rating for a response
-const USER_REF = { select: { id: true, username: true } } as const;
+const USER_REF = { select: { id: true, username: true, displayName: true } } as const;
 
 const SUMMARY_SELECT = {
   id: true, title: true, description: true, status: true, maxParticipants: true,
@@ -36,6 +36,7 @@ export interface JoinResult {
   currentParticipants: number;
   maxParticipants: number;
   username: string;
+  displayName: string | null;
   // a pending invite for this tournament, marked ACCEPTED by the join
   acceptedInvitation: { id: string; senderId: string } | null;
 }
@@ -92,7 +93,7 @@ export class TournamentsService {
           orderBy: [{ seed: { sort: 'asc', nulls: 'last' } }, { registeredAt: 'asc' }, { id: 'asc' }],
           select: {
             userId: true, seed: true, seedRating: true, finalRank: true, registeredAt: true,
-            user: { select: { username: true } },
+            user: { select: { username: true, displayName: true } },
           },
         },
         matches: {
@@ -112,7 +113,7 @@ export class TournamentsService {
     return {
       ...toSummary(summary),
       participants: participants.map((p) => ({
-        userId: p.userId, username: p.user.username, seed: p.seed, seedRating: p.seedRating,
+        userId: p.userId, username: p.user.username, displayName: p.user.displayName, seed: p.seed, seedRating: p.seedRating,
         finalRank: p.finalRank, registeredAt: p.registeredAt,
       })),
       matches: matches.map(({ games, player1CheckedInAt, player2CheckedInAt, ...m }) => ({
@@ -155,18 +156,19 @@ export class TournamentsService {
       UPDATE tournament_invitations SET status = 'ACCEPTED'
       WHERE tournament_id = ${id}::uuid AND recipient_id = ${userId}::uuid AND status = 'PENDING'
       RETURNING id, sender_id`;
-    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { username: true } });
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { username: true, displayName: true } });
     return {
       currentParticipants: rows[0].current_participants,
       maxParticipants: rows[0].max_participants,
       username: user.username,
+      displayName: user.displayName,
       acceptedInvitation: accepted.length ? { id: accepted[0].id, senderId: accepted[0].sender_id } : null,
     };
   }
 
   publishJoined(userId: string, tournamentId: string, result: JoinResult): void {
     this.events.participantJoined({
-      tournamentId, userId, username: result.username, currentParticipants: result.currentParticipants,
+      tournamentId, userId, username: result.username, displayName: result.displayName, currentParticipants: result.currentParticipants,
       maxParticipants: result.maxParticipants, at: new Date(),
     });
     if (!result.acceptedInvitation) return;
@@ -196,8 +198,9 @@ export class TournamentsService {
       }
       const removed = await tx.tournamentParticipant.deleteMany({ where: { tournamentId: id, userId } });
       if (removed.count === 0) throw notJoined(); // rolls back the decrement
-      const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { username: true } });
-      return { currentParticipants: rows[0].current_participants, maxParticipants: rows[0].max_participants, username: user.username };
+      const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { username: true, displayName: true } });
+      return { currentParticipants: rows[0].current_participants, maxParticipants: rows[0].max_participants, username: user.username,
+        displayName: user.displayName };
     });
     this.events.participantLeft({ tournamentId: id, userId, ...left, at: new Date() });
     return { currentParticipants: left.currentParticipants };

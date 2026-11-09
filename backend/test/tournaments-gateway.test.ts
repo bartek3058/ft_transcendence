@@ -200,7 +200,7 @@ describe('TournamentsGateway: events', () => {
   it('maps participant, registration, cancel, match and finish events to the tournament room', async () => {
     const h = harness();
     const at = new Date(0);
-    const participant = { tournamentId: T1, userId: 'u9', username: 'bob', currentParticipants: 3, maxParticipants: 8, at };
+    const participant = { tournamentId: T1, userId: 'u9', username: 'bob', displayName: 'Bob ♞', currentParticipants: 3, maxParticipants: 8, at };
     h.publisher.participantJoined(participant);
     h.publisher.participantLeft({ ...participant, currentParticipants: 2 });
     h.publisher.registrationClosed({ tournamentId: T1, outcome: 'IN_PROGRESS', reason: 'MANUAL', at });
@@ -222,7 +222,7 @@ describe('TournamentsGateway: events', () => {
       [room, 'tournament:finished'],
     ]);
     assert.deepEqual(h.emitted[0].payload, {
-      tournamentId: T1, currentParticipants: 3, maxParticipants: 8, participant: { userId: 'u9', username: 'bob' },
+      tournamentId: T1, currentParticipants: 3, maxParticipants: 8, participant: { userId: 'u9', username: 'bob', displayName: 'Bob ♞' },
     });
     assert.deepEqual(h.emitted[2].payload, { tournamentId: T1, status: 'IN_PROGRESS' });
     // One match_updated per changed match, duplicates removed.

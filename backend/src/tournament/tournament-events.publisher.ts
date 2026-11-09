@@ -32,6 +32,7 @@ export interface ParticipantChangedEvent {
   tournamentId: string;
   userId: string;
   username: string;
+  displayName: string | null;
   currentParticipants: number;
   maxParticipants: number;
   at: Date;

@@ -1,10 +1,12 @@
 import { TournamentMatchSlot, TournamentMatchStatus, TournamentStatus } from './tournament.types';
 
-// Players only carry id + username, the only rating in a response is the frozen seedRating.
+// Players only carry id, username and displayName, the only rating in a response is the frozen seedRating.
 
 export interface TournamentUserRef {
   id: string;
   username: string;
+  // null = not set, show the username
+  displayName: string | null;
 }
 
 export interface TournamentSummary {
@@ -32,6 +34,7 @@ export interface TournamentPage {
 export interface TournamentParticipantView {
   userId: string;
   username: string;
+  displayName: string | null;
   seed: number | null;
   seedRating: number | null;
   finalRank: number | null;

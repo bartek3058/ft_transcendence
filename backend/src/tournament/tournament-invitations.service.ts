@@ -97,7 +97,7 @@ export class TournamentInvitationsService {
         where, orderBy: [{ expiresAt: 'asc' }, { id: 'asc' }], skip: offset, take: limit,
         select: {
           id: true, createdAt: true, expiresAt: true,
-          sender: { select: { id: true, username: true } },
+          sender: { select: { id: true, username: true, displayName: true } },
           tournament: { select: {
             id: true, title: true, status: true, maxParticipants: true, currentParticipants: true,
             registrationDeadline: true,

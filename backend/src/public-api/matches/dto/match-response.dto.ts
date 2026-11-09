@@ -6,6 +6,9 @@ export class PlayerSummaryDto {
 
   @ApiProperty()
   username: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Display name, null when not set (show the username)' })
+  displayName: string | null;
 }
 
 export class MatchSummaryDto {

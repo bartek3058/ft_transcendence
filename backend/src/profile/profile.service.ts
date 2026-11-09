@@ -18,8 +18,8 @@ type HistoryGameRow = {
   blackRatingChange: number | null;
   gameStart: Date;
   gameEnd: Date | null;
-  whitePlayer: { username: string } | null;
-  blackPlayer: { username: string } | null;
+  whitePlayer: { username: string; displayName: string | null } | null;
+  blackPlayer: { username: string; displayName: string | null } | null;
 };
 
 const HISTORY_SELECT = {
@@ -31,8 +31,8 @@ const HISTORY_SELECT = {
   blackRatingChange: true,
   gameStart: true,
   gameEnd: true,
-  whitePlayer: { select: { username: true } },
-  blackPlayer: { select: { username: true } },
+  whitePlayer: { select: { username: true, displayName: true } },
+  blackPlayer: { select: { username: true, displayName: true } },
 } as const;
 
 @Injectable()
@@ -46,6 +46,7 @@ export class ProfileService {
         id: true,
         email: true,
         username: true,
+        displayName: true,
         rating: true,
         status: true,
         createdAt: true,
@@ -128,15 +129,15 @@ export class ProfileService {
 
   private toHistoryItem(game: HistoryGameRow, userId: string) {
     const isWhite = game.whiteId === userId;
+    const opponent = isWhite ? game.blackPlayer : game.whitePlayer;
     const won =
       (game.result === "WHITE_WON" && isWhite) ||
       (game.result === "BLACK_WON" && !isWhite);
     const outcome = game.result === "DRAW" ? "DRAW" : won ? "WIN" : "LOSS";
     return {
       id: game.id,
-      opponent: isWhite
-        ? (game.blackPlayer?.username ?? "Unknown player")
-        : (game.whitePlayer?.username ?? "Unknown player"),
+      opponent: opponent?.username ?? "Unknown player",
+      opponentDisplayName: opponent?.displayName ?? null,
       color: isWhite ? "WHITE" : "BLACK",
       outcome,
       result: game.result,

@@ -3,8 +3,18 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AccountConflictError, AuthRepository, NewAccount, NewSession } from './auth.repository';
 
-const safeUser = { id: true, email: true, username: true, createdAt: true } as const;
+const safeUser = { id: true, email: true, username: true, displayName: true, createdAt: true } as const;
 const account = { ...safeUser, passwordHash: true } as const;
+
+const IDENTITY_FIELDS = ['email', 'username', 'display_name_key', 'displayNameKey'];
+const IDENTITY_KEYS = ['users_email_key', 'users_username_key', 'users_display_name_key_key'];
+
+function isIdentityConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') return false;
+  const target = error.meta?.target;
+  return (Array.isArray(target) && target.length === 1 && IDENTITY_FIELDS.includes(target[0]))
+    || (typeof target === 'string' && IDENTITY_KEYS.includes(target));
+}
 
 @Injectable()
 export class PrismaAuthRepository extends AuthRepository {
@@ -13,21 +23,56 @@ export class PrismaAuthRepository extends AuthRepository {
 
   async createAccount(input: NewAccount) {
     try {
-      return await this.prisma.user.create({ data: input, select: account });
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        const target = error.meta?.target;
-        if ((Array.isArray(target) && target.length === 1 && ['email', 'username'].includes(target[0]))
-          || target === 'users_email_key' || target === 'users_username_key') {
+      return await this.prisma.$transaction(async (tx) => {
+        // someone already shows this name as their display name
+        if (await tx.user.findFirst({ where: { displayNameKey: input.username }, select: { id: true } })) {
           throw new AccountConflictError();
         }
-      }
+        return tx.user.create({ data: input, select: account });
+      });
+    } catch (error) {
+      if (isIdentityConflict(error)) throw new AccountConflictError();
       throw error;
     }
   }
 
   findAccountByEmail(email: string) {
     return this.prisma.user.findUnique({ where: { email }, select: account });
+  }
+
+  findAccountById(id: string) {
+    return this.prisma.user.findUnique({ where: { id }, select: account });
+  }
+
+  async updateDisplayName(id: string, displayName: string | null, key: string | null) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // usernames are lowercase ASCII, so this catches "Admin", "ＡＤＭＩＮ" and so on
+        if (key && await tx.user.findFirst({ where: { username: key, id: { not: id } }, select: { id: true } })) {
+          throw new AccountConflictError();
+        }
+        return tx.user.update({ where: { id }, data: { displayName, displayNameKey: key }, select: safeUser });
+      });
+    } catch (error) {
+      if (isIdentityConflict(error)) throw new AccountConflictError();
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null;
+      throw error;
+    }
+  }
+
+  async changePassword(userId: string, expectedHash: string, passwordHash: string, session: NewSession) {
+    return this.prisma.$transaction(async (tx) => {
+      // compare-and-swap, also locks the user row so two changes run one after the other
+      const { count } = await tx.user.updateMany({
+        where: { id: userId, passwordHash: expectedHash }, data: { passwordHash },
+      });
+      if (count !== 1) return null;
+      // RETURNING gives exactly the rows deleted, including a login that raced us
+      const dropped = await tx.$queryRaw<{ token_hash: string }[]>`
+        DELETE FROM sessions WHERE user_id = ${userId}::uuid RETURNING token_hash`;
+      await tx.session.create({ data: session });
+      return dropped.map((row) => row.token_hash);
+    });
   }
 
   async replaceSession(previousTokenHash: string | null, session: NewSession): Promise<void> {
