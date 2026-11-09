@@ -5,10 +5,12 @@ import {
   BadRequestException,
   NotFoundException,
   Optional,
+  OnApplicationBootstrap,
   OnModuleDestroy,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Chess } from 'chess.js';
+import { AI_BOT_USER_ID } from '../ai/ai.constants';
 import { SafeAccount } from '../auth/auth.repository';
 import { MakeMoveDto } from './dto/make-move.dto';
 import { SessionService } from '../auth/session.service';
@@ -38,6 +40,7 @@ import {
   MoveAuthorizationResult,
   MoveExecutionResult,
   PlayerColor,
+  SERVER_RESTART_REASON,
 } from './types/chess.types';
 
 //Default time control: 10 minutes (600,000 ms) per player.
@@ -49,7 +52,7 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
-export class GameService implements OnModuleDestroy
+export class GameService implements OnApplicationBootstrap, OnModuleDestroy
 {
     private readonly logger = new Logger(GameService.name);
     /**
@@ -81,6 +84,151 @@ export class GameService implements OnModuleDestroy
       private readonly ratingService: RatingService,
       @Optional() private readonly sessionService?: SessionService,
     ) {}
+
+  /**
+   * Startup recovery (#76). Live sessions exist only in RAM, so a restart drops them
+   * while their `games` rows stay IN_PROGRESS. Runs before the server accepts clients.
+   * Errors are logged and never block the boot.
+   */
+  public async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.recoverInterruptedGames();
+    } catch (error) {
+      this.logger.error(
+        `Could not recover games interrupted by a restart: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Tournament games are left to TournamentRecoveryService. AI games are aborted
+   * (the bot side is not restored). Casual games are rebuilt from `game_moves`, so
+   * players can rejoin with game:resume / game:join. The clock of the side to move
+   * restarts at boot: the outage costs nobody time.
+   */
+  public async recoverInterruptedGames(): Promise<{ restored: number; aborted: number; concluded: number }> {
+    const summary = { restored: 0, aborted: 0, concluded: 0 };
+    if (!this.prisma) return summary;
+
+    const { count } = await this.prisma.game.updateMany({
+      where: {
+        result: 'IN_PROGRESS',
+        tournamentMatchId: null,
+        OR: [{ whiteId: AI_BOT_USER_ID }, { blackId: AI_BOT_USER_ID }],
+      },
+      data: { result: 'ABORTED', endReason: SERVER_RESTART_REASON, gameEnd: new Date() },
+    });
+    if (count) this.logger.warn(`Aborted ${count} AI game(s) interrupted by a restart.`);
+    summary.aborted += count;
+
+    const games = await this.prisma.game.findMany({
+      where: { result: 'IN_PROGRESS', tournamentMatchId: null },
+      select: {
+        id: true,
+        whiteId: true,
+        blackId: true,
+        timeControl: true,
+        gameStart: true,
+        moves: {
+          orderBy: { ply: 'asc' },
+          select: { ply: true, color: true, uci: true, timeRemainingMs: true },
+        },
+      },
+    });
+
+    const now = Date.now();
+    for (const game of games) {
+      if (this.activeGames.has(game.id)) continue;
+      const session = this.rebuildSession(game, now);
+      if (!session) {
+        if (await this.abortInterruptedGame(game.id)) summary.aborted++;
+        continue;
+      }
+      this.activeGames.set(game.id, session);
+      if (session.isFinished) {
+        // The final move was saved but the result was not: conclude it now.
+        if (await this.removeGame(game.id)) summary.concluded++;
+        continue;
+      }
+      summary.restored++;
+      this.logger.log(
+        `Restored game session [${game.id}] after restart at ply ${session.plyCount}.`,
+      );
+    }
+    return summary;
+  }
+
+  /** Replays the persisted moves. Returns null when the history cannot be trusted. */
+  private rebuildSession(
+    game: {
+      id: string;
+      whiteId: string | null;
+      blackId: string | null;
+      timeControl: string | null;
+      gameStart: Date;
+      moves: { ply: number; color: string; uci: string; timeRemainingMs: number | null }[];
+    },
+    now: number,
+  ): GameSession | null {
+    if (!game.whiteId || !game.blackId || game.whiteId === game.blackId) {
+      this.logger.warn(`Game [${game.id}] has no valid player pair; cannot restore it.`);
+      return null;
+    }
+    const engine = new Chess();
+    let whiteTimeRemainingMs = DEFAULT_INITIAL_TIME_MS;
+    let blackTimeRemainingMs = DEFAULT_INITIAL_TIME_MS;
+
+    for (const [index, move] of game.moves.entries()) {
+      const expectedColor: DatabaseMoveColor = index % 2 === 0 ? 'WHITE' : 'BLACK';
+      if (move.ply !== index + 1 || move.color !== expectedColor) {
+        this.logger.warn(`Game [${game.id}] has a gap at ply ${index + 1}; cannot restore it.`);
+        return null;
+      }
+      try {
+        engine.move({
+          from: move.uci.slice(0, 2),
+          to: move.uci.slice(2, 4),
+          ...(move.uci.length > 4 ? { promotion: move.uci.slice(4) } : {}),
+        });
+      } catch {
+        this.logger.warn(`Game [${game.id}] has an unplayable move at ply ${move.ply}; cannot restore it.`);
+        return null;
+      }
+      if (move.timeRemainingMs !== null) {
+        if (expectedColor === 'WHITE') whiteTimeRemainingMs = move.timeRemainingMs;
+        else blackTimeRemainingMs = move.timeRemainingMs;
+      }
+    }
+
+    const session: GameSession = {
+      gameId: game.id,
+      engine,
+      whitePlayerId: game.whiteId,
+      blackPlayerId: game.blackId,
+      whiteTimeRemainingMs,
+      blackTimeRemainingMs,
+      timeControl: game.timeControl,
+      lastMoveTimestamp: now,
+      plyCount: game.moves.length,
+      isFinished: false,
+      winnerColor: null,
+      gameOverReason: null,
+      createdAt: game.gameStart.getTime(),
+    };
+    if (session.plyCount > 0) {
+      this.evaluateGameOverState(session, session.plyCount % 2 === 1 ? 'w' : 'b');
+    }
+    return session;
+  }
+
+  private async abortInterruptedGame(gameId: string): Promise<boolean> {
+    const { count } = await this.prisma.game.updateMany({
+      where: { id: gameId, result: 'IN_PROGRESS' },
+      data: { result: 'ABORTED', endReason: SERVER_RESTART_REASON, gameEnd: new Date() },
+    });
+    if (count === 1) this.logger.warn(`Aborted game [${gameId}]: it could not be restored after a restart.`);
+    return count === 1;
+  }
     public createGame(options: CreateGameOptions): PublicGameState {
     const {
       gameId,

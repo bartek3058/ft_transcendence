@@ -80,6 +80,9 @@ When a match ends (e.g. checkmate, resignation, abandonment), the game session m
 ### Graceful Shutdown (`onModuleDestroy`)
 `GameService` implements the NestJS `OnModuleDestroy` lifecycle hook. On `SIGTERM` or `SIGINT`, timers are cleared and `waitForPersistence(shutdownWaitMs)` attempts a clean final flush before the process exits.
 
+### Restart Recovery
+The persisted plies are also what brings a live game back after a restart; see [game-restart-recovery.md](game-restart-recovery.md).
+
 ---
 
 ## 6. Testing & Verification
