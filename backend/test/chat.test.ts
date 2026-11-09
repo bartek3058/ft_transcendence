@@ -115,6 +115,17 @@ describe('SentimentService (lexicon)', () => {
   it('handles negation ("not good" -> negative)', () => {
     assert.equal(s.analyze('not good').label, 'negative');
   });
+
+  it('scores emoji (the word tokenizer strips them)', () => {
+    assert.equal(s.analyze('gg 🙂🔥').label, 'positive');
+    assert.equal(s.analyze('😡👎').label, 'negative');
+  });
+
+  it('lets an intensifier push a weak signal across the threshold', () => {
+    // A lone "ok"-ish token is neutral; "very bad" should read clearly negative.
+    assert.equal(s.analyze('very bad').label, 'negative');
+    assert.ok(s.analyze('very good').score >= s.analyze('good').score);
+  });
 });
 
 describe('ModerationService', () => {
@@ -135,9 +146,25 @@ describe('ModerationService', () => {
     assert.equal(result.reason, 'hate speech');
   });
 
-  it('fails open when the LLM is not configured', async () => {
+  it('fails open on a clean message when the LLM is not configured', async () => {
     const mod = makeModeration(() => 'unused', false);
-    assert.deepEqual(await mod.check('anything'), { allowed: true, reason: null });
+    assert.deepEqual(await mod.check('good game, well played'), { allowed: true, reason: null });
+  });
+
+  it('blocks blatant abuse via the deterministic blocklist (no LLM needed)', async () => {
+    const mod = makeModeration(() => 'unused', false);
+    const result = await mod.check('shut up you idiot, fuck you');
+    assert.equal(result.allowed, false);
+    assert.ok(result.reason);
+  });
+
+  it('blocks blatant abuse before the LLM is ever called', async () => {
+    let called = false;
+    const llm = { configured: true, async complete() { called = true; return '{"flagged": false}'; } };
+    const mod = new ModerationService(llm as any);
+    const result = await mod.check('you are a bitch');
+    assert.equal(result.allowed, false);
+    assert.equal(called, false); // deterministic pass short-circuited the LLM
   });
 
   it('fails open on an unparseable response', async () => {

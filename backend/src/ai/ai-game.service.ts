@@ -93,6 +93,12 @@ export class AiGameService {
   private readonly aiGames = new Map<string, AiGameState>();
   private botSeeded = false;
 
+  // A human doesn't fire a reply back the instant it's their turn, so neither
+  // should the bot - it reads robotic. We hold the move for a short, randomised
+  // beat before it appears (see humanThinkDelayMs). On by default; set
+  // AI_BOT_MOVE_DELAY=off to play instantly (tests do this so they don't sleep).
+  private readonly humanizeMovePace = process.env.AI_BOT_MOVE_DELAY !== 'off';
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly game: GameService,
@@ -234,10 +240,18 @@ export class AiGameService {
       return null;
     }
 
+    const startedAt = Date.now();
     const engineMove = await this.stockfish.bestMove(state.fen, meta.difficulty);
     if (!engineMove.bestMove) {
       this.logger.warn(`Stockfish returned no move for game ${gameId} (fen: ${state.fen}).`);
       return null;
+    }
+
+    // Pause so the move lands like a person taking a moment to think rather than
+    // snapping back instantly. The engine's own thinking time already counts
+    // toward this, so we only ever sleep the remainder (often nothing on "hard").
+    if (this.humanizeMovePace) {
+      await sleep(humanThinkDelayMs(meta.difficulty, Date.now() - startedAt));
     }
 
     const result = this.game.executeMove(this.toMoveDto(gameId, parseUci(engineMove.bestMove)), AI_BOT_USER_ID);
@@ -391,6 +405,44 @@ export class AiGameService {
     }
     this.botSeeded = true;
   }
+}
+
+/**
+ * How long, in total, the bot should take over a move at each difficulty - a
+ * random target is picked in this range so the pace varies move to move instead
+ * of being a fixed, tell-tale tick. Stronger play "thinks" a touch longer, which
+ * also reads as more considered. These are whole-move budgets, not extra pauses:
+ * the engine's search time counts toward them (see humanThinkDelayMs).
+ */
+export const BOT_THINK_PACING: Record<AiDifficulty, { minMs: number; maxMs: number }> = {
+  easy: { minMs: 500, maxMs: 1400 },
+  medium: { minMs: 800, maxMs: 2200 },
+  hard: { minMs: 1200, maxMs: 3000 },
+};
+
+/**
+ * How much longer to wait before showing the bot's move, given how long the
+ * engine already spent finding it. Picks a random target in the difficulty's
+ * range and returns whatever is left after the engine's own thinking - so we
+ * never stack a full pause on top of a slow search, and never go negative.
+ * `random` is injectable so the maths can be tested without real timers.
+ */
+export function humanThinkDelayMs(
+  difficulty: AiDifficulty,
+  engineElapsedMs: number,
+  random: () => number = Math.random,
+): number {
+  const pacing = BOT_THINK_PACING[difficulty] ?? BOT_THINK_PACING.medium;
+  const target = pacing.minMs + random() * (pacing.maxMs - pacing.minMs);
+  return Math.max(0, Math.round(target - Math.max(0, engineElapsedMs)));
+}
+
+/** Resolves after `ms` milliseconds (no-op for 0 or less). */
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Splits a UCI move ("e2e4", "e7e8q") into from/to/promotion. */

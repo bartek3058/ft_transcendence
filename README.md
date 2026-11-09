@@ -4,7 +4,7 @@
 
 ## Description
 
-A full-stack **chess** app you play in the browser: real-time multiplayer over WebSockets, matchmaking, ELO ranking, player stats, and — further down the line — tournaments and an AI opponent.
+A full-stack **chess** app you play in the browser: real-time multiplayer over WebSockets, matchmaking, ELO ranking, player stats, tournaments, a Stockfish AI opponent to practise against, and an in-game AI chat companion.
 
 ### Goal
 Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI.
@@ -20,7 +20,9 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Tournament registration & lifecycle** - create, browse (open / live / past) and join tournaments; the creator or an admin can close registration early or cancel. Registration closes on its own at the deadline, the bracket starts automatically, and tournaments with fewer than 2 players are cancelled.
 - **Tournament live updates** - lobby and bracket update in real time over Socket.IO (`/tournaments`): joins, start, every match change, the final result and invitations ([contract](docs/tournaments-realtime.md)).
 - **Tournament invitations** - the creator or any registered player can invite friends to an open tournament; the friend accepts (joins) or declines, and can be invited again after declining.
-- _TODO: tournament lobby UI, AI opponent, live chat, internationalization._
+- **Play against the computer** - a Stockfish-backed AI opponent with easy / medium / hard settings and on-demand move hints. These games show up in your match history but don't touch your ELO.
+- **AI chat companion** - an LLM you can chat with mid-game that plays coach, commentator, rival or just casual, and actually knows the position you're in (it gets the live board). Your messages get a quick sentiment read, and a moderation layer (local blocklist + LLM classifier) keeps abusive stuff out.
+- _TODO: tournament lobby UI, live chat (player-to-player), internationalization._
 
 ---
 
@@ -124,6 +126,8 @@ The DB roles are split: an owner role runs migrations and seeding, while the app
 | Public API & Match History | tszymans | Stateless REST API secured by SHA-256 API keys and sliding-window rate limiting (60 req/min). Match history queries (Issue #90), full API key CRUD, global ELO leaderboard & platform statistics (Issue #146) with OpenAPI/Swagger docs at `/api/docs`. |
 | Game conclusion & rating trigger | tszymans | Authoritative termination hook in `GameService.removeGame()` resolving final results (`WHITE_WON`, `BLACK_WON`, `DRAW`, `ABORTED`), persisting to PostgreSQL `games`, and triggering atomic Elo recalculations via `RatingService.applyGameResult()`. |
 | Tournament registration & lifecycle | tszymans | Session-authenticated REST routes under `/api/tournaments` (create, list, detail, join, leave, close-registration, cancel). Atomic slot counting in PostgreSQL, a 60 s deadline scheduler that starts the bracket exactly once, frozen seed ratings in responses. Contract: [docs/tournaments-api.md](docs/tournaments-api.md). |
+| AI opponent (Stockfish) | astefans | Human-vs-AI chess over Socket.IO, backed by a real Stockfish engine (UCI). Three difficulties driven by Stockfish's own Skill Level (easy / medium / hard), full-strength move hints, and a seeded `stockfish` bot user so AI games appear in match history while staying out of the ELO system. |
+| AI chat, sentiment & moderation | astefans | `POST /api/ai/chat`: an LLM chat companion in four personas (coach / commentator / rival / casual) that gets the live game context (FEN + moves). A local lexicon tags each message's sentiment (words + emoji), and moderation (deterministic blocklist + LLM classifier) blocks abusive input before it reaches the model. |
 
 ---
 
@@ -195,16 +199,19 @@ _TODO_
 
 ## astefans - Developer
 ### Responsibilities
-Matchmaking, player ranking and game stats: the ELO system, the waiting queue, automated opponent matching, and the ranking/stats API.
+Matchmaking, player ranking and game stats: the ELO system, the waiting queue, automated opponent matching, and the ranking/stats API. Plus the AI side of the app: the Stockfish opponent and the LLM chat companion (sentiment + moderation included).
 
 ### Main Contributions
 - Wrote the ELO engine as a standalone, fully tested module, plus a service that applies the rating changes at the end of a game (runs in a transaction and is safe to call more than once).
 - Built the matchmaking side: the waiting queue, rating-based pairing that loosens up the longer you wait, and creating the game (DB row + in-memory session), all exposed over a Socket.IO gateway that reuses the session cookie for auth.
 - Added the Nginx route for Socket.IO and kept the whole thing under unit tests.
+- Wired up a Stockfish AI opponent you can actually play against: three difficulty levels (I lean on Stockfish's own Skill Level, so "easy" genuinely blunders instead of just thinking shallowly), full-strength move hints, and a seeded bot user so those games land in match history without messing with anyone's ELO.
+- Built the AI chat: an LLM companion with a handful of personas that knows the position you're playing, a small local sentiment analyzer that tags the mood of your messages (handles emoji and "very"/"not" too), and a moderation layer - a deterministic blocklist backed by an LLM classifier - that drops abusive messages before they ever hit the model.
 
 ### Challenges
 - Keeping the matchmaking logic independent of the transport, so I could unit-test it without a DB or sockets - the Socket.IO gateway ended up being just a thin layer on top.
 - Hooking into other people's code - creating games through the engine's `GameService`, and plugging rating updates into the end-of-game flow.
+- Fitting the AI opponent into the normal game flow: it's a real user row so games reference it like any other player, but the rating service has to recognise the bot and leave those results out of ELO.
 
 ## pmamala - Developer
 ### Responsibilities
