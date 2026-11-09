@@ -8,9 +8,7 @@ export interface SentimentResult {
   score: number;
 }
 
-// Hand-tuned lexicons. A lexicon-based analyzer is deliberate: it is fast,
-// free (no extra LLM call per message), deterministic, and easy to explain at
-// evaluation. Extend the word lists to improve coverage.
+// Hand-tuned lexicons. A lexicon-based analyzer is fast and free (no extra LLM call per message).
 const POSITIVE = new Set([
   'good', 'great', 'nice', 'love', 'like', 'awesome', 'amazing', 'cool', 'fun',
   'win', 'winning', 'won', 'best', 'happy', 'glad', 'thanks', 'thank', 'wow',
@@ -31,9 +29,10 @@ const NEGATORS = new Set(['not', 'no', 'never', "don't", 'dont', "didn't", 'didn
 const INTENSIFIERS = new Set(['very', 'really', 'so', 'super', 'totally', 'absolutely', 'extremely', 'such']);
 const INTENSITY = 1.5;
 
-// Emoji carry a lot of chat sentiment, and the word tokenizer strips them, so we
-// score them in a dedicated pass. Single-codepoint emoji only (no variation
-// selectors) to keep the matching simple and surrogate-safe.
+/* Emoji carry a lot of chat sentiment, and the word tokenizer strips them, so we
+score them in a dedicated pass. Single-codepoint emoji only (no variation
+selectors) to keep the matching simple and surrogate-safe.
+*/
 const POSITIVE_EMOJI = new Set(['🙂', '😀', '😄', '😁', '😍', '🥰', '😎', '🔥', '👍', '🎉', '💪', '😂']);
 const NEGATIVE_EMOJI = new Set(['🙁', '😞', '😡', '😠', '😭', '😢', '👎', '💀', '🤬', '😤', '😒', '😣']);
 

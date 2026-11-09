@@ -35,14 +35,12 @@ interface AiHintDto {
   gameId?: string;
 }
 
-/**
- * Transport for human-vs-AI games. Thin on purpose: it authenticates the socket,
- * then hands every request to AiGameService (which owns the game logic and the
- * engine) and relays the result back to the client.
- *
- * Only the human connects here, so results go straight to the requesting socket.
- * Events out: ai:ready, ai:created, ai:moved, ai:rejected, ai:gameover, ai:error.
- */
+/*
+Transport for human-vs-AI games. Thin on purpose: it authenticates the socket,
+then hands every request to AiGameService (which owns the game logic and the
+engine) and relays the result back to the client.
+Only the human connects here, so results go straight to the requesting socket.
+*/
 @WebSocketGateway({ namespace: '/ai-game' })
 export class AiGameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(AiGameGateway.name);
@@ -91,8 +89,7 @@ export class AiGameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         humanColor: this.toColor(dto?.color),
       });
       await client.join(created.gameId);
-      // Remember the active game on the socket so we can abort it if the player
-      // disconnects or starts a new one (prevents orphaned sessions / DB rows).
+      // Remember the active game on the socket
       client.data.aiGameId = created.gameId;
       client.emit('ai:created', {
         gameId: created.gameId,
@@ -162,8 +159,8 @@ export class AiGameGateway implements OnGatewayConnection, OnGatewayDisconnect {
         client.data.aiGameId = null;
         client.emit('ai:gameover', { ...turn.gameOver, state: turn.state });
       } else if (turn.botError) {
-        // Human move landed but the engine couldn't reply: tell the client so it
-        // doesn't sit locked on the bot's turn forever.
+        /* Human move landed but the engine couldn't reply: tell the client so it
+        doesn't sit locked on the bot's turn forever.*/
         client.emit('ai:error', {
           code: 'AI_MOVE_FAILED',
           message: 'The AI could not make a move. Please start a new game.',
@@ -200,8 +197,8 @@ export class AiGameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // The player left the game (closed the board / "New game") without finishing.
-  // Abandon it so it does not linger in memory or as an IN_PROGRESS row.
+  /* The player left the game (closed the board/"New game") without finishing.
+  Abandon it so it does not linger in memory or as an IN_PROGRESS row.*/
   @SubscribeMessage('ai:leave')
   async handleLeave(
     @ConnectedSocket() client: Socket,
@@ -215,7 +212,7 @@ export class AiGameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     await this.aiGame.abort(gameId).catch(() => undefined);
   }
 
-  // Tab closed / connection dropped mid-game: abort the active game, if any.
+  // Tab closed/connection dropped mid-game: abort the active game, if any.
   async handleDisconnect(client: Socket): Promise<void> {
     const gameId: string | undefined = client.data.aiGameId;
     if (gameId) {

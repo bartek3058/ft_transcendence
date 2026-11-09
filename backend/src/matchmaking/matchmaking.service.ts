@@ -84,8 +84,9 @@ export class MatchmakingService {
     const black = whiteFirst ? b : a;
     const timeControl = a.timeControl;
 
-    // Persist an IN_PROGRESS row (same id as the in-memory session) with the players'
-    // pre-game ratings, so RatingService.applyGameResult can read it when the game ends.
+    /* Persist an IN_PROGRESS row with the players' pre-game ratings,
+    so RatingService.applyGameResult can read it when the game ends.
+    */
     await this.prisma.game.create({
       data: {
         id: gameId,

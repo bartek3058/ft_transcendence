@@ -77,7 +77,7 @@ export class RatingService {
         return null;
       }
 
-      // Games against the AI bot are never rated: neither player's ELO moves.
+      // Games against the AI bot are never rated.
       if (white.role === AI_BOT_ROLE || black.role === AI_BOT_ROLE) {
         this.logger.debug(`applyGameResult: game ${gameId} is vs the AI bot, not rated`);
         return null;
@@ -89,10 +89,10 @@ export class RatingService {
         result: game.result as EloResult,
       });
 
-      // Claim the game atomically: only the call that flips the rating columns
-      // from null wins. Under READ COMMITTED a second concurrent call blocks on
-      // this row until we commit, then re-checks the WHERE, matches nothing and
-      // gets count 0 - so it bails out below without touching player ratings.
+      /* Claim the game atomically: only the call that flips the rating columns
+      from null wins. Under READ COMMITTED a second concurrent call blocks on
+      this row until we commit, then re-checks the WHERE, matches nothing and
+      gets count 0 - so it bails out below without touching player ratings*/
       const claimed = await tx.game.updateMany({
         where: { id: gameId, whiteRatingChange: null, blackRatingChange: null },
         data: {

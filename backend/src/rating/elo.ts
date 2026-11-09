@@ -1,6 +1,6 @@
 export type EloResult = 'WHITE_WON' | 'BLACK_WON' | 'DRAW';
 
-/** Actual score a player earns in a game: 1 win, 0.5 draw, 0 loss. */
+// Actual score a player earns in a game: 1 win, 0.5 draw, 0 loss.
 export type Score = 0 | 0.5 | 1;
 
 export interface EloInput {
@@ -19,7 +19,7 @@ export interface EloOutcome {
 
 export const DEFAULT_K_FACTOR = 32;
 
-/** Ratings are never allowed to drop below this floor. */
+// Ratings are never allowed to drop below this floor.
 export const RATING_FLOOR = 100;
 
 export function expectedScore(rating: number, opponentRating: number): number {
@@ -37,13 +37,12 @@ function whiteScore(result: EloResult): Score {
   }
 }
 
-/**
- * Compute post-game ratings and deltas for both players.
- *
- * new = old + K * (actualScore - expectedScore), rounded to the nearest integer and
- * clamped at RATING_FLOOR. Deltas are reported relative to the (clamped) new rating so
- * that 'oldRating + change === newRating' always holds.
- */
+/*
+Compute post-game ratings and deltas for both players.
+new = old + K * (actualScore - expectedScore), rounded to the nearest integer and
+clamped at RATING_FLOOR. Deltas are reported relative to the (clamped) new rating so
+that 'oldRating + change === newRating' always holds.
+*/
 export function computeElo(input: EloInput): EloOutcome {
   const { whiteRating, blackRating, result } = input;
   const k = input.kFactor ?? DEFAULT_K_FACTOR;

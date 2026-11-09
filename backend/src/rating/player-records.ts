@@ -1,7 +1,7 @@
 import { PrismaService } from '../database/prisma.service';
 import { AI_BOT_USER_ID } from '../ai/ai.constants';
 
-/** Results that count towards a player's record (IN_PROGRESS and ABORTED excluded). */
+//Results that count towards a player's record (IN_PROGRESS and ABORTED excluded)
 export const FINISHED_RESULTS = ['WHITE_WON', 'BLACK_WON', 'DRAW'] as const;
 
 export interface PlayerRecord {
@@ -20,11 +20,10 @@ export function winRateOf(wins: number, games: number): number {
   return games > 0 ? Number(((wins / games) * 100).toFixed(1)) : 0;
 }
 
-/**
- * Win/loss/draw records for a bounded set of players, aggregated in PostgreSQL
- * (two GROUP BY queries) instead of loading every game row into Node memory.
- * Backed by games(white_id, result) and games(black_id, result) indexes.
- */
+/*
+Win/loss/draw records for a bounded set of players, aggregated in PostgreSQL
+(two GROUP BY queries) instead of loading every game row into Node memory.
+*/
 export async function loadPlayerRecords(
   prisma: PrismaService,
   userIds: string[],
@@ -34,8 +33,8 @@ export async function loadPlayerRecords(
 
   const finished = { in: [...FINISHED_RESULTS] };
   const [asWhite, asBlack] = await Promise.all([
-    // Games against the AI bot are excluded (opponent != bot), so playing the AI
-    // never pads a player's win/loss record. They still appear in match history.
+    /*Games against the AI bot are excluded, so playing the AI
+    never pads a player's win/loss record. They still appear in match history*/
     prisma.game.groupBy({
       by: ['whiteId', 'result'],
       where: { whiteId: { in: userIds }, blackId: { not: AI_BOT_USER_ID }, result: finished },
