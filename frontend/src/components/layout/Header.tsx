@@ -29,6 +29,7 @@ export function Header() {
         <NavLink to="/tournaments">Tournaments</NavLink>
         <NavLink to="/ranking">Ranking</NavLink>
         <NavLink to="/history">History</NavLink>
+        <NavLink to="/friends">Friends</NavLink>
       </nav>
       <div className="user">
         <span className="dot" />
