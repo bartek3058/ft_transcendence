@@ -12,7 +12,7 @@ const MAX_HISTORY_CONTENT = 2000;
 export interface ChatReply {
   // The assistant's reply, or a warning when the message was blocked.
   reply: string;
-  // Sentiment of the user's message (minor AI module).
+  // Sentiment of the user's message.
   sentiment: SentimentResult;
   // True when moderation blocked the message (it was never sent to the model).
   blocked: boolean;
@@ -77,8 +77,8 @@ export class ChatService {
     return message.trim();
   }
 
-  // History comes from the client, so trust nothing: keep only well-formed turns,
-  // clamp their length, and cap how many we forward.
+  /* History comes from the client, so trust nothing: keep only well-formed turns,
+  clamp their length, and cap how many we forward.*/
   private sanitizeHistory(history: unknown): ChatTurn[] {
     if (!Array.isArray(history)) {
       return [];

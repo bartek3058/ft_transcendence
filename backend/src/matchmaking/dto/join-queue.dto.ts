@@ -1,7 +1,8 @@
 import { IsOptional, IsString, Matches } from 'class-validator';
 
-// Payload a client sends to join the matchmaking queue. The player's identity and rating
-// are taken from the authenticated session + database, never from the request body.
+/* Payload a client sends to join the matchmaking queue. The player's identity and rating
+are taken from the authenticated session + database, never from the request body.
+*/
 export class JoinQueueDto {
   @IsOptional()
   @IsString()

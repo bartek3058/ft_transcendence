@@ -13,10 +13,7 @@ const MODERATION_PROMPT = [
   'Reply with ONLY compact JSON and nothing else: {"flagged": true|false, "reason": "short reason or empty"}.',
 ].join(' ');
 
-// Deterministic blocklist of unambiguous slurs / abuse. This runs first, so the
-// most obvious cases are caught instantly AND the moderation still does something
-// when the LLM is unconfigured (no API key) or unreachable. The LLM layer handles
-// the nuanced cases this list can't (sarcasm, context, novel insults).
+//Deterministic blocklist of unambiguous abuse.
 const BANNED_TERMS = [
   'fuck', 'motherfucker', 'shit', 'bitch', 'asshole', 'bastard', 'cunt',
   'dick', 'slut', 'whore', 'retard', 'faggot', 'nigger', 'kys',
@@ -27,16 +24,11 @@ function deterministicReason(text: string): string | null {
   return BANNED_PATTERN.test(text) ? 'offensive language' : null;
 }
 
-/**
- * AI content moderation. Runs each user chat message through the LLM classifier
- * before it reaches the chat model, so abusive content is blocked (and the user
- * warned) instead of being processed or shown.
- *
- * A deterministic blocklist runs first, so blatant abuse is always caught (even
- * with no API key). Beyond that it fails open: if the LLM is unconfigured or
- * errors, the message is allowed (a moderation hiccup should never silently
- * swallow normal chat). Failures are logged.
- */
+/*
+AI content moderation. Runs each user chat message through the LLM classifier
+before it reaches the chat model, so abusive content is blocked (and the user
+warned) instead of being processed or shown.
+*/
 @Injectable()
 export class ModerationService {
   private readonly logger = new Logger(ModerationService.name);
@@ -44,8 +36,6 @@ export class ModerationService {
   constructor(private readonly llm: LlmService) {}
 
   async check(text: string): Promise<ModerationResult> {
-    // Cheap deterministic pass first: catches the obvious cases instantly and
-    // keeps moderation working even with no LLM configured.
     const banned = deterministicReason(text);
     if (banned) {
       return { allowed: false, reason: banned };

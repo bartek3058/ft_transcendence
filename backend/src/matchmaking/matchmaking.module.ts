@@ -6,7 +6,6 @@ import { MatchmakingService } from './matchmaking.service';
 import { MatchmakingGateway } from './matchmaking.gateway';
 
 // AuthModule -> SessionService (socket auth); GameModule -> GameService (create game).
-// PrismaService comes from the @Global DatabaseModule.
 @Module({
   imports: [AuthModule, GameModule],
   providers: [QueueService, MatchmakingService, MatchmakingGateway],

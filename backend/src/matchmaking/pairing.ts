@@ -38,12 +38,11 @@ export function areCompatible(
   return gap <= Math.max(toleranceFor(a, now, config), toleranceFor(b, now, config));
 }
 
-/**
- * Pick the best pair to match right now, or null if none is compatible.
- *
- * "Best" = smallest rating gap; ties broken toward the pair that has waited longest
- * in total, so patient players are served first.
- */
+/*
+Pick the best pair to match right now, or null if none is compatible.
+"Best" = smallest rating gap; ties broken toward the pair that has waited longest
+in total, so patient players are served first.
+*/
 export function selectPair(
   entries: readonly QueueEntry[],
   now: number,

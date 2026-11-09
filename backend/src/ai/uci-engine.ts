@@ -83,11 +83,11 @@ export class UciEngine {
     this.child.stdin.write(`${command}\n`);
   }
 
-  /**
-   * Resolves with the first output line matching `predicate`. Registers the
-   * listener first, then runs `trigger` (the command that will produce the line),
-   * so we can never miss an answer that comes back faster than we subscribe.
-   */
+  /*
+  Resolves with the first output line matching 'predicate'. Registers the
+  listener first, then runs 'trigger',
+  so we can never miss an answer that comes back faster than we subscribe.
+  */
   private waitForLine(
     predicate: (line: string) => boolean,
     label: string,
@@ -121,18 +121,15 @@ export class UciEngine {
     });
   }
 
-  /**
-   * Searches `options.fen` and resolves with the engine's best move and the
-   * evaluation it reported for it. Requests are serialized, so this is safe to
-   * call from many places at once.
-   */
+  /*
+  Requests are serialized, so this is safe to
+  call from many places at once.
+  */
   search(options: UciSearchOptions): Promise<EngineMove> {
     const run = () => this.runSearch(options);
-    // Chain onto the previous request regardless of whether it resolved or threw,
-    // so one failed search never blocks the queue forever.
     const result = this.chain.then(run, run);
-    // Keep the chain alive but swallow this result's rejection on the chain copy
-    // (the caller still gets the real promise, errors and all).
+    /* Keep the chain alive but swallow this result's rejection on the chain copy
+    (the caller still gets the real promise, errors and all).*/
     this.chain = result.catch(() => undefined);
     return result;
   }
@@ -140,8 +137,6 @@ export class UciEngine {
   private async runSearch(options: UciSearchOptions): Promise<EngineMove> {
     await this.ensureReady();
 
-    // Apply (or clear) the strength limit for this move. Skill Level is a global
-    // option, so we always set it explicitly rather than assume the last value.
     const skill = clampSkill(options.skillLevel);
     this.send(`setoption name Skill Level value ${skill}`);
 
@@ -193,7 +188,7 @@ export class UciEngine {
     }
   }
 
-  /** Stops the engine cleanly (best-effort). Safe to call more than once. */
+  // Stops the engine cleanly (best-effort), safe to call more than once.
   async quit(): Promise<void> {
     if (!this.child) {
       return;
@@ -227,7 +222,6 @@ export class UciEngine {
   }
 }
 
-/** Clamps a requested Skill Level into Stockfish's valid 0..20 range. */
 export function clampSkill(skillLevel: number | undefined): number {
   if (typeof skillLevel !== 'number' || Number.isNaN(skillLevel)) {
     return 20; // full strength by default (used for hints)
@@ -235,12 +229,6 @@ export function clampSkill(skillLevel: number | undefined): number {
   return Math.max(0, Math.min(20, Math.floor(skillLevel)));
 }
 
-/**
- * Parses a "bestmove" line. Shapes seen in the wild:
- *   "bestmove e2e4 ponder e7e5"
- *   "bestmove e2e4"
- *   "bestmove (none)"   (terminal position - nothing to play)
- */
 export function parseBestMove(line: string): Pick<EngineMove, 'bestMove' | 'ponder'> {
   const tokens = line.trim().split(/\s+/);
   const best = tokens[1];
@@ -255,10 +243,6 @@ export function parseBestMove(line: string): Pick<EngineMove, 'bestMove' | 'pond
   return { bestMove, ponder };
 }
 
-/**
- * Pulls the score out of an "info ... score cp <n> ..." / "... score mate <n> ..."
- * line. Returns null if the line carries no score we understand.
- */
 export function parseInfoScore(line: string): EngineEvaluation | null {
   const tokens = line.trim().split(/\s+/);
 
