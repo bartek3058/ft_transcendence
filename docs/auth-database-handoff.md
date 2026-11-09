@@ -68,6 +68,8 @@ The product explicitly treats the whole email as case-insensitive. This is an ap
 
 `username` is a lowercase public handle. A separate future `displayName` can preserve styling/Unicode; don't mix display identity with the unique login/account key. Login initially uses email, not username.
 
+> **Update 2026-11-10 (migration `20261110120000_username_case`):** usernames keep the case they were typed in (`^[A-Za-z0-9_]{3,20}$`, trimmed only, so ` Chess_Fan ` is stored as `Chess_Fan`); uniqueness ignores case via a unique index on `lower(username)`. Email is still lowercased. See [account-settings.md](account-settings.md).
+
 Use Prisma's update timestamp behavior for normal writes. If raw SQL updates User later, those queries must also update `updated_at`; do not imply a Prisma annotation is a database trigger.
 
 ### Session (`sessions`)
