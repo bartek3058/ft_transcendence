@@ -291,3 +291,19 @@ checkouts using a container named `postgres`. Only one checkout can bind the def
 host ports 80/443 at a time. Stop an older checkout from its folder with
 `docker compose down` when necessary; do not add `-v` unless deleting its database
 volume is intentional. Commit configuration changes, never the local `.env`.
+
+## Privacy Policy and Terms of Service
+
+Public `/privacy-policy` and `/terms-of-service` routes have footer and registration
+links. Version 1.0 is effective 9 November 2026, naming Tomasz Szymański and
+`tszymans@student.42warsaw.pl` for this locally hosted educational project.
+
+The policy includes cleanup within 30 days after final evaluation, seven-day logs
+and backups, manual deletion requests, and separate Gemini processing. These are
+operator commitments; this change does not implement automated cleanup.
+
+Read [Privacy Policy](docs/legal/privacy.md), [Terms](docs/legal/terms.md),
+[data inventory](docs/legal/data-inventory.md) and the
+[operator checklist](docs/legal/review-checklist.md). Confirm the Gemini API service
+and applicable provider/transfer arrangements before enabling AI. Keep Markdown
+copies aligned with `frontend/src/content/legal/` when updating the documents.
