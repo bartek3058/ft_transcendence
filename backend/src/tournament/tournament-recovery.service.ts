@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { GameOverReason } from '../game/types/chess.types';
+import { GameOverReason, SERVER_RESTART_REASON } from '../game/types/chess.types';
 import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { TournamentGameService } from './tournament-game.service';
 import { TOURNAMENT_CHECK_IN_WINDOW_MS } from './tournament-rules';
@@ -10,7 +10,7 @@ export const RECOVERY_INTERVAL_MS = 30_000;
 export const RECOVERY_GRACE_MS = 30_000;
 /** Consecutive failures after which a match is no longer retried (needs a manual fix). */
 export const MAX_RECOVERY_ATTEMPTS = 5;
-export const SERVER_RESTART_REASON = 'SERVER_RESTART';
+export { SERVER_RESTART_REASON };
 
 export type RecoveryAction = 'REAPPLIED' | 'REOPENED' | 'ALREADY_RESOLVED';
 

@@ -19,6 +19,9 @@ export type GameOverReason =
 | 'RESIGNATION'
 | 'ABANDONMENT';
 
+// `games.end_reason` of a game aborted because a backend restart interrupted it.
+export const SERVER_RESTART_REASON = 'SERVER_RESTART';
+
 // Reasons where nobody wins: a conclusion with one of these is always persisted as DRAW.
 export const DRAW_REASONS: readonly GameOverReason[] = [
   'STALEMATE',
