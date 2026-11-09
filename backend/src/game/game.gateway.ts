@@ -149,7 +149,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
 
     if (!session) {
       // The game may have finished while this client was disconnected.
-      // Only its participants may retrieve the persisted result.
+      // Only its participants may retrieve the result.
       try {
         const finished = await this.game.getFinishedGameForPlayer(gameId, userId);
         if (finished) {
