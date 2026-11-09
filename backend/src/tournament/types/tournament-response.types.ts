@@ -1,7 +1,6 @@
 import { TournamentMatchSlot, TournamentMatchStatus, TournamentStatus } from './tournament.types';
 
-// HTTP response shapes. Players carry only id + username: live users.rating is never
-// exposed; the only rating in a response is the frozen participant seedRating.
+// Players only carry id + username, the only rating in a response is the frozen seedRating.
 
 export interface TournamentUserRef {
   id: string;
@@ -103,6 +102,6 @@ export interface InvitationAnswer {
   invitationId: string;
   tournamentId: string;
   status: InvitationStatusView;
-  /** Only after an accept. */
+  // only after an accept
   currentParticipants?: number;
 }

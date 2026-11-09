@@ -8,7 +8,7 @@ export interface PublicApiRequest extends Request {
   apiKeyId?: string;
 }
 
-// Format: tr_live_ followed by 64 hex characters = 72 characters total
+// tr_live_ + 64 hex chars
 const API_KEY_REGEX = /^tr_live_[0-9a-f]{64}$/;
 
 @Injectable()
@@ -32,7 +32,7 @@ export class ApiKeyGuard implements CanActivate {
       });
     }
 
-    // Stage 1: Format regex — zero I/O, rejects junk and injection payloads
+    // format check first, no I/O
     if (!apiKey.startsWith(API_KEY_PREFIX) || !API_KEY_REGEX.test(apiKey)) {
       throw new UnauthorizedException({
         error: {
@@ -42,18 +42,15 @@ export class ApiKeyGuard implements CanActivate {
       });
     }
 
-    // Stage 2: Pre-auth rate limit — keyed on the SHA-256 hash of the raw key
-    // This runs BEFORE any database query to prevent DB exhaustion from fake keys
+    // rate limit before touching the DB, so fake keys can't hammer it
     const keyHash = hashApiKey(apiKey);
     this.rateLimiter.consume(`pre:${keyHash}`, 60, 60000);
 
-    // Stage 3: Database authentication — verify hash, check revocation/expiration
     const validation = await this.apiKeyService.validateApiKey(apiKey);
 
-    // Stage 4: Post-admission — update lastUsedAt only after all checks pass
+    // only after everything passed
     this.apiKeyService.touchLastUsed(validation.apiKeyId);
 
-    // Attach verified caller identity and key ID to request context
     request.apiKeyUser = validation.user;
     request.apiKeyId = validation.apiKeyId;
 

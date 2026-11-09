@@ -63,8 +63,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     await this.concludeGame(gameId, true);
   }
 
-   //Finished and saves a end game (DB, Elo, tournaments) and clears it from RAM.
-   // Shared by timeouts and board finishes, with a guard to prevent double saves.
+  // Shared by timeouts and moves that end the game. Guarded so it never runs twice for one game.
   private async concludeGame(gameId: string, broadcastState: boolean): Promise<void> {
     if (this.concludingGames.has(gameId)) return;
     this.concludingGames.add(gameId);
@@ -237,6 +236,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     this.server.to(dto.gameId).emit('game:state',
       this.game.getPublicGameState(dto.gameId));
 
+    // game over on the board, save it like a timeout or resignation
     if (result.isGameOver) {
       void this.concludeGame(dto.gameId, false);
     }

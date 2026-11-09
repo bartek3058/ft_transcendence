@@ -28,7 +28,7 @@ export class PublicApiExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    // Do not leak stack traces or database driver specifics to external clients
+    // no stack traces or driver details for external clients
     this.logger.error('Unhandled Public API error:', error instanceof Error ? error.message : error);
     response.status(500).json({
       error: { code: 'INTERNAL_SERVER_ERROR', message: 'An internal server error occurred.' },

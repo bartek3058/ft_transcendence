@@ -70,7 +70,7 @@ export function HistoryPage() {
     setLoadingMore(true);
     getMyGames(page + 1, PAGE_SIZE)
       .then((history) => {
-        // De-duplicate in case a game finished between page loads.
+        // a game can finish between page loads, so drop duplicates
         setGames((prev) => {
           const seen = new Set(prev.map((g) => g.id));
           return [...prev, ...history.items.filter((g) => !seen.has(g.id))];

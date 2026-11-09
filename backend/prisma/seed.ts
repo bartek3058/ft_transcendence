@@ -13,7 +13,7 @@ import {
 const prisma = new PrismaClient();
 
 async function main() {
-  // --- Phase 1: Admin user bootstrap (requires ADMIN_PASSWORD) ---
+  // admin user (needs ADMIN_PASSWORD)
   const configuredPassword = process.env.ADMIN_PASSWORD;
   if (configuredPassword !== undefined && configuredPassword !== '') {
     const adminPassword = validateAdminPassword(configuredPassword);
@@ -60,8 +60,7 @@ async function main() {
     console.log('[Seed] ADMIN_PASSWORD not set or empty. Skipping admin user creation.');
   }
 
-  // --- Phase 2: Evaluator API key bootstrap (always runs, independent of admin) ---
-  // Uses 4 repetitions of the standard hex sequence 1234567890abcdef (64 hex characters = 256 bits)
+  // evaluator API key, always seeded
   const EVALUATOR_RAW_KEY = 'tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
   const EVALUATOR_EMAIL = 'evaluator@transcendence.local';
   const EVALUATOR_USERNAME = 'evaluator';
@@ -72,8 +71,7 @@ async function main() {
   });
 
   if (!evalUser) {
-    // Create a standard non-admin evaluator account with a dummy hash
-    // (this account is for API key testing only; it cannot log in interactively)
+  // dummy hash, this account is only for API key testing and can't log in
     evalUser = await prisma.user.create({
       data: {
         email: EVALUATOR_EMAIL,
