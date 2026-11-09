@@ -21,19 +21,8 @@ export interface TournamentGameCreated {
   blackPlayerId: string;
 }
 
-/**
- * Glue between live chess games and the tournament bracket (#68).
- *
- * - Registers itself as a GameService conclusion listener, so a finished
- *   tournament game advances the bracket (win) or triggers a replay with
- *   swapped colors / the seed tiebreak (draw).
- * - An ABANDONMENT ending is a forfeit: with a winner it is a WALKOVER for the
- *   absent player; without a winner (removeGame(id, { winnerColor: null,
- *   gameOverReason: 'ABANDONMENT' })) both players lose and nobody advances.
- * - Creates tournament games (`games` row + in-memory session) for a match.
- *
- * Dependency direction is one-way: TournamentModule -> GameModule.
- */
+// Connects finished games to the bracket (#68). ABANDONMENT is a forfeit, with no winner
+// both players lose. Only depends on GameModule, never the other way round.
 @Injectable()
 export class TournamentGameService implements OnModuleInit {
   private readonly logger = new Logger(TournamentGameService.name);
@@ -49,10 +38,7 @@ export class TournamentGameService implements OnModuleInit {
     this.gameService.onGameConcluded((event) => this.handleGameConcluded(event));
   }
 
-  /**
-   * Starts the first game of a SCHEDULED match in its own transaction.
-   * The check-in flow (#161) uses createMatchGame + startSession instead.
-   */
+  // The check-in flow (#161) uses createMatchGame + startSession instead.
   async startMatchGame(
     tournamentId: string,
     matchId: string,
@@ -65,11 +51,7 @@ export class TournamentGameService implements OnModuleInit {
     return created;
   }
 
-  /**
-   * Inside the caller's transaction: creates game 1 of a SCHEDULED match,
-   * player1 (better seed in Round 1) plays White, and moves the match to
-   * IN_PROGRESS. Call startSession(result) only after the transaction commits.
-   */
+  // Runs in the caller's transaction. Call startSession() only after commit.
   async createMatchGame(
     tx: Prisma.TransactionClient,
     tournamentId: string,
@@ -93,12 +75,8 @@ export class TournamentGameService implements OnModuleInit {
     });
   }
 
-  /**
-   * Conclusion listener. Errors are logged by GameService; ConflictException
-   * means the result was already applied (or the match is no longer open)
-   * and is logged here as a no-op. If this listener fails for any other reason,
-   * TournamentRecoveryService applies the stored result later.
-   */
+  // ConflictException = result already applied, so it's a no-op.
+  // Any other failure is picked up later by TournamentRecoveryService.
   async handleGameConcluded(event: GameConclusionEvent): Promise<void> {
     const game = await this.prisma.game.findUnique({
       where: { id: event.gameId },
@@ -110,7 +88,7 @@ export class TournamentGameService implements OnModuleInit {
     const matchId = game.tournamentMatchId;
 
     if (event.result === 'ABORTED') {
-      // Recovery sends the match back to check-in (TournamentRecoveryService).
+      // recovery sends the match back to check-in
       this.logger.warn(
         `Tournament game ${event.gameId} (match ${matchId}) was aborted; recovery will reopen check-in.`,
       );
@@ -130,21 +108,15 @@ export class TournamentGameService implements OnModuleInit {
     }
   }
 
-  /**
-   * Applies a finished (non-ABORTED) game to the bracket: win, draw (replay or seed
-   * tiebreak) or abandonment (walkover / double forfeit). Every bracket write is
-   * conditional, so applying the same game twice gives a ConflictException instead
-   * of a second result; callers decide whether that is a no-op.
-   * Used by the conclusion listener and by TournamentRecoveryService.
-   */
+  // Also used by TournamentRecoveryService. Applying a game twice throws ConflictException.
   async applyGameResult(tournamentId: string, matchId: string, event: GameConclusionEvent): Promise<void> {
     const { replay, advanced } = await this.prisma.$transaction(async (tx): Promise<{
       replay: TournamentGameCreated | null; advanced: AdvanceWinnerResult | null;
     }> => {
       if (event.endReason === 'ABANDONMENT') {
-        // No-show / abandonment is a forfeit, not a played result.
+        // no-show / abandonment is a forfeit
         if (event.result === 'DRAW') {
-          // Nobody showed up: both lose, nobody advances.
+          // nobody showed up, nobody advances
           return { replay: null, advanced: await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId) };
         }
         const forfeitedUserId =
@@ -160,7 +132,7 @@ export class TournamentGameService implements OnModuleInit {
         if (draw.action !== 'REPLAY') {
           return { replay: null, advanced: draw.advanceResult ?? null };
         }
-        // Replay with colors swapped relative to the game that just ended.
+        // replay with colours swapped
         return {
           replay: await this.createMatchGameRow(tx, tournamentId, matchId, {
             whitePlayerId: event.blackPlayerId,
@@ -179,17 +151,12 @@ export class TournamentGameService implements OnModuleInit {
     if (replay) {
       this.startSession(replay);
     }
-    // After commit: a replay changes the match's current game; a result changes the
-    // match, its next match and any cascade.
+    // emit only after commit
     this.events.bracketChanged(tournamentId, advanced?.changedMatchIds ?? [matchId],
       advanced?.tournamentFinished ?? false);
   }
 
-  /**
-   * Inserts an IN_PROGRESS `games` row linked to the match and moves the match
-   * to IN_PROGRESS. The partial unique index `games_tournament_match_active_key`
-   * guarantees at most one live game per match.
-   */
+  // The partial unique index games_tournament_match_active_key allows one live game per match.
   private async createMatchGameRow(
     tx: Prisma.TransactionClient,
     tournamentId: string,
@@ -255,7 +222,7 @@ export class TournamentGameService implements OnModuleInit {
     };
   }
 
-  /** Creates the in-memory session; call only after the DB transaction committed. */
+  // call only after the transaction committed
   startSession(created: TournamentGameCreated): void {
     this.gameService.createGame({
       gameId: created.gameId,

@@ -1487,7 +1487,6 @@ header nav a.active {
   letter-spacing: 0.04em;
 }
 
-/* --- AI opponent: hint highlight + lobby options --- */
 .sq.hint {
   box-shadow: inset 0 0 0 5px #4f8ad6;
 }
@@ -1556,7 +1555,6 @@ header nav a.active {
   cursor: pointer;
 }
 
-/* Slim, themed scrollbar for the chat body */
 .chatBody {
   scrollbar-width: thin;
   scrollbar-color: #3a423a transparent;
@@ -1572,7 +1570,6 @@ header nav a.active {
   background: transparent;
 }
 
-/* Sentiment emoji next to a chat message */
 .msgMood {
   margin-left: 4px;
   font-size: 13px;
@@ -1595,3 +1592,194 @@ header nav a.active {
 .legal-footer { padding: 24px; text-align: center; border-top: 1px solid #424842; }
 .legal-footer nav { display: flex; justify-content: center; flex-wrap: wrap; gap: 24px; margin-bottom: 12px; }
 @media (max-width: 600px) { .legal-page { padding: 24px 16px; } }
+/* Friends pages */
+.friends-page {
+  max-width: 1160px;
+  margin: 36px auto;
+  padding: 0 24px 60px;
+}
+.friends-page a {
+  color: #b4df83;
+  text-decoration: none;
+}
+.friends-page a:hover {
+  text-decoration: underline;
+}
+.friends-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+.friends-heading h1 {
+  font-size: 32px;
+  margin: 0 0 6px;
+}
+.friends-heading p,
+.friends-muted {
+  color: #a3aaa3;
+  font-size: 14px;
+}
+.friends-connection {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #aab3aa;
+  font-size: 13px;
+}
+.friends-light {
+  height: 9px;
+  width: 9px;
+  background: #8b9090;
+  border-radius: 50%;
+}
+.friends-light.on {
+  background: #83d36c;
+}
+.friends-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.friends-panel {
+  background: #1b201c;
+  border: 1px solid #343d34;
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 0;
+}
+.friends-panel h2 {
+  font-size: 19px;
+  margin: 0 0 20px;
+}
+.friends-panel h2 span {
+  font-size: 13px;
+  color: #a5d66e;
+}
+.friends-panel label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: #b8c3b5;
+}
+.friends-panel input {
+  width: 100%;
+  background: #111611;
+  border: 1px solid #495347;
+  color: #fff;
+  border-radius: 9px;
+  padding: 12px;
+  font: inherit;
+  outline-offset: 2px;
+}
+.friends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.friends-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #343b34;
+}
+.friends-item:last-child {
+  border-bottom: 0;
+}
+.friends-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.friends-person a {
+  display: block;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.friends-person small {
+  display: block;
+  color: #9fa99f;
+  margin-top: 5px;
+}
+.friends-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #36543b;
+  color: #d6efcb;
+  font-weight: 700;
+}
+.friends-panel button,
+.friends-alert button,
+.friends-connection button {
+  background: #a5d66e;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 13px;
+  color: #162016;
+  cursor: pointer;
+  font-weight: 600;
+}
+.friends-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.friends-panel button.friends-danger {
+  background: #46302f;
+  color: #ffcdca;
+}
+.friends-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.friends-more {
+  margin-top: 18px;
+}
+.friends-alert,
+.friends-notice {
+  padding: 14px 16px;
+  border-radius: 9px;
+  margin-bottom: 16px;
+  background: #4d2929;
+  color: #ffe3e3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.friends-notice {
+  background: #25412d;
+  color: #c6efc4;
+}
+.friends-public {
+  margin-top: 22px;
+  max-width: 480px;
+}
+.friends-public .friends-avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 22px;
+}
+@media (max-width: 760px) {
+  .friends-grid {
+    grid-template-columns: 1fr;
+  }
+  .friends-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .friends-page {
+    padding: 0 16px 40px;
+  }
+  .friends-item {
+    flex-wrap: wrap;
+  }
+}

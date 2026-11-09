@@ -12,6 +12,8 @@ import { HistoryPage } from "./pages/HistoryPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { FriendsPage } from "./pages/FriendsPage";
+import { PublicUserPage } from "./pages/PublicUserPage";
 
 function AppLayout() {
   return (
@@ -25,6 +27,8 @@ function AppLayout() {
           <Route path="/ranking" element={<RankingPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/friends" element={<FriendsPage />} />
+          <Route path="/users/:id" element={<PublicUserPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

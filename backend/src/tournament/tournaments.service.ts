@@ -12,7 +12,7 @@ import {
 } from './types/tournament-response.types';
 import { TournamentMatchSlot, TournamentMatchStatus, TournamentStatus } from './types/tournament.types';
 
-// Only id + username: users.rating must never be selected for a response.
+// never select users.rating for a response
 const USER_REF = { select: { id: true, username: true } } as const;
 
 const SUMMARY_SELECT = {
@@ -32,12 +32,11 @@ const ORDER: Record<keyof typeof TAB_STATUSES, Prisma.TournamentOrderByWithRelat
 const notFound = () => new TournamentHttpError(404, 'TOURNAMENT_NOT_FOUND', 'Tournament not found.');
 const closed = () => new TournamentHttpError(409, 'REGISTRATION_CLOSED', 'Registration is closed.');
 const alreadyJoined = () => new TournamentHttpError(409, 'ALREADY_JOINED', 'You already joined this tournament.');
-/** Result of a join inside a caller's transaction. */
 export interface JoinResult {
   currentParticipants: number;
   maxParticipants: number;
   username: string;
-  /** Pending invitation of the user for this tournament, marked ACCEPTED by the join. */
+  // a pending invite for this tournament, marked ACCEPTED by the join
   acceptedInvitation: { id: string; senderId: string } | null;
 }
 
@@ -139,14 +138,8 @@ export class TournamentsService {
     return { currentParticipants: result.currentParticipants };
   }
 
-  /**
-   * Join inside the caller's transaction (also used to accept an invitation).
-   * Single conditional UPDATE: the row lock serialises concurrent joins, so the last
-   * slot can never be overbooked. A duplicate raises P2002 (map it with mapJoinError
-   * outside the transaction); leaving the callback rolls back the increment.
-   * A pending invitation of the user for this tournament is marked ACCEPTED, so a
-   * direct join never leaves a stale invitation behind.
-   */
+  // One conditional UPDATE, so the last slot can't be overbooked. A duplicate throws P2002,
+  // map it with mapJoinError outside the transaction.
   async joinInTx(tx: Prisma.TransactionClient, userId: string, id: string): Promise<JoinResult> {
     const rows = await tx.$queryRaw<{ current_participants: number; max_participants: number }[]>`
       UPDATE tournaments
@@ -171,10 +164,6 @@ export class TournamentsService {
     };
   }
 
-  /**
-   * After commit: the new participant, and an invitation accepted by the join (announced
-   * like an accepted respond).
-   */
   publishJoined(userId: string, tournamentId: string, result: JoinResult): void {
     this.events.participantJoined({
       tournamentId, userId, username: result.username, currentParticipants: result.currentParticipants,
@@ -225,7 +214,7 @@ export class TournamentsService {
     return { status: 'CANCELLED' };
   }
 
-  /** Role is read from the DB: SafeAccount carries no role. */
+  // SafeAccount has no role, so read it from the DB
   private async assertCreatorOrAdmin(userId: string, id: string): Promise<void> {
     const [tournament, user] = await Promise.all([
       this.prisma.tournament.findUnique({ where: { id }, select: { creatorId: true } }),
@@ -237,7 +226,6 @@ export class TournamentsService {
     }
   }
 
-  /** Explains why the conditional join UPDATE matched no row. */
   private async joinRejection(tx: Prisma.TransactionClient, id: string, userId: string) {
     const tournament = await tx.tournament.findUnique({
       where: { id },
@@ -251,7 +239,6 @@ export class TournamentsService {
   }
 }
 
-/** Maps a duplicate participant row (P2002) to 409 ALREADY_JOINED. */
 export function mapJoinError(error: unknown): unknown {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return alreadyJoined();
   return error;
