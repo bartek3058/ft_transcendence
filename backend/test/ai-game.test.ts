@@ -1,10 +1,14 @@
 import 'reflect-metadata'; // services are @Injectable, so decorators need this
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { AiGameService } from '../src/ai/ai-game.service';
+import { AiGameService, humanThinkDelayMs, BOT_THINK_PACING } from '../src/ai/ai-game.service';
 import { GameService } from '../src/game/game.service';
 import { RatingService } from '../src/rating/rating.service';
 import { AI_BOT_USER_ID, AI_BOT_DISPLAY_RATING, AI_BOT_ROLE } from '../src/ai/ai.constants';
+
+// Play the bot's moves instantly here: the human-like pause is pure timing and is
+// tested on its own below, so the move tests shouldn't sit through real sleeps.
+process.env.AI_BOT_MOVE_DELAY = 'off';
 
 const STARTPOS = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -243,6 +247,32 @@ describe('AiGameService.hint', () => {
       humanColor: 'w',
     });
     await assert.rejects(service.hint(created.gameId, 'intruder'));
+  });
+});
+
+describe('humanThinkDelayMs — the bot pauses like a person', () => {
+  it('hits the low end of the range when random is 0 (minus engine time)', () => {
+    // random()=0 -> target is the range minimum; 100ms already spent thinking.
+    assert.equal(humanThinkDelayMs('medium', 100, () => 0), BOT_THINK_PACING.medium.minMs - 100);
+  });
+
+  it('hits the high end of the range when random is 1 (minus engine time)', () => {
+    assert.equal(humanThinkDelayMs('easy', 0, () => 1), BOT_THINK_PACING.easy.maxMs);
+  });
+
+  it('counts the engine\'s own thinking time toward the pause', () => {
+    const noEngineTime = humanThinkDelayMs('hard', 0, () => 0.5);
+    const slowEngine = humanThinkDelayMs('hard', 400, () => 0.5);
+    assert.equal(noEngineTime - slowEngine, 400);
+  });
+
+  it('never returns a negative delay when the engine already took longer', () => {
+    // Engine spent 10s; well past any target, so there is nothing left to wait.
+    assert.equal(humanThinkDelayMs('easy', 10_000, () => 1), 0);
+  });
+
+  it('falls back to the medium range for an unknown difficulty', () => {
+    assert.equal(humanThinkDelayMs('???' as any, 0, () => 0), BOT_THINK_PACING.medium.minMs);
   });
 });
 
