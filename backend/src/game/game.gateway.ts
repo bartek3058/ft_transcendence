@@ -63,13 +63,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     await this.concludeGame(gameId, true);
   }
 
-  /**
-   * Persists a finished game (result, moves, rating, tournament hook) and
-   * purges the in-memory session. Shared by timeouts and moves that end the
-   * game on the board (checkmate, stalemate, repetition, insufficient
-   * material). Guarded so the clock ticker and the move handler never
-   * conclude the same game twice.
-   */
+   //Finished and saves a end game (DB, Elo, tournaments) and clears it from RAM.
+   // Shared by timeouts and board finishes, with a guard to prevent double saves.
   private async concludeGame(gameId: string, broadcastState: boolean): Promise<void> {
     if (this.concludingGames.has(gameId)) return;
     this.concludingGames.add(gameId);
@@ -155,7 +150,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
 
     if (!session) {
       // The game may have finished while this client was disconnected.
-      // Only its participants may retrieve the persisted result.
+      // Only its participants may retrieve the result.
       try {
         const finished = await this.game.getFinishedGameForPlayer(gameId, userId);
         if (finished) {
@@ -242,8 +237,6 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     this.server.to(dto.gameId).emit('game:state',
       this.game.getPublicGameState(dto.gameId));
 
-    // The move ended the game on the board: persist it like a timeout or
-    // resignation, otherwise the result is never saved and the session lingers.
     if (result.isGameOver) {
       void this.concludeGame(dto.gameId, false);
     }
