@@ -30,10 +30,6 @@ export interface CreateAiGameParams {
   humanRating?: number;
   timeControl?: string;
 }
-
-// AI-specific state we keep alongside the generic in-memory session owned by
-// GameService. The move loop reads this to know whose turn the bot is and how
-// strong it should play.
 export interface AiGameState {
   gameId: string;
   humanId: string;
@@ -46,7 +42,7 @@ export interface AiGameCreated extends AiGameState {
   state: PublicGameState;
 }
 
-// The bot's move plus what the engine thought of the position it moved from.
+// the bot's move plus what the engine thought of the position it moved from.
 export interface AiBotMove {
   result: MoveExecutionResult;
   uci: string;
@@ -58,7 +54,7 @@ export interface AiGameOver {
   reason: GameOverReason | null;
 }
 
-// A suggested move for the human to play, plus the engine's take on the position.
+// a suggested move for the human to play, plus the engine's take on the postiton.
 export interface AiHint {
   uci: string;
   from: string;
@@ -67,36 +63,28 @@ export interface AiHint {
   evaluation: EngineEvaluation;
 }
 
-// Result of one human move: the human's move, the bot's reply (if any), the
-// resulting public state, and the game-over info when the game just ended.
+/* Result of one human move: the human's move, the bot's reply (if any), the
+resulting public state, and the game-over info when the game just ended.*/
 export interface AiTurnResult {
   humanMove: MoveExecutionResult;
   botMove: MoveExecutionResult | null;
   state: PublicGameState;
   gameOver: AiGameOver | null;
-  // True when the human move was accepted but the engine failed to reply, so the
-  // caller can tell the client instead of leaving it silently stuck on bot's turn.
+  /* True when the human move was accepted but the engine failed to reply, so the
+  caller can tell the client instead of leaving it silently stuck on bot's turn.
+  */
   botError?: boolean;
 }
 
-/**
- * Creates and drives human-vs-AI games. The game itself lives in GameService
- * like any other match (authoritative chess.js session + an IN_PROGRESS row in
- * `games`); this service adds the AI opponent on top: it asks Stockfish for the
- * bot's moves, applies them through the same authoritative path a human move
- * takes, and closes the game out when it ends. Games against the bot are
- * persisted but unrated - RatingService skips them because the bot's role is "bot".
- */
+/*
+Games against the bot are persisted but unrated 
+- RatingService skips them because the bot's role is only "bot".
+*/
 @Injectable()
 export class AiGameService {
   private readonly logger = new Logger(AiGameService.name);
   private readonly aiGames = new Map<string, AiGameState>();
   private botSeeded = false;
-
-  // A human doesn't fire a reply back the instant it's their turn, so neither
-  // should the bot - it reads robotic. We hold the move for a short, randomised
-  // beat before it appears (see humanThinkDelayMs). On by default; set
-  // AI_BOT_MOVE_DELAY=off to play instantly (tests do this so they don't sleep).
   private readonly humanizeMovePace = process.env.AI_BOT_MOVE_DELAY !== 'off';
 
   constructor(
@@ -129,9 +117,6 @@ export class AiGameService {
     const gameId = randomUUID();
     const timeControl = params.timeControl ?? null;
 
-    // IN_PROGRESS row first (same id as the in-memory session), mirroring how
-    // matchmaking creates a PvP game, so match history and the game-over pipeline
-    // treat it like any other match.
     await this.prisma.game.create({
       data: {
         id: gameId,
@@ -167,10 +152,10 @@ export class AiGameService {
     return { ...aiGame, state };
   }
 
-  /**
-   * Applies a human move and, if the game is still on and it is now the bot's
-   * turn, has the bot reply. Closes the game out when either move ends it.
-   */
+  /*
+  Applies a human move and, if the game is still on and it is now the bot's
+  turn, has the bot reply. Closes the game out when either move ends it.
+  */
   async submitHumanMove(
     gameId: string,
     humanId: string,
@@ -180,8 +165,6 @@ export class AiGameService {
 
     const humanMove = this.game.executeMove(this.toMoveDto(gameId, move), humanId);
 
-    // Rejected (illegal / not your turn / ...): no bot reply, client resyncs
-    // from the authoritative FEN carried in the result.
     if (!humanMove.success) {
       if (humanMove.errorReason === 'GAME_NOT_FOUND') {
         this.forget(gameId);
@@ -195,9 +178,10 @@ export class AiGameService {
       return { humanMove, botMove: null, state: over.state, gameOver: over.info };
     }
 
-    // The human move flipped the turn, so the bot is now to move. If the engine
-    // throws or can't produce a legal move, flag it rather than silently leaving
-    // the client stuck waiting for a reply that never comes.
+    /* The human move flipped the turn, so the bot is now to move. If the engine
+    throws or can't produce a legal move, flag it rather than silently leaving
+    the client stuck waiting for a reply that never comes.
+    */
     let botMove: MoveExecutionResult | null = null;
     let botError = false;
     try {
@@ -217,12 +201,12 @@ export class AiGameService {
     return { humanMove, botMove, state: this.game.getPublicGameState(gameId), gameOver: null, botError };
   }
 
-  /**
-   * If it is the bot's turn in a live AI game, asks Stockfish for a move and
-   * applies it. Returns null when it is not the bot's turn (e.g. nothing to do).
-   * Used both for the bot's in-game replies and for its opening move when it
-   * plays white.
-   */
+  /*
+  If it is the bot's turn in a live AI game, asks Stockfish for a move and
+  applies it. Returns null when it is not the bot's turn (e.g. nothing to do).
+  Used both for the bot's in-game replies and for its opening move when it
+  plays white.
+  */
   async playBotMoveIfDue(gameId: string): Promise<AiBotMove | null> {
     const meta = this.aiGames.get(gameId);
     if (!meta) {
@@ -247,17 +231,13 @@ export class AiGameService {
       return null;
     }
 
-    // Pause so the move lands like a person taking a moment to think rather than
-    // snapping back instantly. The engine's own thinking time already counts
-    // toward this, so we only ever sleep the remainder (often nothing on "hard").
+    // pause so the move lands like a person taking a moment
     if (this.humanizeMovePace) {
       await sleep(humanThinkDelayMs(meta.difficulty, Date.now() - startedAt));
     }
 
     const result = this.game.executeMove(this.toMoveDto(gameId, parseUci(engineMove.bestMove)), AI_BOT_USER_ID);
     if (!result.success) {
-      // Should never happen - the engine only ever suggests legal moves - but if
-      // it does we log it loudly rather than silently stall the game.
       this.logger.error(
         `Bot move ${engineMove.bestMove} was rejected in game ${gameId}: ${result.errorReason}.`,
       );
@@ -265,7 +245,7 @@ export class AiGameService {
     return { result, uci: engineMove.bestMove, evaluation: engineMove.evaluation };
   }
 
-  /** The human resigns: hand the game to the bot and close it out. */
+  //The human resigns: hand the game to the bot and close it out.
   async resign(gameId: string, humanId: string): Promise<{ state: PublicGameState; gameOver: AiGameOver }> {
     this.requireHumanGame(gameId, humanId);
     const result = this.game.resignGame(gameId, humanId);
@@ -276,11 +256,11 @@ export class AiGameService {
     return { state: over.state, gameOver: over.info };
   }
 
-  /**
-   * Suggests the strongest move for the human to play right now. Full engine
-   * strength regardless of the game's difficulty - a hint should be a good move.
-   * Only offered in AI games, and only when it is actually the human's turn.
-   */
+  /*
+  Suggests the strongest move for the human to play right now. Full engine
+  strength regardless of the game's difficulty - a hint should be a good move.
+  Only offered in AI games, and only when it is actually the human's turn.
+  */
   async hint(gameId: string, humanId: string): Promise<AiHint> {
     const meta = this.requireHumanGame(gameId, humanId);
     const state = this.game.getPublicGameState(gameId);
@@ -313,22 +293,20 @@ export class AiGameService {
     return this.aiGames.has(gameId);
   }
 
-  // Drop the AI metadata once a game is over (GameService purges its own session).
   forget(gameId: string): void {
     this.aiGames.delete(gameId);
   }
 
-  /**
-   * Abandons a live AI game (player left, disconnected, or started a new one):
-   * closes it out as ABORTED (no winner, never rated) and frees both the
-   * in-memory session and the AI metadata. No-op if it is not a live AI game.
-   */
+  /*
+  Abandons a live AI game (player left, disconnected, or started a new one):
+  closes it out as ABORTED (no winner, never rated) and frees both the
+  in-memory session and the AI metadata.
+  */
   async abort(gameId: string): Promise<void> {
     if (!this.aiGames.has(gameId)) {
       return;
     }
     try {
-      // No conclusion passed -> GameService resolves an in-progress game to ABORTED.
       await this.game.removeGame(gameId);
     } catch (error) {
       this.logger.warn(`Failed to abort AI game ${gameId}: ${(error as Error).message}`);
@@ -337,9 +315,6 @@ export class AiGameService {
     }
   }
 
-  // Persists the conclusion (rating is skipped because the bot's role is "bot")
-  // and drops the AI metadata. The final state is captured before removeGame
-  // purges the in-memory session.
   private async conclude(
     gameId: string,
     result: MoveExecutionResult,
@@ -388,8 +363,7 @@ export class AiGameService {
     return user?.rating ?? AI_BOT_DISPLAY_RATING;
   }
 
-  // Fail loudly and clearly if the bot user was never seeded, instead of letting
-  // the game insert blow up on a foreign-key violation. Cached once it's found.
+  // Fail loudly and clearly if the bot user was never seeded
   private async assertBotSeeded(): Promise<void> {
     if (this.botSeeded) {
       return;
@@ -407,26 +381,16 @@ export class AiGameService {
   }
 }
 
-/**
- * How long, in total, the bot should take over a move at each difficulty - a
- * random target is picked in this range so the pace varies move to move instead
- * of being a fixed, tell-tale tick. Stronger play "thinks" a touch longer, which
- * also reads as more considered. These are whole-move budgets, not extra pauses:
- * the engine's search time counts toward them (see humanThinkDelayMs).
- */
+/*
+How long, in total, the bot should take over a move at each difficulty - stronger play thinks longer,
+which also reads as more considered.
+*/
 export const BOT_THINK_PACING: Record<AiDifficulty, { minMs: number; maxMs: number }> = {
   easy: { minMs: 500, maxMs: 1400 },
   medium: { minMs: 800, maxMs: 2200 },
   hard: { minMs: 1200, maxMs: 3000 },
 };
 
-/**
- * How much longer to wait before showing the bot's move, given how long the
- * engine already spent finding it. Picks a random target in the difficulty's
- * range and returns whatever is left after the engine's own thinking - so we
- * never stack a full pause on top of a slow search, and never go negative.
- * `random` is injectable so the maths can be tested without real timers.
- */
 export function humanThinkDelayMs(
   difficulty: AiDifficulty,
   engineElapsedMs: number,
@@ -437,7 +401,7 @@ export function humanThinkDelayMs(
   return Math.max(0, Math.round(target - Math.max(0, engineElapsedMs)));
 }
 
-/** Resolves after `ms` milliseconds (no-op for 0 or less). */
+//Resolves after `ms` milliseconds (no-op for 0 or less)
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) {
     return Promise.resolve();
@@ -445,7 +409,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Splits a UCI move ("e2e4", "e7e8q") into from/to/promotion. */
 function parseUci(uci: string): { from: string; to: string; promotion?: PromotionPiece } {
   return {
     from: uci.slice(0, 2),
