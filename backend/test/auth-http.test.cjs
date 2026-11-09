@@ -38,7 +38,7 @@ test('real request passes through DTO normalization; health remains available', 
   const response = await post(JSON.stringify(valid));
   assert.equal(response.status, 201);
   assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.deepEqual(await response.json(), { email: 'alice@example.com', username: 'chess_fan' });
+  assert.deepEqual(await response.json(), { email: 'alice@example.com', username: 'Chess_Fan' });
   const health = await fetch(`${base}/api/health`);
   assert.equal(health.status, 200);
   assert.equal((await health.json()).status, 'ok');

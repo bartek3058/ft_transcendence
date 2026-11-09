@@ -17,7 +17,7 @@ function paged<T>(items: T[], q: PageDto) {
 export class FriendsService {
   constructor(private readonly prisma: PrismaService, private readonly presence: PresenceService) {}
   async search(me: string, q: SearchDto) {
-    const users = await this.prisma.user.findMany({ where: { id: { not: me }, username: { startsWith: q.q.replace(/_/g, '\\_') } },
+    const users = await this.prisma.user.findMany({ where: { id: { not: me }, username: { startsWith: q.q.replace(/_/g, '\\_'), mode: 'insensitive' } },
       select: publicUser, orderBy: [{ username: 'asc' }, { id: 'asc' }], ...page(q) });
     return paged(users, q);
   }

@@ -20,7 +20,9 @@ class MemoryAuthRepository {
   async createAccount(input) {
     this.check('createAccount');
     for (const account of this.accounts.values()) {
-      if (input.email === account.email || input.username === account.username) throw new AccountConflictError();
+      if (input.email === account.email || input.username.toLowerCase() === account.username.toLowerCase()) {
+        throw new AccountConflictError();
+      }
     }
     const account = { id: randomUUID(), createdAt: new Date(), ...input };
     this.accounts.set(account.id, account);
@@ -29,6 +31,32 @@ class MemoryAuthRepository {
   async findAccountByEmail(email) {
     this.check('findAccount');
     return [...this.accounts.values()].find((account) => account.email === email) ?? null;
+  }
+  async findAccountById(id) {
+    this.check('findAccount');
+    return this.accounts.get(id) ?? null;
+  }
+  async updateUsername(id, username) {
+    this.check('updateUsername');
+    const account = this.accounts.get(id);
+    if (!account) return null;
+    for (const other of this.accounts.values()) {
+      if (other.id !== id && other.username.toLowerCase() === username.toLowerCase()) throw new AccountConflictError();
+    }
+    account.username = username;
+    return { id: account.id, email: account.email, username, createdAt: account.createdAt };
+  }
+  async changePassword(userId, expectedHash, passwordHash, session) {
+    this.check('changePassword');
+    const account = this.accounts.get(userId);
+    if (!account || account.passwordHash !== expectedHash) return null;
+    account.passwordHash = passwordHash;
+    const dropped = [];
+    for (const [hash, stored] of this.sessions) {
+      if (stored.userId === userId) { this.sessions.delete(hash); dropped.push(hash); }
+    }
+    this.sessions.set(session.tokenHash, { ...session });
+    return dropped;
   }
   async replaceSession(previous, session) {
     this.check('replaceSession');

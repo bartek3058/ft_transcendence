@@ -55,6 +55,9 @@ function createMockPrisma(users: MockUser[] = [], games: MockGame[] = []) {
   const project = (u: MockUser) => ({ id: u.id, username: u.username, rating: u.rating });
 
   return {
+    // stands in for SELECT id FROM users WHERE lower(username) = lower($1)
+    $queryRaw: async (_sql: TemplateStringsArray, name: string) =>
+      users.filter((u) => u.username.toLowerCase() === name.toLowerCase()).map((u) => ({ id: u.id })),
     user: {
       count: async (args?: any) => {
         const pool = ranked(args?.where);
@@ -67,6 +70,10 @@ function createMockPrisma(users: MockUser[] = [], games: MockGame[] = []) {
         sorted(ranked(where)).slice(skip, skip + take).map(project),
       findFirst: async ({ where, orderBy }: any = {}) => {
         const pool = ranked(where);
+        if (typeof where?.id === 'string') {
+          const found = pool.find((u) => u.id === where.id);
+          return found ? project(found) : null;
+        }
         if (typeof where?.username === 'string') {
           const found = pool.find((u) => u.username === where.username);
           return found ? project(found) : null;
@@ -232,7 +239,7 @@ describe('Public API Leaderboard & Stats (unit)', () => {
       }
     });
 
-    it('normalises case before an exact lookup', async () => {
+    it('looks the name up case-insensitively', async () => {
       const ranking = await service().getPlayerRanking('  BOB ');
       assert.equal(ranking.username, 'bob');
       assert.equal(ranking.rank, 1);

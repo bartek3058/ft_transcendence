@@ -42,6 +42,7 @@
     "test:friends:db": "npm run build && node --test test/integration/friends-postgres.test.cjs",
     "test:game-conclusion": "ts-node --project tsconfig.tools.json test/game-conclusion.test.ts",
     "test:game-conclusion:db": "ts-node --project tsconfig.tools.json test/integration/game-conclusion-postgres.test.ts",
+    "test:account-settings:db": "ts-node --project tsconfig.tools.json test/integration/account-settings-postgres.test.ts",
     "test:game-recovery": "ts-node --project tsconfig.tools.json test/game-recovery.test.ts",
     "test:game-moves": "ts-node --project tsconfig.tools.json test/game-move-persistence.test.ts",
     "test:game-moves:db": "npm run build && node --test test/integration/game-moves-postgres.test.cjs",

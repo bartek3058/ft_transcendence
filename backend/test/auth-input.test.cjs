@@ -12,7 +12,7 @@ test('normalizes identity fields while preserving the exact password', async () 
   const dto = await validate({ ...valid, email: ` ${valid.email} `, username: ' Chess_Fan ' });
   assert.ok(dto instanceof RegisterDto);
   assert.equal(dto.email, 'alice+chess@example.com');
-  assert.equal(dto.username, 'chess_fan');
+  assert.equal(dto.username, 'Chess_Fan');
   assert.equal(dto.password, valid.password);
   const login = await validate({ email: ` ${valid.email} `, password: valid.password }, LoginDto);
   assert.equal(login.email, dto.email);
