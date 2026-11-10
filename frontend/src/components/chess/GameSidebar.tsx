@@ -1,5 +1,4 @@
 import {
-  CircleDot,
   Flag,
   History,
   MessageCircle,
@@ -32,7 +31,6 @@ type Props = {
 };
 
 export function GameSidebar({
-  gameId,
   moves,
   messages,
   draft,
@@ -49,6 +47,18 @@ export function GameSidebar({
   retryableId = null,
 }: Props) {
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  const moveListRef = useRef<HTMLDivElement>(null);
+
+  // Automatically scroll the moves list to the latest move.
+  useEffect(() => {
+    const el = moveListRef.current;
+    if (!el) return;
+
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [moves.length]);
 
   // Keep the chat pinned to the latest message as new ones arrive.
   useEffect(() => {
@@ -58,19 +68,11 @@ export function GameSidebar({
 
   return (
     <aside>
-      <div className="card gameRoomCard">
-        <div className="gameRoomInfo">
-          <CircleDot size={16} />
-          <span>Game room</span>
-          <strong>{gameId.slice(0, 8)}</strong>
-        </div>
-      </div>
-
       <div className="card moves">
         <div className="cardTitle">
           <History size={18} /> Moves <span>{moves.length}</span>
         </div>
-        <div className="moveList">
+        <div className="moveList" ref={moveListRef}>
           {moves.length ? (
             Array.from({ length: Math.ceil(moves.length / 2) }, (_, i) => (
               <div key={i}>

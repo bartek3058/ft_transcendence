@@ -13,7 +13,7 @@ import {
   type TournamentDetail,
 } from "../services/tournaments";
 
-import "./tournaments.css";
+
 
 const statusLabels: Record<string, string> = {
   OPEN_FOR_SIGNUP: "Open for signup",

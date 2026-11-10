@@ -1,7 +1,7 @@
 import { Footer } from "./components/layout/Footer";
 import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
 import { TermsOfServicePage } from "./pages/TermsOfServicePage";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Header } from "./components/layout/Header";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { GamePage } from "./pages/GamePage";
@@ -39,6 +39,18 @@ function AppLayout() {
     </div>
   );
 }
+
+function ConditionalFooter() {
+  const { pathname } = useLocation();
+
+  const isGamePage =
+    pathname === "/" ||
+    pathname === "/ai" ||
+    pathname.startsWith("/game/");
+
+  return isGamePage ? null : <Footer />;
+}
+
 export default function App() {
   return (
     <><Routes>
@@ -49,6 +61,6 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route path="/*" element={<AppLayout />} />
       </Route>
-    </Routes><Footer /></>
+    </Routes><ConditionalFooter /></>
   );
 }
