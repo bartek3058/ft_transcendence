@@ -1023,7 +1023,7 @@
   position: relative;
   display: flex;
   align-items: stretch;
-  gap: 64px;
+  gap: 44px;
   width: max-content;
   min-width: 100%;
 }
@@ -1032,13 +1032,13 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  flex: 0 0 290px;
-  min-width: 290px;
+  flex: 0 0 260px;
+  min-width: 260px;
 }
 
 .chesshub-bracket-round-title {
-  margin: 0 0 24px;
-  padding: 12px;
+  margin: 0 0 14px;
+  padding: 10px;
   border: 1px solid rgba(157, 208, 153, 0.22);
   border-radius: 12px;
   background: #1c2a21;
@@ -1052,7 +1052,7 @@
   flex: 1;
   flex-direction: column;
   justify-content: space-around;
-  gap: 24px;
+  gap: 14px;
 }
 
 .chesshub-bracket-match {
@@ -1076,7 +1076,7 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(157, 208, 153, 0.15);
   color: #a6c6a0;
   font-size: 12px;
@@ -1085,7 +1085,7 @@
 .chesshub-bracket-player-list > div {
   display: flex;
   justify-content: space-between;
-  padding: 12px 14px;
+  padding: 8px 12px;
   color: #e4f0e0;
 }
 
@@ -1116,12 +1116,12 @@
 
 @media (max-width: 700px) {
   .chesshub-bracket {
-    gap: 44px;
+    gap: 32px;
   }
 
   .chesshub-bracket-round {
-    flex-basis: 260px;
-    min-width: 260px;
+    flex-basis: 240px;
+    min-width: 240px;
   }
 }
 

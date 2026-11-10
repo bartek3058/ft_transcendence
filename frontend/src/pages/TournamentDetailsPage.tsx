@@ -12,7 +12,7 @@ import {
   checkInTournamentMatch,
   type TournamentDetail,
 } from "../services/tournaments";
-import { TournamentPodium } from "../components/tournaments/TournamentPodium";
+
 import "./tournaments.css";
 
 const statusLabels: Record<string, string> = {
@@ -397,22 +397,7 @@ export function TournamentDetailsPage() {
             </div>
 
             <div className="tournament-hero-badges">
-              <span
-                className={`tournament-realtime tournament-realtime--${realtimeStatus}`}
-                title={
-                  realtimeStatus === "connected"
-                    ? "Tournament updates are live"
-                    : "Waiting for realtime connection"
-                }
-              >
-                <span className="tournament-realtime-dot" />
-
-                {realtimeStatus === "connected"
-                  ? "Live updates"
-                  : realtimeStatus === "connecting"
-                    ? "Connecting..."
-                    : "Offline updates"}
-              </span>
+              
 
               <span
                 className={`tournament-status tournament-status--${statusClass}`}
@@ -599,9 +584,6 @@ export function TournamentDetailsPage() {
             </section>
           )}
 
-        {tournament.status === "FINISHED" && (
-          <TournamentPodium participants={tournament.participants} />
-        )}
 
         {/* PARTICIPANTS */}
 
