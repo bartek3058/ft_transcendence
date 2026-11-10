@@ -6,6 +6,10 @@ import {
   FINISHED_RESULTS,
   loadPlayerRecords,
 } from "../rating/player-records";
+import {
+  RATING_HISTORY_DEFAULT_LIMIT,
+  RATING_HISTORY_MAX_LIMIT,
+} from "./dto/rating-history-query.dto";
 
 const RECENT_GAMES = 8;
 
@@ -21,6 +25,21 @@ type HistoryGameRow = {
   whitePlayer: { username: string } | null;
   blackPlayer: { username: string } | null;
 };
+
+// Only the frozen snapshot on the game row (rating before + change), never users.rating.
+const RATING_HISTORY_SELECT = {
+  id: true,
+  whiteId: true,
+  result: true,
+  whiteRating: true,
+  blackRating: true,
+  whiteRatingChange: true,
+  blackRatingChange: true,
+  gameStart: true,
+  gameEnd: true,
+  whitePlayer: { select: { username: true } },
+  blackPlayer: { select: { username: true } },
+} as const;
 
 const HISTORY_SELECT = {
   id: true,
@@ -115,6 +134,59 @@ export class ProfileService {
       totalPages: Math.ceil(total / safeLimit) || 1,
       items: games.map((game) => this.toHistoryItem(game, userId)),
     };
+  }
+
+  // ELO progression for a chart: the latest `limit` rated games, oldest first.
+  // AI and aborted games are skipped, they have no rating change.
+  async getMyRatingHistory(userId: string, limit = RATING_HISTORY_DEFAULT_LIMIT) {
+    const safeLimit = Math.min(RATING_HISTORY_MAX_LIMIT, Math.max(1, limit));
+    const where = {
+      result: { in: [...FINISHED_RESULTS] },
+      OR: [
+        { whiteId: userId, whiteRating: { not: null }, whiteRatingChange: { not: null } },
+        { blackId: userId, blackRating: { not: null }, blackRatingChange: { not: null } },
+      ],
+    };
+
+    const [user, total, games] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: userId }, select: { rating: true } }),
+      this.prisma.game.count({ where }),
+      this.prisma.game.findMany({
+        where,
+        select: RATING_HISTORY_SELECT,
+        orderBy: [{ gameEnd: "desc" }, { id: "desc" }],
+        take: safeLimit,
+      }),
+    ]);
+    if (!user)
+      throw new NotFoundException({
+        error: { code: "USER_NOT_FOUND", message: "User not found." },
+      });
+
+    const points = games.reverse().map((game) => {
+      const isWhite = game.whiteId === userId;
+      const before = (isWhite ? game.whiteRating : game.blackRating)!;
+      const change = (isWhite ? game.whiteRatingChange : game.blackRatingChange)!;
+      return {
+        gameId: game.id,
+        playedAt: game.gameEnd ?? game.gameStart,
+        ratingBefore: before,
+        ratingAfter: before + change,
+        change,
+        outcome: this.outcomeFor(game.result, isWhite),
+        opponent: isWhite
+          ? (game.blackPlayer?.username ?? "Unknown player")
+          : (game.whitePlayer?.username ?? "Unknown player"),
+      };
+    });
+
+    return { currentRating: user.rating, total, limit: safeLimit, points };
+  }
+
+  private outcomeFor(result: string, isWhite: boolean) {
+    if (result === "DRAW") return "DRAW";
+    const won = (result === "WHITE_WON") === isWhite;
+    return won ? "WIN" : "LOSS";
   }
 
   private finishedGamesOf(userId: string) {
