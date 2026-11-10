@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useTournamentInvitationsRealtime } from "../../hooks/useTournamentInvitationsRealtime";
 import {
   listMyTournamentInvitations,
   respondToTournamentInvitation,
@@ -37,11 +38,13 @@ export function TournamentInvitations() {
 
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => {
-      void refresh(true);
-    }, 20000);
-    return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useTournamentInvitationsRealtime(
+    useCallback(() => {
+      void refresh(true);
+    }, [refresh])
+  );
 
   async function respond(id: string, response: "ACCEPT" | "DECLINE") {
     setBusy(id);
@@ -70,15 +73,9 @@ export function TournamentInvitations() {
         <div>
           <h2>Tournament invitations</h2>
           <p>Invitations from your friends</p>
+
         </div>
-        <button
-          type="button"
-          className="tournament-secondary"
-          onClick={() => void refresh()}
-          disabled={loading || busy !== null}
-        >
-          Refresh
-        </button>
+
       </div>
 
       {error && <p role="alert">{error}</p>}
