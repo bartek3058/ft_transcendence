@@ -235,7 +235,7 @@ describe('PostgreSQL Database & Security Verification', () => {
           });
         },
         /users_username_check|constraint/i,
-        'Usernames not matching ^[a-z0-9_]{3,20}$ must be rejected',
+        'Usernames not matching ^[A-Za-z0-9_]{3,20}$ must be rejected',
       );
     });
 

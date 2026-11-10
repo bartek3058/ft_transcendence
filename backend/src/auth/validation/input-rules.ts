@@ -9,6 +9,14 @@ export function normalizeIdentity(value: unknown): unknown {
     : value;
 }
 
+// Same rule as the users_username_check constraint. Case is kept, uniqueness ignores it.
+export const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;
+
+// trim only, usernames keep their case
+export function normalizeUsername(value: unknown): unknown {
+  return typeof value === 'string' ? value.trim() : value;
+}
+
 export function isValidPassword(value: unknown, minimum: number): value is string {
   if (typeof value !== 'string' || value.length > PASSWORD_MAX_LENGTH * 2) {
     return false;

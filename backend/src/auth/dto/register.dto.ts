@@ -1,13 +1,13 @@
 import { Transform } from 'class-transformer';
 import { IsString, Matches } from 'class-validator';
 import { LoginDto } from './login.dto';
-import { normalizeIdentity, PASSWORD_MIN_LENGTH } from '../validation/input-rules';
+import { normalizeUsername, PASSWORD_MIN_LENGTH, USERNAME_PATTERN } from '../validation/input-rules';
 import { IsPassword } from '../validation/password.decorator';
 
 export class RegisterDto extends LoginDto {
-  @Transform(({ value }) => normalizeIdentity(value))
+  @Transform(({ value }) => normalizeUsername(value))
   @IsString()
-  @Matches(/^[a-z0-9_]{3,20}$/)
+  @Matches(USERNAME_PATTERN)
   username!: string;
 
   @IsPassword(PASSWORD_MIN_LENGTH)

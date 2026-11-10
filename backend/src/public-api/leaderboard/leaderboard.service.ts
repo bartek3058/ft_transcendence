@@ -85,18 +85,20 @@ export class LeaderboardService {
   }
 
   async getPlayerRanking(username: string): Promise<PlayerRankingDto> {
-    // usernames are stored lowercase, so the unique index can serve this
-    const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
-    if (!USERNAME_REGEX.test(normalized)) {
+    const name = typeof username === 'string' ? username.trim() : '';
+    if (!USERNAME_REGEX.test(name)) {
       throw new BadRequestException({
-        error: { code: 'INVALID_USERNAME', message: 'Username must match ^[a-z0-9_]{3,20}$.' },
+        error: { code: 'INVALID_USERNAME', message: 'Username must match ^[A-Za-z0-9_]{3,20}$.' },
       });
     }
 
-    const user = await this.prisma.user.findFirst({
-      where: { username: normalized, ...RANKED_USER_WHERE },
+    // case-insensitive, served by the unique index on lower(username)
+    const [match] = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM users WHERE lower(username) = lower(${name})`;
+    const user = match ? await this.prisma.user.findFirst({
+      where: { id: match.id, ...RANKED_USER_WHERE },
       select: { id: true, username: true, rating: true },
-    });
+    }) : null;
 
     // fixed message, don't echo input back
     if (!user) {

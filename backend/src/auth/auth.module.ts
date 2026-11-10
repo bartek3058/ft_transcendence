@@ -11,11 +11,13 @@ import { SessionService } from './session.service';
 import { SessionGuard } from './session.guard';
 import { AuthRequestGuard } from './auth-request.guard';
 import { AuthRateLimiter } from './auth-rate-limiter';
+import { AccountRateLimiter } from './account-rate-limiter';
 
 @Module({
   imports: [DatabaseModule],
   controllers: [AuthController],
   providers: [PasswordService, AuthService, UsersService, SessionService, SessionGuard, AuthRequestGuard, AuthRateLimiter,
+    AccountRateLimiter,
     { provide: AUTH_CONFIG, useFactory: loadAuthConfig },
     { provide: AuthRepository, useClass: PrismaAuthRepository },
   ],

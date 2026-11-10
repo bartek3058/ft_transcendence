@@ -31,6 +31,23 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     return { token, expiresAt };
   }
 
+  // Password change: every old session dies, the caller gets a fresh one.
+  // null when the stored hash is no longer `expectedHash` (someone changed it first).
+  async replaceAllWithPassword(userId: string, expectedHash: string, passwordHash: string) {
+    const token = createSessionToken();
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + this.config.sessionTtlSeconds * 1000);
+    let dropped: string[] | null;
+    try {
+      dropped = await this.repository.changePassword(userId, expectedHash, passwordHash, {
+        userId, tokenHash: hashSessionToken(token), createdAt, expiresAt,
+      });
+    } catch { throw storageUnavailable(); }
+    if (!dropped) return null;
+    for (const tokenHash of dropped) this.revocations.emit('revoked', tokenHash);
+    return { token, expiresAt };
+  }
+
   async authenticate(token: string | null): Promise<SafeAccount> {
     if (!token) throw this.unauthenticated();
     let session: StoredSession | null;

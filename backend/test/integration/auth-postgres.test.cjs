@@ -47,7 +47,7 @@ test('real application: registration, login, persistence, rotation, expiry and l
   const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
   const input = { email: `Chess_${suffix}@Example.test`, username: `Player_${suffix}`,
     password: '  chess café password 😀  ' };
-  const canonical = { ...input, email: input.email.toLowerCase(), username: input.username.toLowerCase() };
+  const canonical = { ...input, email: input.email.toLowerCase() }; // usernames keep their case
   let response = await h.request('register', 'POST', input);
   assert.equal(response.status, 201);
   const { user } = await response.json();
@@ -63,6 +63,7 @@ test('real application: registration, login, persistence, rotation, expiry and l
   for (const duplicate of [
     { ...canonical, username: `other_${suffix}` },
     { ...canonical, email: `other_${suffix}@example.test` },
+    { ...canonical, email: `case_${suffix}@example.test`, username: input.username.toLowerCase() },
   ]) assert.equal((await h.request('register', 'POST', duplicate)).status, 409);
   const wrong = await h.request('login', 'POST', { email: canonical.email, password: 'incorrect password' });
   const missing = await h.request('login', 'POST', { email: `missing_${suffix}@example.test`, password: input.password });
