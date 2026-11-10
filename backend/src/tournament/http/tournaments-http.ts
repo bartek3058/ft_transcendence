@@ -11,17 +11,14 @@ import { TournamentRateLimiter } from './tournament-rate-limiter';
 
 export const TOURNAMENT_LIMITS = Object.freeze({ windowMs: 60_000, ip: 180, userRead: 120, userWrite: 30 });
 
-// Same shape ParseUUIDPipe accepts; checked here so a malformed id never reaches the session lookup.
+// same check as ParseUUIDPipe, done here so a bad id never reaches the session lookup
 const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BODY_KEYS = 'tournaments:body-keys';
 
-/** Top-level JSON keys a mutating handler accepts; handlers without it accept only `{}`. */
+// allowed body keys, a handler without it only accepts {}
 export const TournamentBody = (...keys: string[]) => SetMetadata(BODY_KEYS, keys);
 
-/**
- * Runs before SessionGuard. Order:
- * (1) zero-I/O format checks -> (2) pre-auth per-IP sliding-window limit.
- */
+// Runs before SessionGuard: format checks first, then the per-IP limit.
 @Injectable()
 export class TournamentRequestGuard implements CanActivate {
   constructor(@Inject(AUTH_CONFIG) private readonly config: AuthConfig,
@@ -32,7 +29,6 @@ export class TournamentRequestGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     context.switchToHttp().getResponse<Response>().setHeader('Cache-Control', 'no-store');
 
-    // Every route param (:id, :matchId) is a UUID.
     if (Object.values(req.params ?? {}).some((value) => !UUID_FORMAT.test(value))) {
       throw new TournamentHttpError(400, 'INVALID_ID', 'Ids must be UUIDs.');
     }
@@ -51,8 +47,7 @@ export class TournamentRequestGuard implements CanActivate {
     }
     const allowed = this.reflector.get<string[]>(BODY_KEYS, context.getHandler()) ?? [];
     const body: unknown = req.body;
-    // Own-key check also rejects `__proto__` / `constructor` keys; nested values are refused
-    // before class-transformer can recurse into them. Field types are left to the DTOs.
+    // own-key check also blocks __proto__ / constructor, nested values never reach class-transformer
     if (!body || typeof body !== 'object' || Array.isArray(body)
       || Object.entries(body).some(([key, value]) => !allowed.includes(key)
         || (value !== null && typeof value === 'object'))) {
@@ -61,7 +56,7 @@ export class TournamentRequestGuard implements CanActivate {
   }
 }
 
-/** Runs after SessionGuard: per-user limits, separate read and write buckets. */
+// after SessionGuard, separate read and write buckets per user
 @Injectable()
 export class TournamentUserLimitGuard implements CanActivate {
   constructor(private readonly limiter: TournamentRateLimiter) {}
@@ -75,7 +70,7 @@ export class TournamentUserLimitGuard implements CanActivate {
   }
 }
 
-// Fixed texts for framework / engine exceptions: never echo internal messages to clients.
+// fixed messages, never echo internal errors to the client
 const GENERIC: Record<number, readonly [string, string]> = {
   400: ['INVALID_INPUT', 'Request validation failed.'],
   401: ['UNAUTHENTICATED', 'Please log in.'],
@@ -102,7 +97,7 @@ export class TournamentsExceptionFilter implements ExceptionFilter {
       const [code, message] = GENERIC[status] ?? ['REQUEST_FAILED', 'Request failed.'];
       return res.status(status).json({ error: { code, message } });
     }
-    // Safety net only: services map expected unique violations to explicit 409 codes themselves.
+    // just a safety net, services map their own unique violations to 409
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const [code, message] = GENERIC[409];
       return res.status(409).json({ error: { code, message } });

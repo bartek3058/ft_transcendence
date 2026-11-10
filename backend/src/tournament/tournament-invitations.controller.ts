@@ -8,9 +8,7 @@ import {
 } from './http/tournaments-http';
 import { TournamentInvitationsService } from './tournament-invitations.service';
 
-// Same pipeline as TournamentsController: id format + per-IP limit (no I/O) -> session
-// -> per-user limit -> handler (DB). One recipient per request; the UI sends one
-// request per selected friend.
+// Same guards as TournamentsController. One recipient per request.
 @Controller('tournaments')
 @UseFilters(TournamentsExceptionFilter)
 @UseGuards(TournamentRequestGuard, SessionGuard, TournamentUserLimitGuard)

@@ -37,18 +37,8 @@ interface Connection {
   rooms: Set<string>;
 }
 
-/**
- * Live tournament updates (#168), namespace /tournaments.
- *
- * - Authenticated in namespace middleware before the socket is exposed: Origin, the
- *   CSRF flag in handshake.auth, a per-IP connect limit, then the session cookie.
- * - Every socket joins `user:<id>` (invitations); `tournament:subscribe` joins
- *   `tournament:<id>` after a UUID check (no I/O), a per-user limit, a room cap and an
- *   existence check.
- * - Revoked sessions are dropped at once; all sessions are re-checked every 15 s.
- * - The only event source is TournamentEventsPublisher (published after commit).
- *   Server -> client only; REST stays the source of truth after a reconnect.
- */
+/* Live tournament updates (#168). Server -> client only, after a reconnect the client
+reloads over REST. */
 @WebSocketGateway({ namespace: '/tournaments' })
 export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
   private readonly logger = new Logger(TournamentsGateway.name);
@@ -93,7 +83,7 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
 
   handleConnection(client: Socket): void {
     const identity = client.data.tournamentIdentity as { userId: string; token: string } | undefined;
-    // Never keep the raw session token in socket.data.
+    // don't keep the raw session token around
     delete client.data.tournamentIdentity;
     if (!identity || this.live.size >= REALTIME_LIMITS.socketsTotal
       || this.socketsOf(identity.userId) >= REALTIME_LIMITS.socketsPerUser) {
@@ -154,10 +144,7 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
     for (const entry of [...this.live.values()]) this.drop(entry);
   }
 
-  // ---------------------------------------------------------------------------
-  // Publisher -> rooms. The publisher isolates listener errors (logged, never thrown
-  // back into a request), so a failed load or emit cannot affect the HTTP response.
-  // ---------------------------------------------------------------------------
+  // Publisher errors are caught there, so a failed emit can't break the HTTP response.
 
   private listen(): void {
     const e = this.events;
@@ -184,7 +171,7 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
         tournamentId: ev.tournamentId, status: 'CANCELLED',
       })),
       e.onMatchesUpdated(async (ev) => {
-        // One event per changed match (a cascade can touch several).
+        // a cascade can change several matches
         for (const match of await this.payloads.matches(ev.tournamentId, ev.matchIds)) {
           this.toTournament(ev.tournamentId, 'tournament:match_updated', { tournamentId: ev.tournamentId, match });
         }
@@ -210,8 +197,6 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
     this.namespace?.to(userRoom(userId)).emit(event, payload);
   }
 
-  // ---------------------------------------------------------------------------
-
   private socketsOf(userId: string): number {
     let count = 0;
     for (const entry of this.live.values()) if (entry.userId === userId) count++;
@@ -223,7 +208,6 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
     entry.client.disconnect(true);
   }
 
-  /** Re-checks every session; expired or replaced sessions lose their sockets. */
   private async sweep(): Promise<void> {
     if (this.sweeping) return;
     this.sweeping = true;
@@ -233,7 +217,7 @@ export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, O
           const account = await this.sessions.authenticate(entry.token);
           if (account.id !== entry.userId) this.drop(entry);
         } catch (error) {
-          // Only an invalid session drops the socket; a DB hiccup must not disconnect everyone.
+          // a DB hiccup shouldn't disconnect everyone
           if (error instanceof UnauthorizedException) this.drop(entry);
         }
       }

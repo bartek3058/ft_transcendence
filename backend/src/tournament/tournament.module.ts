@@ -19,8 +19,7 @@ import { TournamentRecoveryService } from './tournament-recovery.service';
 import { TournamentsController } from './tournaments.controller';
 import { TournamentsService } from './tournaments.service';
 
-// GameModule -> GameService (conclusion listener + session creation).
-// Dependency is one-way: GameModule never imports TournamentModule.
+// GameModule never imports TournamentModule, keep it one-way.
 @Module({
   imports: [AuthModule, DatabaseModule, GameModule],
   controllers: [TournamentsController, TournamentInvitationsController],

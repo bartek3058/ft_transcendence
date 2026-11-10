@@ -6,10 +6,7 @@ import {
   SeededParticipant,
 } from './tournament-engine.types';
 
-/**
- * Invalid bracket input (participant count / bracket size). The service maps
- * it to HTTP 400; any other Error stays a server error.
- */
+// mapped to 400 by the service, any other Error stays a 500
 export class BracketGenerationError extends Error {
   constructor(message: string) {
     super(message);
@@ -17,25 +14,15 @@ export class BracketGenerationError extends Error {
   }
 }
 
-/**
- * Calculates the next power of 2 greater than or equal to playerCount.
- * Bounds: minimum 2, maximum 32 (per 42 subject and DB constraints).
- */
+// next power of 2, between 2 and 32
 export function getBracketSize(playerCount: number): number {
   if (playerCount < 2) return 2;
   const power = Math.pow(2, Math.ceil(Math.log2(playerCount)));
   return Math.min(Math.max(power, 2), 32);
 }
 
-/**
- * Seeds participants deterministically:
- * 1. By seedRating descending (higher ELO gets lower seed number, e.g. Seed 1).
- * 2. Tiebreaker: registeredAt ascending (earlier sign-up wins tie);
- *    a missing registeredAt sorts after any known date.
- * 3. Fallback: userId code-point comparison (locale-independent).
- * The comparator is a strict total order, so the result never depends on the
- * input order or the server locale.
- */
+/* Rating desc, then earlier sign-up, then userId. Total order, so the result
+doesn't depend on input order or locale. */
 export function seedParticipants(
   participants: ParticipantToSeed[],
 ): SeededParticipant[] {
@@ -64,12 +51,7 @@ export interface GenerateBracketOptions {
   bracketSize?: number;
 }
 
-/**
- * Generates a full single-elimination tournament bracket with balanced seed folding:
- * - Round 1 pairs: Seed (m + 1) vs Seed (bracketSize - m)
- * - Round linkage: Match i and Match (K - 1 - i) feed into next round Match i
- * - Automatic resolution of Round 1 Byes
- */
+// Round 1 is seed (m + 1) vs seed (size - m); matches i and K-1-i feed the same next match.
 export function generateBracket(
   options: GenerateBracketOptions,
 ): GeneratedBracket {
@@ -91,9 +73,7 @@ export function generateBracket(
     );
   }
 
-  // More than half the slots empty would create a Round 1 match with no
-  // players, which can never be played or resolved. Only the smallest power of
-  // 2 that fits the participants is allowed (AI-filled slots are a future option).
+  // more than half empty slots would leave a round 1 match with no players at all
   if (participants.length <= bracketSize / 2) {
     throw new BracketGenerationError(
       `Bracket size ${bracketSize} is too large for ${participants.length} participants ` +
@@ -110,7 +90,6 @@ export function generateBracket(
   const totalRounds = Math.log2(bracketSize);
   const rounds: GeneratedMatchNode[][] = [];
 
-  // Step 1: Create skeleton matches for every round
   for (let r = 1; r <= totalRounds; r++) {
     const matchesInRound = bracketSize / Math.pow(2, r);
     const roundMatches: GeneratedMatchNode[] = [];
@@ -133,8 +112,7 @@ export function generateBracket(
     rounds.push(roundMatches);
   }
 
-  // Step 2: Link rounds with balanced seed-fold logic
-  // Top match i pairs with symmetric bottom match (K - 1 - i)
+  // balanced fold: top match i pairs with bottom match K-1-i
   for (let r = 0; r < totalRounds - 1; r++) {
     const currentRound = rounds[r];
     const nextRound = rounds[r + 1];
@@ -153,7 +131,6 @@ export function generateBracket(
     }
   }
 
-  // Step 3: Populate Round 1 with seeded participants
   const round1 = rounds[0];
   for (let m = 0; m < round1.length; m++) {
     const seed1 = m + 1;
@@ -181,7 +158,7 @@ export function generateBracket(
     }
   }
 
-  // Step 4: Advance Round 1 Bye winners directly into Round 2 slots
+  // byes go straight to round 2
   if (totalRounds > 1) {
     const round2 = rounds[1];
     for (const match of round1) {
@@ -197,7 +174,6 @@ export function generateBracket(
       }
     }
 
-    // If any Round 2 match now has both players present, transition it to SCHEDULED
     for (const match of round2) {
       if (match.player1Id && match.player2Id) {
         match.status = 'SCHEDULED';
@@ -205,7 +181,6 @@ export function generateBracket(
     }
   }
 
-  // Flatten matches for convenient bulk insert operations
   const matches = rounds.flat();
 
   return {

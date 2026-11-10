@@ -4,8 +4,8 @@ import { existsSync } from 'node:fs';
 import { clampSkill, parseBestMove, parseInfoScore } from '../src/ai/uci-engine';
 import { StockfishService } from '../src/ai/stockfish.service';
 
-// A legal move in UCI long algebraic notation: from-square, to-square, optional
-// promotion piece. e.g. "e2e4", "e7e8q".
+/* A legal move in UCI long algebraic notation: from-square, to-square, optional
+promotion piece. e.g. "e2e4", "e7e8q". */
 const UCI_MOVE = /^[a-h][1-8][a-h][1-8][qrbn]?$/;
 
 describe('UCI output parsing (pure)', () => {
@@ -76,9 +76,9 @@ describe('UCI output parsing (pure)', () => {
   });
 });
 
-// These talk to a real Stockfish process, so they only run where the binary is
-// installed (i.e. inside the backend Docker image). Elsewhere they are skipped so
-// the pure tests above still pass on a plain checkout.
+/* These talk to a real Stockfish process, so they only run where the binary is
+installed (i.e. inside the backend Docker image). Elsewhere they are skipped so
+the pure tests above still pass on a plain checkout. */
 const STOCKFISH_PATH = process.env.STOCKFISH_PATH?.trim() || '/usr/games/stockfish';
 const hasEngine = existsSync(STOCKFISH_PATH);
 

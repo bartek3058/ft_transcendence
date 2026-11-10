@@ -14,9 +14,10 @@ import { TournamentLifecycleService } from '../../src/tournament/tournament-life
 import { TournamentsService } from '../../src/tournament/tournaments.service';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
-// Real PostgreSQL test for tournament invitations (#154): friendship and membership
-// checks, the ON CONFLICT re-invite, accept through the shared conditional join,
-// expiry on close/cancel, races, and events after commit only.
+/* Real PostgreSQL test for tournament invitations (#154): friendship and membership
+checks, the ON CONFLICT re-invite, accept through the shared conditional join,
+expiry on close/cancel, races, and events after commit only.
+*/
 Logger.overrideLogger(['error']);
 
 const prisma = new PrismaService({
@@ -57,7 +58,7 @@ async function createTournament(creatorId: string, maxParticipants = 8) {
   return t;
 }
 
-/** Creator with `count` friends, plus a tournament. */
+// Creator with 'count' friends, plus a tournament.
 async function setup(count = 1, maxParticipants = 8) {
   const creator = await createUser();
   const friends = [];
@@ -98,8 +99,8 @@ describe('Tournament invitations against PostgreSQL (#154)', () => {
 
   after(async () => {
     try {
-      // Fixtures only (dedicated *_test database): tournaments cascade to invitations;
-      // users cascade to friendships.
+      /* Fixtures only (dedicated *_test database): tournaments cascade to invitations;
+      users cascade to friendships.*/
       await prisma.tournament.deleteMany({ where: { id: { in: tournamentIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     } finally {

@@ -1,3 +1,6 @@
+import { Footer } from "./components/layout/Footer";
+import { PrivacyPolicyPage } from "./pages/PrivacyPolicyPage";
+import { TermsOfServicePage } from "./pages/TermsOfServicePage";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Header } from "./components/layout/Header";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
@@ -38,12 +41,14 @@ function AppLayout() {
 }
 export default function App() {
   return (
-    <Routes>
+    <><Routes>
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms-of-service" element={<TermsOfServicePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/*" element={<AppLayout />} />
       </Route>
-    </Routes>
+    </Routes><Footer /></>
   );
 }

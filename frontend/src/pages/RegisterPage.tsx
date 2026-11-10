@@ -60,6 +60,7 @@ export function RegisterPage() {
         </div>
         <h1>Create account</h1>
         <p>Your public username will be saved in lowercase.</p>
+        <p>Read our <Link to="/privacy-policy">Privacy Policy</Link> and <Link to="/terms-of-service">Terms of Service</Link>.</p>
         <form onSubmit={submit} className="auth-form">
           <label>
             E-mail

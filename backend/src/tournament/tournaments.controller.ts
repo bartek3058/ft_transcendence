@@ -10,9 +10,7 @@ import {
 import { TournamentCheckInService } from './tournament-check-in.service';
 import { TournamentsService } from './tournaments.service';
 
-// Guard order: id format + per-IP limit (no I/O) -> session -> per-user limit -> handler (DB).
-// Route params are already UUID-checked by TournamentRequestGuard; POST routes without
-// @TournamentBody accept only `{}`.
+// Guard order: id format + per-IP limit -> session -> per-user limit -> handler.
 @Controller('tournaments')
 @UseFilters(TournamentsExceptionFilter)
 @UseGuards(TournamentRequestGuard, SessionGuard, TournamentUserLimitGuard)

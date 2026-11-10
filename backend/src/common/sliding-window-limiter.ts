@@ -1,7 +1,4 @@
-/**
- * True sliding-window rate limiter (rolling timestamps, no fixed-window reset).
- * Framework-free: callers decide which exception is thrown on rejection.
- */
+// Sliding-window limiter on rolling timestamps. Callers pick the exception.
 export type LimiterRejection = (
   status: 429 | 503, retryAfterSeconds: number, limit: number, windowMs: number,
 ) => Error;
@@ -31,7 +28,7 @@ export class SlidingWindowLimiter {
     timestamps.push(now);
   }
 
-  // Each bucket is pruned with its own window, never the caller's.
+  // each bucket uses its own window
   private evictExpired(now: number): void {
     for (const [key, bucket] of this.buckets) {
       const alive = bucket.timestamps.filter((t) => t > now - bucket.windowMs);

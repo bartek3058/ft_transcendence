@@ -18,7 +18,7 @@ export class RatingService {
   }
 
   async getLeaderboard(limit = 20, offset = 0) {
-    // Bounds are enforced by WebLeaderboardQueryDto; clamp again as defence in depth.
+    // the DTO already checks this, clamp anyway
     const safeLimit = Math.min(100, Math.max(1, limit));
     const safeOffset = Math.min(10000, Math.max(0, offset));
 

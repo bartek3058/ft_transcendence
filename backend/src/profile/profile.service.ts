@@ -91,7 +91,7 @@ export class ProfileService {
     };
   }
 
-  /** Full, paginated match history of the session user (newest first). */
+  // full paginated history of the session, newest first
   async getMyGames(userId: string, page = 1, limit = 20) {
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(50, Math.max(1, limit));

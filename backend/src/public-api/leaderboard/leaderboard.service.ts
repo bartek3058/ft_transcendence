@@ -85,8 +85,7 @@ export class LeaderboardService {
   }
 
   async getPlayerRanking(username: string): Promise<PlayerRankingDto> {
-    // Stage 1: zero-I/O format check. Usernames are stored lowercase (RegisterDto),
-    // so normalising here lets the unique index serve an exact lookup.
+    // usernames are stored lowercase, so the unique index can serve this
     const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
     if (!USERNAME_REGEX.test(normalized)) {
       throw new BadRequestException({
@@ -99,7 +98,7 @@ export class LeaderboardService {
       select: { id: true, username: true, rating: true },
     });
 
-    // Fixed message: never echo caller input back.
+    // fixed message, don't echo input back
     if (!user) {
       throw new NotFoundException({
         error: { code: 'PLAYER_NOT_FOUND', message: 'Player not found.' },

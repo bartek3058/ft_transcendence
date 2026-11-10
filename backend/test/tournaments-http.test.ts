@@ -22,7 +22,7 @@ class Handlers {
   join() {}
 }
 
-/** Records every consume() call, then applies the real sliding-window logic. */
+// Records every consume() call, then applies the real sliding-window logic.
 class SpyLimiter extends TournamentRateLimiter {
   readonly keys: string[] = [];
   override consume(key: string, limit: number, windowMs: number, now = Date.now()): void {

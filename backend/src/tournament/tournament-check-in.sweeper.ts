@@ -5,7 +5,7 @@ import { TournamentEventsPublisher } from './tournament-events.publisher';
 import { TournamentGameCreated, TournamentGameService } from './tournament-game.service';
 
 export const CHECK_IN_SWEEP_INTERVAL_MS = 10_000;
-/** Consecutive failures after which a match is no longer retried (needs a manual fix). */
+// after this many failures in a row it needs a manual fix
 export const MAX_SWEEP_ATTEMPTS = 5;
 
 export type SweepAction = 'STARTED' | 'WALKOVER' | 'DOUBLE_FORFEIT' | 'ALREADY_RESOLVED';
@@ -27,19 +27,8 @@ type LockedMatch = {
   player2_checked_in_at: Date | null;
 }[];
 
-/**
- * Resolves SCHEDULED matches whose check-in deadline has passed (#161):
- * one player checked in -> walkover for the absent one; nobody -> double forfeit;
- * both but no game (only possible for older data) -> start the game.
- *
- * State lives in the DB, so a restart loses nothing. Each match runs in its own
- * transaction and is locked (FOR UPDATE) while it is still expired and SCHEDULED; a
- * check-in that won the race simply makes the row disappear from that SELECT.
- * Any error after the lock therefore means inconsistent data: it is counted, and after
- * MAX_SWEEP_ATTEMPTS failures in a row the match is no longer retried and is reported
- * for a manual fix. Nobody is forfeited because of a data problem. The count and the
- * skip list are in memory; a restart clears them.
- */
+/* Resolves matches past their check-in deadline (#161): one player in = walkover, nobody = double
+forfeit. An error after the row lock means bad data, nobody gets forfeited because of it.*/
 @Injectable()
 export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TournamentCheckInSweeper.name);
@@ -70,7 +59,7 @@ export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
     if (this.isExecuting) return { ...result, skipped: true };
     this.isExecuting = true;
     try {
-      // Only matches that can be resolved: both players known, no winner yet, live tournament.
+      // both players known, no winner yet, tournament still live
       const due = await this.prisma.tournamentMatch.findMany({
         where: {
           status: 'SCHEDULED',
@@ -96,7 +85,7 @@ export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  /** One match; never throws, so a failure cannot stop the rest of the tick. */
+  // never throws, one bad match can't stop the tick
   private async handle(tournamentId: string, matchId: string, result: SweepTickResult): Promise<void> {
     try {
       const action = await this.resolve(tournamentId, matchId);

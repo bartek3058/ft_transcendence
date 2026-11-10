@@ -39,7 +39,7 @@ export interface ParticipantChangedEvent {
 
 export interface MatchesUpdatedEvent {
   tournamentId: string;
-  /** Every match changed by one committed transaction (cascades included). */
+  // cascades included
   matchIds: string[];
   at: Date;
 }
@@ -60,11 +60,7 @@ const PARTICIPANT_LEFT = 'participant-left';
 const MATCHES_UPDATED = 'matches-updated';
 const FINISHED = 'finished';
 
-/**
- * In-process tournament notifications. Publish only after the transaction commits.
- * Delivery is deferred (setImmediate), so the publisher never waits for listeners,
- * and a failing listener is logged without affecting the caller or other listeners.
- */
+// Publish only after commit. Delivery is deferred and listener errors are only logged.
 @Injectable()
 export class TournamentEventsPublisher implements OnModuleDestroy {
   private readonly logger = new Logger(TournamentEventsPublisher.name);
@@ -74,7 +70,6 @@ export class TournamentEventsPublisher implements OnModuleDestroy {
     setImmediate(() => this.events.emit(REGISTRATION_CLOSED, event));
   }
 
-  /** Manual cancel by the creator or an admin (the scheduler's cancels are registration-closed). */
   cancelled(event: TournamentCancelledEvent): void {
     setImmediate(() => this.events.emit(CANCELLED, event));
   }
@@ -83,7 +78,6 @@ export class TournamentEventsPublisher implements OnModuleDestroy {
     setImmediate(() => this.events.emit(INVITATION_RECEIVED, event));
   }
 
-  /** Accepted (through respond or a direct join) or declined. */
   invitationAnswered(event: InvitationAnsweredEvent): void {
     setImmediate(() => this.events.emit(INVITATION_ANSWERED, event));
   }
@@ -104,49 +98,40 @@ export class TournamentEventsPublisher implements OnModuleDestroy {
     setImmediate(() => this.events.emit(FINISHED, event));
   }
 
-  /** After a committed bracket change: matches updated, and finished when the Final ended. */
   bracketChanged(tournamentId: string, matchIds: string[], finished: boolean): void {
     const at = new Date();
     if (matchIds.length) this.matchesUpdated({ tournamentId, matchIds: [...new Set(matchIds)], at });
     if (finished) this.tournamentFinished({ tournamentId, at });
   }
 
-  /** Returns an unsubscribe function. */
   onParticipantJoined(listener: Listener<ParticipantChangedEvent>): () => void {
     return this.subscribe(PARTICIPANT_JOINED, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onParticipantLeft(listener: Listener<ParticipantChangedEvent>): () => void {
     return this.subscribe(PARTICIPANT_LEFT, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onMatchesUpdated(listener: Listener<MatchesUpdatedEvent>): () => void {
     return this.subscribe(MATCHES_UPDATED, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onTournamentFinished(listener: Listener<TournamentFinishedEvent>): () => void {
     return this.subscribe(FINISHED, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onInvitationReceived(listener: Listener<InvitationReceivedEvent>): () => void {
     return this.subscribe(INVITATION_RECEIVED, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onInvitationAnswered(listener: Listener<InvitationAnsweredEvent>): () => void {
     return this.subscribe(INVITATION_ANSWERED, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onRegistrationClosed(listener: Listener<RegistrationClosedEvent>): () => void {
     return this.subscribe(REGISTRATION_CLOSED, listener);
   }
 
-  /** Returns an unsubscribe function. */
   onCancelled(listener: Listener<TournamentCancelledEvent>): () => void {
     return this.subscribe(CANCELLED, listener);
   }

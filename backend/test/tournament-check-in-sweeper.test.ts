@@ -17,7 +17,7 @@ const P2 = 'player-2';
 
 interface Row { player1_id: string; player2_id: string; player1_checked_in_at: Date | null; player2_checked_in_at: Date | null }
 
-/** `locked[matchId]` is what the FOR UPDATE select returns (undefined = already resolved). */
+// ;locked[matchId]' is what the FOR UPDATE select returns (undefined = already resolved).
 function setup(locked: Record<string, Row | undefined>, failing: Record<string, Error> = {}) {
   const calls: string[] = [];
   let current = '';

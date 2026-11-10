@@ -142,9 +142,6 @@ describe('Public API Step 3: Match History & API Keys Full CRUD', () => {
     },
   ];
 
-  /* -------------------------------------------------------------------------
-   * Suite 1: MatchesService (Issue #90)
-   * ------------------------------------------------------------------------- */
   describe('Suite 1: Match History (Issue #90)', () => {
     it('returns paginated matches with default limit and pagination metadata', async () => {
       const mockPrisma = createMockPrisma({ games: mockGames });
@@ -214,9 +211,6 @@ describe('Public API Step 3: Match History & API Keys Full CRUD', () => {
     });
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 2: API Keys CRUD Lifecycle (GET, POST, PUT, DELETE)
-   * ------------------------------------------------------------------------- */
   describe('Suite 2: API Keys Complete CRUD Lifecycle', () => {
     it('C: creates a key returning raw secret only once', async () => {
       const mockPrisma = createMockPrisma();

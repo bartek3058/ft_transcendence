@@ -4,9 +4,7 @@ import { TournamentsService } from '../tournaments.service';
 import { TournamentMatchStatus } from '../types/tournament.types';
 import { TournamentDetail } from '../types/tournament-response.types';
 
-// Socket payloads (#168). Read after the transaction committed; REST stays the source of
-// truth, so a client that (re)connects fetches GET /api/tournaments/:id.
-// No emails, no session data; the only rating is the frozen seedRating.
+// Socket payloads (#168). No emails or session data, the only rating is the frozen seedRating.
 
 export interface MatchPayload {
   id: string;
@@ -19,7 +17,7 @@ export interface MatchPayload {
   checkInDeadline: Date | null;
   player1CheckedIn: boolean;
   player2CheckedIn: boolean;
-  /** Live game of the match (or the last one played); what the board joins on /game. */
+  // the game the board joins on /game
   currentGameId: string | null;
 }
 
@@ -79,7 +77,7 @@ export class TournamentRealtimePayloads {
     }));
   }
 
-  /** Bracket snapshot (rounds, matches, seeds) from the same query as the REST detail. */
+  // same query as the REST detail
   async started(tournamentId: string): Promise<StartedPayload> {
     const detail = await this.tournaments.detail(tournamentId);
     return { tournamentId, participants: detail.participants, matches: detail.matches };

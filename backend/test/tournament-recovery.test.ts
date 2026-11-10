@@ -9,8 +9,8 @@ import {
   MAX_RECOVERY_ATTEMPTS, SERVER_RESTART_REASON, StuckMatch, TournamentRecoveryService,
 } from '../src/tournament/tournament-recovery.service';
 
-// Decision logic with fakes; SQL, locking and real bracket effects are covered by
-// tournament-recovery-postgres.test.ts.
+/* Decision logic with fakes; SQL, locking and real bracket effects are covered by
+tournament-recovery-postgres.test.ts. */
 Logger.overrideLogger(false);
 
 const stuck = (matchId: string, result: StuckMatch['result'], endReason: string | null = null): StuckMatch => ({

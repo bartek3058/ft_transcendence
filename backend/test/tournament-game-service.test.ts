@@ -8,12 +8,8 @@ import { GameConclusionEvent } from '../src/game/types/chess.types';
 import { TournamentGameService } from '../src/tournament/tournament-game.service';
 import { TournamentEventsPublisher } from '../src/tournament/tournament-events.publisher';
 
-// Unit tests for the game -> tournament integration (#68). Control flow only;
-// SQL validity (partial unique index, conditional updates) needs a Postgres test.
-
-// ---------------------------------------------------------------------------
-// 1. GameService conclusion listener hook
-// ---------------------------------------------------------------------------
+/* Unit tests for the game -> tournament integration (#68). Control flow only;
+SQL validity (partial unique index, conditional updates) needs a Postgres test. */
 
 function makeGameService(rowResult = 'IN_PROGRESS') {
   const gameId = randomUUID();
@@ -77,10 +73,7 @@ describe('GameService.onGameConcluded', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 2. TournamentGameService orchestration
-// ---------------------------------------------------------------------------
-
+// TournamentGameService orchestration
 function makeTournamentGameService(opts: {
   gameRow?: { tournamentId: string | null; tournamentMatchId: string | null } | null;
   matchStatus?: string;

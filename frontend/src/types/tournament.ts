@@ -1,11 +1,6 @@
-// Tournament API contract as received by the frontend (JSON shape).
-// Mirrors backend/src/tournament/types/tournament.types.ts; the only intended
-// difference is that timestamps arrive as ISO 8601 strings instead of Date objects.
-// Keep both files in sync when changing a field.
-//
-// Names are prefixed with "Tournament" / suffixed with "Dto" so they do not clash
-// with the mock `Tournament` type in ./index.ts used by data/mockData.ts.
-
+/* Same as backend/src/tournament/types/tournament.types.ts but dates are ISO strings.
+"Dto" names avoid a clash with the mock Tournament type.
+*/
 export const VALID_TOURNAMENT_SIZES = [2, 4, 8, 16, 32] as const;
 export type TournamentSize = (typeof VALID_TOURNAMENT_SIZES)[number];
 
@@ -38,7 +33,6 @@ export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 export const TOURNAMENT_MATCH_SLOTS = ["player1", "player2"] as const;
 export type TournamentMatchSlot = (typeof TOURNAMENT_MATCH_SLOTS)[number];
 
-/** ISO 8601 timestamp string, e.g. "2026-11-04T21:00:00.000Z". */
 export type IsoDateString = string;
 
 export interface TournamentPlayerProfile {

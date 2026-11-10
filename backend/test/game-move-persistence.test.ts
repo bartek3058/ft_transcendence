@@ -35,10 +35,10 @@ function prismaError(code: string): Error {
   return Object.assign(new Error(`Prisma error ${code}\nsecond line`), { code });
 }
 
-/**
- * Fake PrismaService that behaves like UNIQUE(game_id, ply) + skipDuplicates
- * and lets each test script failures per call.
- */
+/*
+Fake PrismaService that behaves like UNIQUE(game_id, ply) + skipDuplicates
+and lets each test script failures per call.
+*/
 function makeFakePrisma(script: Array<(rows: any[]) => void> = []) {
   const stored = new Map<string, any>();
   const calls: any[][] = [];
@@ -58,7 +58,7 @@ function makeFakePrisma(script: Array<(rows: any[]) => void> = []) {
         return { count: args.data.length };
       },
     },
-    // removeGame() closes the `games` row after the moves are stored (#143).
+    // removeGame() closes the 'games' row after the moves are stored (#143).
     game: {
       async updateMany() {
         return { count: 1 };

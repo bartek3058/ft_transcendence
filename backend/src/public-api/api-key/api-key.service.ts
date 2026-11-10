@@ -22,10 +22,7 @@ export function hashApiKey(rawKey: string): string {
 export class ApiKeyService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Generates a new API key for a user.
-   * Returns the rawKey ONCE. The rawKey is never persisted.
-   */
+  // The raw key is returned once and never stored.
   async createApiKey(
     userId: string,
     name: string,
@@ -50,7 +47,6 @@ export class ApiKeyService {
       });
     }
 
-    // High entropy 32-byte secret encoded as hex: 64 hex chars
     const secretEntropy = randomBytes(32).toString('hex');
     const rawKey = `${API_KEY_PREFIX}${secretEntropy}`;
     const keyHash = hashApiKey(rawKey);
@@ -76,11 +72,7 @@ export class ApiKeyService {
     };
   }
 
-  /**
-   * Validates a raw API key from request headers.
-   * Checks revocation and expiration. Does NOT update lastUsedAt
-   * (caller must invoke touchLastUsed after admission).
-   */
+  // Doesn't touch lastUsedAt, the caller does that after the rate limiter.
   async validateApiKey(rawKey: string | null | undefined): Promise<ValidatedApiKeyResult> {
     if (!rawKey || typeof rawKey !== 'string' || !rawKey.startsWith(API_KEY_PREFIX)) {
       throw new UnauthorizedException({
@@ -139,11 +131,7 @@ export class ApiKeyService {
     };
   }
 
-  /**
-   * Updates lastUsedAt asynchronously without blocking the request pipeline.
-   * Must be called only AFTER rate limiting admission to avoid writing
-   * timestamps for rejected requests.
-   */
+  // Call only after the rate limiter let the request in.
   touchLastUsed(apiKeyId: string): void {
     void this.prisma.apiKey
       .update({
@@ -153,10 +141,7 @@ export class ApiKeyService {
       .catch(() => {});
   }
 
-  /**
-   * Lists all API keys belonging to a user (safe metadata only).
-   * If caller is admin, returns all keys in the system.
-   */
+  // admins get every key
   async listUserKeys(caller: { id: string; role: string }): Promise<ApiKeySummary[]> {
     const where = caller.role === 'admin' ? {} : { userId: caller.id };
     return this.prisma.apiKey.findMany({
@@ -174,9 +159,6 @@ export class ApiKeyService {
     });
   }
 
-  /**
-   * Retrieves single API key by ID, verifying ownership or admin status.
-   */
   async getKeyById(id: string, caller: { id: string; role: string }): Promise<ApiKeySummary> {
     const key = await this.prisma.apiKey.findUnique({
       where: { id },
@@ -209,9 +191,6 @@ export class ApiKeyService {
     };
   }
 
-  /**
-   * Updates an existing API key's name, verifying ownership or admin role.
-   */
   async updateApiKey(
     id: string,
     name: string | undefined,
@@ -248,11 +227,7 @@ export class ApiKeyService {
     return updated;
   }
 
-  /**
-   * Revokes or permanently purges an API key.
-   * If purge=true and caller is admin, permanently deletes record from DB.
-   * Otherwise, sets revokedAt = now() (soft revocation).
-   */
+  // purge=true (admin only) deletes the row, otherwise it's a soft revoke
   async deleteApiKey(
     id: string,
     purge = false,
@@ -291,9 +266,6 @@ export class ApiKeyService {
     return { message: 'API key revoked successfully.' };
   }
 
-  /**
-   * Revokes an API key owned by a user (backward compatibility helper).
-   */
   async revokeApiKey(userId: string, keyId: string): Promise<void> {
     const key = await this.prisma.apiKey.findFirst({
       where: { id: keyId, userId },

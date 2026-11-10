@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { TournamentBracketService } from '../src/tournament/tournament-bracket.service';
 
-/** Minimal Prisma `where` evaluator: equality, null, { in }, { not }, OR. */
+// Minimal Prisma 'where' evaluator: equality, null, { in }, { not }, OR.
 function matchesWhere(row: any, where: any = {}): boolean {
   return Object.entries(where).every(([key, cond]: [string, any]) => {
     if (key === 'OR') return (cond as any[]).some((c) => matchesWhere(row, c));
@@ -10,7 +10,7 @@ function matchesWhere(row: any, where: any = {}): boolean {
     if (cond === null) return value === null;
     if (typeof cond === 'object' && !(cond instanceof Date)) {
       if ('in' in cond) return cond.in.includes(value);
-      // Mirrors SQL: `{ not: X }` never matches NULL.
+      // Mirrors SQL: '{ not: X }' never matches NULL.
       if ('not' in cond) return cond.not === null ? value !== null : value !== null && value !== cond.not;
     }
     return value === cond;
@@ -96,7 +96,7 @@ function createMockPrisma() {
         updateManyIn(matches, where, data),
       count: async ({ where }: any) =>
         Array.from(matches.values()).filter((m) => matchesWhere(m, where)).length,
-      // Only the `_max.round` form used by assertFinalRound.
+      // Only the '_max.round' form used by assertFinalRound.
       aggregate: async ({ where }: any) => {
         const rounds = Array.from(matches.values()).filter((m) => matchesWhere(m, where)).map((m) => m.round);
         return { _max: { round: rounds.length ? Math.max(...rounds) : null } };
@@ -385,10 +385,6 @@ describe('TournamentBracketService (Database Service)', () => {
     assert.equal(mock.participants.get('tp-p2').finalRank, 2);
   });
 
-  // ---------------------------------------------------------------------------
-  // State-machine guards (H3) and bracket start idempotency (M1)
-  // ---------------------------------------------------------------------------
-
   async function setupBracket(playerCount: number, status = 'REGISTRATION_CLOSED') {
     const mock = createMockPrisma();
     const service = new TournamentBracketService({} as any);
@@ -541,10 +537,6 @@ describe('TournamentBracketService (Database Service)', () => {
     assert.equal(mock.participants.get('tp-u4').finalRank, 3);
   });
 
-  // ---------------------------------------------------------------------------
-  // Double forfeit: both players absent -> both lose, nobody advances
-  // ---------------------------------------------------------------------------
-
   it('double forfeit in a semifinal: the other finalist wins the Final by walkover', async () => {
     const { mock, service, tournamentId, byId } = await setupBracket(4);
     await service.generateAndSaveBracket(mock.tx, tournamentId);
@@ -649,10 +641,6 @@ describe('TournamentBracketService (Database Service)', () => {
     assert.equal(mock.matches.get(byId('R1-M1').id).winnerId, 'u1');
   });
 
-  // ---------------------------------------------------------------------------
-  // M9: draw resolution counts only played draws
-  // ---------------------------------------------------------------------------
-
   async function drawSetup() {
     const { mock, service, tournamentId, byId } = await setupBracket(2);
     await service.generateAndSaveBracket(mock.tx, tournamentId);
@@ -689,10 +677,6 @@ describe('TournamentBracketService (Database Service)', () => {
       (err: any) => err.status === 409,
     );
   });
-
-  // ---------------------------------------------------------------------------
-  // M2 / M5: invalid bracket input is a 400 and changes nothing
-  // ---------------------------------------------------------------------------
 
   it('rejects a custom bracket size that would leave empty Round 1 matches (400)', async () => {
     const { mock, service, tournamentId } = await setupBracket(3);

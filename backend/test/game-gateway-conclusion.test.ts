@@ -3,10 +3,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameGateway } from '../src/game/game.gateway';
 
-// A move that ends the game on the board (checkmate, stalemate, repetition,
-// insufficient material) must go through removeGame() like a timeout or a
-// resignation: otherwise the result is never persisted, the session lingers in
-// memory and the tournament bracket hook never fires.
+/* A move that ends the game on the board (checkmate, stalemate, repetition,
+insufficient material) must go through removeGame() like a timeout or a
+resignation: otherwise the result is never persisted, the session lingers in
+memory and the tournament bracket hook never fires. */
 
 const GAME_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
