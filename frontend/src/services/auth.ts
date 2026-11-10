@@ -80,3 +80,28 @@ export async function logout(): Promise<void> {
   });
   if (!response.ok) throw await readError(response);
 }
+
+
+export async function updateUsername(username: string): Promise<AuthUser> {
+  const response = await fetch("/api/auth/me", {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: mutationHeaders,
+    body: JSON.stringify({ username }),
+  });
+  if (!response.ok) throw await readError(response);
+  return (await response.json()).user as AuthUser;
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const response = await fetch("/api/auth/password", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: mutationHeaders,
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!response.ok) throw await readError(response);
+}
