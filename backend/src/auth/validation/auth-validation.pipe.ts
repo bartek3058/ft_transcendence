@@ -35,8 +35,8 @@ export class AuthValidationPipe extends ValidationPipe {
       }
       const allowed = metadata.metatype === RegisterDto
         ? ['email', 'username', 'password'] : metadata.metatype === LogoutDto ? [] : ['email', 'password'];
-      // Inspect raw keys before class-transformer can discard prototype-related
-      // keys, and reject nested values before recursively transforming them.
+      /* Inspect raw keys before class-transformer can discard prototype-related
+      keys, and reject nested values before recursively transforming them.*/
       const fields = Object.entries(value).flatMap(([key, item]) => {
         if (!allowed.includes(key)) return [{ field: 'body', code: 'UNEXPECTED_FIELD' }];
         return typeof item === 'string' ? [] : [{ field: key, code: 'INVALID_FIELD' }];

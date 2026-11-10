@@ -54,15 +54,15 @@ const UUID_REGEX =
 export class GameService implements OnApplicationBootstrap, OnModuleDestroy
 {
     private readonly logger = new Logger(GameService.name);
-    /**
-   * HOT PATH STORAGE: Active matches currently being played in server RAM.
-   * Key: gameId, Value: GameSession.
-   */
+    /*
+    HOT PATH STORAGE: Active matches currently being played in server RAM.
+    Key: gameId, Value: GameSession.
+    */
     private readonly activeGames = new Map<string, GameSession>();
-    /**
-   * COLD PATH BUFFER: Verified moves awaiting asynchronous database persistence.
-   * Once persisted by the background worker, items are shifted (deleted) from this array.
-   */
+    /*
+    COLD PATH BUFFER: Verified moves awaiting asynchronous database persistence.
+    Once persisted by the background worker, items are shifted (deleted) from this array.
+    */
     private readonly pendingMovesQueue: PendingMoveRecord[] = [];
     private isFlushingQueue = false;
     // guards against two removeGame() calls for the same game
@@ -93,8 +93,8 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  // Tournament games are handled by TournamentRecoveryService, AI games get aborted,
-  // casual games are replayed from game_moves. Clock of the side to move restarts at boot.
+  /* Tournament games are handled by TournamentRecoveryService, AI games get aborted,
+  casual games are replayed from game_moves. Clock of the side to move restarts at boot.*/
   public async recoverInterruptedGames(): Promise<{ restored: number; aborted: number; concluded: number }> {
     const summary = { restored: 0, aborted: 0, concluded: 0 };
     if (!this.prisma) return summary;
@@ -351,7 +351,6 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     public getGameSession(gameId: string): GameSession | undefined {
       return this.activeGames.get(gameId);
     }
-    //INTEGRATION - EXPOSED API for @piomam21 (Online Gameplay #92 / Room & Reconnection #121)
     public getPublicGameState(gameId: string): PublicGameState {
     const session = this.activeGames.get(gameId);
     if (!session) {
