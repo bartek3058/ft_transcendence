@@ -25,3 +25,6 @@ uploads/*
 # 5. OS System Files
 .DS_Store
 Thumbs.db
+# Backup files
+*.bak
+*.bak.*
