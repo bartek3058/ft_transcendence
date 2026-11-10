@@ -1,3 +1,4 @@
+import "../styles/bootstrap-game-button.scss";
 import { ChessBoard } from "../components/chess/ChessBoard";
 import { GameSidebar } from "../components/chess/GameSidebar";
 import { MatchmakingLobby } from "../components/chess/MatchmakingLobby";
@@ -212,9 +213,11 @@ export function OnlineGame({
             <div className="resultIcon">♛</div>
             <h2>{chess.result.title}</h2>
             <p>{chess.result.message}</p>
-            <button className="primary resultButton" onClick={handleNewGame}>
-              {tournamentMode ? "Back to tournament" : "Play again"}
-            </button>
+            <div className="bootstrapGameButton">
+              <button className="btn btn-primary" onClick={handleNewGame}>
+                {tournamentMode ? "Back to tournament" : "Play again"}
+              </button>
+            </div>
           </div>
         </div>
       )}
