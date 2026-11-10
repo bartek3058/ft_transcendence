@@ -111,7 +111,7 @@ export class LlmService {
       if (error instanceof ServiceUnavailableException || error instanceof RetryableLlmError) {
         throw error;
       }
-      // A timeout/network blip is also transient, so let the caller retry it.
+      // A network blip is transient (retried below); a timeout is not.
       if ((error as Error).name === 'AbortError') {
         // A timeout already waited the full budget, so don't retry it - that
         // would just stack another full wait on something that's clearly stuck.
