@@ -14,6 +14,20 @@ import { SessionService } from '../auth/session.service';
 import { readSessionToken } from '../auth/session-cookie';
 import { GameService } from './game.service';
 
+interface GameChatMessage {
+  id: string;
+  gameId: string;
+  userId: string;
+  user: string;
+  text: string;
+  createdAt: number;
+}
+
+interface SendGameChatDto {
+  gameId?: string;
+  text?: string;
+}
+
 interface JoinGameRoomDto {
   gameId?: string;
 }
@@ -23,6 +37,9 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
   private clockTimer: NodeJS.Timeout | null = null;
   private lastClockBroadcast = 0;
   private readonly concludingGames = new Set<string>();
+  private readonly chatHistory = new Map<string, GameChatMessage[]>();
+  private readonly chatUsers = new Map<string, { white: string; black: string }>();
+  private readonly chatLastSent = new Map<string, Record<string, number>>();
   @WebSocketServer()
   server: Server;
 
@@ -37,6 +54,12 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
   }
 
   afterInit(): void {
+    this.game.onGameConcluded(({ gameId }) => {
+      this.chatHistory.delete(gameId);
+      this.chatUsers.delete(gameId);
+      this.chatLastSent.delete(gameId);
+    });
+
     // One timer per gateway, not one per game or connected client.
     this.clockTimer = setInterval(() => {
       const now = Date.now();
@@ -74,6 +97,11 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
       }
       await this.game.removeGame(gameId);
     } finally {
+      if (!this.game.hasActiveGame(gameId)) {
+        this.chatHistory.delete(gameId);
+        this.chatUsers.delete(gameId);
+        this.chatLastSent.delete(gameId);
+      }
       this.concludingGames.delete(gameId);
     }
   }
@@ -187,14 +215,131 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
 
     const players = await this.game.getGamePlayerDetails(gameId);
 
+    this.chatUsers.set(gameId, {
+      white: players.whiteUsername ?? 'White',
+      black: players.blackUsername ?? 'Black',
+    });
+
     client.emit('game:joined', {
       gameId,
       color: session.whitePlayerId === userId ? 'w' : 'b',
       state,
       ...players,
     });
+
   }
 
+
+  @SubscribeMessage('game:chat:get-history')
+  handleChatHistory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: JoinGameRoomDto,
+  ): void {
+    const userId: string | undefined = client.data.userId;
+    const gameId = typeof dto?.gameId === 'string'
+      ? dto.gameId.trim()
+      : '';
+
+    if (!userId || !gameId || !client.rooms.has(gameId)) {
+      return;
+    }
+
+    const session = this.game.getGameSession(gameId);
+
+    if (
+      !session ||
+      (session.whitePlayerId !== userId &&
+       session.blackPlayerId !== userId)
+    ) {
+      return;
+    }
+
+    client.emit('game:chat:history', {
+      gameId,
+      messages: this.chatHistory.get(gameId) ?? [],
+    });
+  }
+
+  @SubscribeMessage('game:chat:send')
+  handleChatMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: SendGameChatDto,
+  ): { success: boolean; code?: string } {
+    const userId: string | undefined = client.data.userId;
+
+    if (!userId) {
+      return { success: false, code: 'UNAUTHENTICATED' };
+    }
+
+    const gameId = typeof dto?.gameId === 'string'
+      ? dto.gameId.trim()
+      : '';
+
+    if (!gameId || !client.rooms.has(gameId)) {
+      return { success: false, code: 'NOT_IN_ROOM' };
+    }
+
+    const session = this.game.getGameSession(gameId);
+
+    if (
+      !session ||
+      session.isFinished ||
+      (session.whitePlayerId !== userId &&
+       session.blackPlayerId !== userId)
+    ) {
+      return { success: false, code: 'NOT_A_PLAYER' };
+    }
+
+    if (typeof dto?.text !== 'string') {
+      return { success: false, code: 'INVALID_MESSAGE' };
+    }
+
+    const text = dto.text.trim();
+
+    if (!text || text.length > 500) {
+      return { success: false, code: 'INVALID_MESSAGE' };
+    }
+
+    const now = Date.now();
+    const lastSent = this.chatLastSent.get(gameId)?.[userId] ?? 0;
+
+    if (now - lastSent < 500) {
+      return { success: false, code: 'RATE_LIMITED' };
+    }
+
+    const names = this.chatUsers.get(gameId);
+
+    const user = session.whitePlayerId === userId
+      ? names?.white ?? 'White'
+      : names?.black ?? 'Black';
+
+    const message: GameChatMessage = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      gameId,
+      userId,
+      user,
+      text,
+      createdAt: Date.now(),
+    };
+
+    const history = this.chatHistory.get(gameId) ?? [];
+    history.push(message);
+
+    if (history.length > 100) {
+      history.shift();
+    }
+
+    this.chatHistory.set(gameId, history);
+
+    this.chatLastSent.set(gameId, {
+      ...(this.chatLastSent.get(gameId) ?? {}),
+      [userId]: now,
+    });
+
+    this.server.to(gameId).emit('game:chat:message', message);
+
+    return { success: true };
+  }
 
   @SubscribeMessage('game:move')
   handleMove(
