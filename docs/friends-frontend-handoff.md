@@ -70,6 +70,8 @@ Frontend can render initials until avatar support is implemented.
 | DELETE `/api/friends/requests/:id` | `{}` | 204, empty body |
 | DELETE `/api/friends/:friendUserId` | `{}` | 204, empty body |
 
+> **Update 2026-11-10:** search `q` is trimmed but no longer lowercased, and the prefix match ignores case (`q` may use `A-Z`). See [account-settings.md](account-settings.md).
+
 `GET /api/users/:id` is a minimal authenticated public profile. It is distinct from
 `GET /api/profile/me`, which returns private own-account information and statistics.
 Search/public profile deliberately omit presence; only accepted friends see it.

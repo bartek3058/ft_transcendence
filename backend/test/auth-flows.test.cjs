@@ -24,7 +24,7 @@ test('register → login → me → logout, with safe responses and hashed sessi
   const { user } = await registration.json();
   assert.deepEqual(Object.keys(user).sort(), ['createdAt', 'email', 'id', 'username']);
   assert.equal(user.email, 'alice@example.com');
-  assert.equal(user.username, 'chess_fan');
+  assert.equal(user.username, 'Chess_Fan');
   assert.match(h.repository.accounts.get(user.id).passwordHash, /^\$argon2id\$/);
   assert.equal((await h.request('me')).status, 401);
   const response = await login(h);

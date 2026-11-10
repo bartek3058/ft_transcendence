@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Account, AuthRepository, NewAccount, NewSession, StoredSession } from './auth.repository';
+import { Account, AuthRepository, NewAccount, NewSession, SafeAccount, StoredSession } from './auth.repository';
 
 @Injectable()
 export class UnavailableAuthRepository extends AuthRepository {
@@ -11,6 +11,11 @@ export class UnavailableAuthRepository extends AuthRepository {
 
   async createAccount(_account: NewAccount): Promise<Account> { return this.unavailable(); }
   async findAccountByEmail(_email: string): Promise<Account | null> { return this.unavailable(); }
+  async findAccountById(_id: string): Promise<Account | null> { return this.unavailable(); }
+  async updateUsername(_id: string, _username: string): Promise<SafeAccount | null> { return this.unavailable(); }
+  async changePassword(_userId: string, _expected: string, _hash: string, _session: NewSession): Promise<string[] | null> {
+    return this.unavailable();
+  }
   async replaceSession(_previous: string | null, _session: NewSession): Promise<void> { return this.unavailable(); }
   async findSession(_tokenHash: string): Promise<StoredSession | null> { return this.unavailable(); }
   async deleteSession(_tokenHash: string): Promise<void> { return this.unavailable(); }

@@ -28,7 +28,17 @@ export abstract class AuthRepository {
   abstract readonly configured: boolean;
   abstract createAccount(account: NewAccount): Promise<Account>;
   abstract findAccountByEmail(email: string): Promise<Account | null>;
-  // Delete previousTokenHash (if present) + insert in ONE DB transaction.
+  abstract findAccountById(id: string): Promise<Account | null>;
+  /** null when the account is gone; throws AccountConflictError when the name is taken. */
+  abstract updateUsername(id: string, username: string): Promise<SafeAccount | null>;
+  /**
+   * In ONE transaction: swap the hash only if it is still `expectedHash`, drop every session
+   * of the user and insert `session`. Returns the dropped token hashes, or null when the hash
+   * changed in the meantime (nothing is written then).
+   */
+  abstract changePassword(userId: string, expectedHash: string, passwordHash: string,
+    session: NewSession): Promise<string[] | null>;
+  /** Delete previousTokenHash (if present) + insert in ONE DB transaction. */
   abstract replaceSession(previousTokenHash: string | null, session: NewSession): Promise<void>;
   abstract findSession(tokenHash: string): Promise<StoredSession | null>;
   // Idempotent; a persistence failure must still reject.
