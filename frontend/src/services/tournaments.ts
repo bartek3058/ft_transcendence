@@ -161,3 +161,76 @@ export function checkInTournamentMatch(
     },
   );
 }
+
+
+export interface TournamentInvitation {
+  id: string;
+  tournament: {
+    id: string;
+    title: string;
+    status: TournamentStatus;
+    maxParticipants: number;
+    currentParticipants: number;
+    registrationDeadline: string;
+  };
+  sender: TournamentUser;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface TournamentInvitationsPage {
+  items: TournamentInvitation[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TournamentInvitationCreated {
+  invitationId: string;
+  tournamentId: string;
+  recipientId: string;
+  status: "PENDING";
+  expiresAt: string;
+}
+
+export interface TournamentInvitationAnswer {
+  invitationId: string;
+  tournamentId: string;
+  status: "PENDING" | "ACCEPTED" | "DECLINED" | "EXPIRED";
+  currentParticipants?: number;
+}
+
+export function listMyTournamentInvitations(offset = 0, limit = 50) {
+  const params = new URLSearchParams({
+    offset: String(offset),
+    limit: String(limit),
+  });
+  return api<TournamentInvitationsPage>(
+    `/tournaments/invitations/me?${params.toString()}`
+  );
+}
+
+export function inviteToTournament(tournamentId: string, recipientId: string) {
+  return api<TournamentInvitationCreated>(
+    `/tournaments/${encodeURIComponent(tournamentId)}/invitations`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Protection": "1" },
+      body: JSON.stringify({ recipientId }),
+    }
+  );
+}
+
+export function respondToTournamentInvitation(
+  invitationId: string,
+  response: "ACCEPT" | "DECLINE"
+) {
+  return api<TournamentInvitationAnswer>(
+    `/tournaments/invitations/${encodeURIComponent(invitationId)}/respond`,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Protection": "1" },
+      body: JSON.stringify({ response }),
+    }
+  );
+}

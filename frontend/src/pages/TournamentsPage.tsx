@@ -4,6 +4,8 @@ import { Clock, Trophy, Users } from "lucide-react";
 import { Page } from "../components/ui/Page";
 import { CreateTournamentForm } from "../components/tournaments/CreateTournamentForm";
 import { listTournaments, type TournamentPage, type TournamentTab } from "../services/tournaments";
+import { TournamentInvitations } from "../components/tournaments/TournamentInvitations";
+import { TournamentInviteFriends } from "../components/tournaments/TournamentInviteFriends";
 import "./tournaments.css";
 
 const tabs: { id: TournamentTab; label: string }[] = [
@@ -36,6 +38,7 @@ export function TournamentsPage() {
 
   return (
     <Page title="Tournaments" sub="Join the competition and climb the leaderboard">
+      <TournamentInvitations />
       <div className="tournament-toolbar">
         <div className="tournament-tabs" role="group" aria-label="Tournament status">
           {tabs.map((item) => (
@@ -71,6 +74,9 @@ export function TournamentsPage() {
               <p><Users size={15} /> {tournament.currentParticipants}/{tournament.maxParticipants} players</p>
               <p><Clock size={15} /> {formatDate(tournament.registrationDeadline)}</p>
               <p>Created by {tournament.creator.username}</p>
+              {tournament.status === "OPEN_FOR_SIGNUP" && (
+                <TournamentInviteFriends tournamentId={tournament.id} />
+              )}
               <Link className="primary tournament-details-link" to={`/tournaments/${tournament.id}`}>
                 View details
               </Link>

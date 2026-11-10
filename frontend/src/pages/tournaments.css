@@ -1314,3 +1314,113 @@
     height: 55px;
   }
 }
+
+
+.tournament-invitations-panel {
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.tournament-invitations-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.tournament-invitations-heading h2 {
+  margin: 0 0 6px;
+}
+
+.tournament-invitations-heading p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.tournament-invitations-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tournament-invitation-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+
+.tournament-invitation-card h3 {
+  margin: 0 0 8px;
+}
+
+.tournament-invitation-card p {
+  margin: 4px 0;
+}
+
+.tournament-invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.tournament-invite-friends {
+  margin: 12px 0;
+}
+
+.tournament-invite-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+
+.tournament-invite-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #14251e;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 640px) {
+  .tournament-invitation-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tournament-invitation-actions {
+    justify-content: flex-start;
+  }
+}
+
+.tournament-invitation-actions > a,
+.tournament-invitation-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 18px;
+  margin: 0;
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  border-radius: 10px;
+}
+
+.tournament-invitation-actions > button.primary {
+  font-weight: 700;
+}
