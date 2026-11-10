@@ -59,6 +59,7 @@ export function GamePage() {
       key={matchmaking.game.gameId}
       joined={matchmaking.game}
       username={user?.username ?? "Player"}
+      userId={user?.id ?? ""}
       onNewGame={matchmaking.search}
       restoring={matchmaking.status === "restoring"}
     />
@@ -68,18 +69,20 @@ export function GamePage() {
 export function OnlineGame({
   joined,
   username,
+  userId,
   onNewGame,
   restoring,
   tournamentMode = false,
 }: {
   joined: GameJoined;
   username: string;
+  userId?: string;
   onNewGame: () => void;
   restoring: boolean;
   tournamentMode?: boolean;
 }) {
   const chess = useChessGame(joined, restoring);
-  const chat = useChat();
+  const chat = useChat(joined.gameId, userId ?? "");
 
   const handleResign = async () => {
     if (restoring || chess.isFinished || chess.waiting) return;
