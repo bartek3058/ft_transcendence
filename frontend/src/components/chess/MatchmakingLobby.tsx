@@ -1,5 +1,12 @@
 interface MatchmakingLobbyProps {
-  status: "idle" | "restoring" | "connecting" | "queued" | "matched" | "error";
+  status:
+    | "idle"
+    | "restoring"
+    | "connecting"
+    | "queued"
+    | "matched"
+    | "finished"
+    | "error";
   gameId: string | null;
   error: string | null;
   onSearch: () => void;

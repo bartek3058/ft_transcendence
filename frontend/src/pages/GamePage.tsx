@@ -64,16 +64,18 @@ export function GamePage() {
   );
 }
 
-function OnlineGame({
+export function OnlineGame({
   joined,
   username,
   onNewGame,
   restoring,
+  tournamentMode = false,
 }: {
   joined: GameJoined;
   username: string;
   onNewGame: () => void;
   restoring: boolean;
+  tournamentMode?: boolean;
 }) {
   const chess = useChessGame(joined, restoring);
   const chat = useChat();
@@ -85,6 +87,11 @@ function OnlineGame({
   };
 
   const handleNewGame = async () => {
+    if (tournamentMode) {
+      onNewGame();
+      return;
+    }
+
     if (restoring || chess.waiting) return;
     if (!chess.isFinished) {
       if (
@@ -152,6 +159,9 @@ function OnlineGame({
         </section>
 
         <GameSidebar
+          newGameLabel={
+            tournamentMode ? "Back to tournament" : "New game"
+          }
           gameId={joined.gameId}
           moves={chess.moves}
           onNewGame={handleNewGame}
@@ -181,7 +191,7 @@ function OnlineGame({
             <h2>{chess.result.title}</h2>
             <p>{chess.result.message}</p>
             <button className="primary resultButton" onClick={handleNewGame}>
-              Play again
+              {tournamentMode ? "Back to tournament" : "Play again"}
             </button>
           </div>
         </div>
