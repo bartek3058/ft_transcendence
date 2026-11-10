@@ -106,11 +106,21 @@ export function OnlineGame({
     onNewGame();
   };
   const turn = chess.game.turn();
-  const myColor = joined.color === "w" ? "White" : "Black";
   const opponentColor = joined.color === "w" ? "b" : "w";
   const opponentTime =
     opponentColor === "w" ? chess.whiteTime : chess.blackTime;
   const myTime = joined.color === "w" ? chess.whiteTime : chess.blackTime;
+
+  const opponentName =
+    (opponentColor === "w"
+      ? joined.whiteUsername
+      : joined.blackUsername) || "Opponent";
+
+  const opponentRating =
+    opponentColor === "w" ? joined.whiteRating : joined.blackRating;
+
+  const myRating =
+    joined.color === "w" ? joined.whiteRating : joined.blackRating;
 
   return (
     <>
@@ -122,10 +132,17 @@ export function OnlineGame({
       <div className="gameLayout">
         <section>
           <div className="player">
-            <div className="avatar">O</div>
+            <div className="avatar">
+              {opponentName[0].toUpperCase()}
+            </div>
             <div>
-              <b>Opponent</b>
-              <small>Connected</small>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <b>{opponentName}</b>
+                {opponentRating != null && (
+                  <span className="playerElo">{opponentRating} ELO</span>
+                )}
+              </div>
+              
             </div>
             <div
               className={`clock ${turn === opponentColor && !chess.result ? "activeClock" : ""}`}
@@ -147,8 +164,13 @@ export function OnlineGame({
               {(username[0] ?? "P").toUpperCase()}
             </div>
             <div>
-              <b>{username}</b>
-              <small>Playing as: {myColor}</small>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <b>{username}</b>
+                {myRating != null && (
+                  <span className="playerElo">{myRating} ELO</span>
+                )}
+              </div>
+              
             </div>
             <div
               className={`clock mine ${turn === joined.color && !chess.result ? "activeClock" : ""}`}
