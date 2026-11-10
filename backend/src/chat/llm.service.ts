@@ -113,8 +113,10 @@ export class LlmService {
       }
       // A timeout/network blip is also transient, so let the caller retry it.
       if ((error as Error).name === 'AbortError') {
+        // A timeout already waited the full budget, so don't retry it - that
+        // would just stack another full wait on something that's clearly stuck.
         this.logger.error(`LLM request timed out after ${this.timeoutMs}ms.`);
-        throw new RetryableLlmError('timeout');
+        throw new ServiceUnavailableException('The AI chat service timed out.');
       }
       this.logger.error(`LLM request error: ${(error as Error).message}`);
       throw new RetryableLlmError(`network: ${(error as Error).message}`);
@@ -142,9 +144,7 @@ class RetryableLlmError extends Error {
   }
 
   asServiceUnavailable(): ServiceUnavailableException {
-    return this.reason === 'timeout'
-      ? new ServiceUnavailableException('The AI chat service timed out.')
-      : new ServiceUnavailableException('The AI chat service is temporarily unavailable.');
+    return new ServiceUnavailableException('The AI chat service is temporarily unavailable.');
   }
 }
 
