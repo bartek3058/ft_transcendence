@@ -80,6 +80,8 @@ export function AiGamePage() {
           modes={CHAT_MODES}
           onModeChange={(m) => chat.setMode(m as ChatMode)}
           sending={chat.sending}
+          retry={chat.retry}
+          retryableId={chat.retryableId}
         />
       </div>
 

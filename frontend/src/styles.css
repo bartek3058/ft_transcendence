@@ -1576,6 +1576,32 @@ header nav a.active {
   opacity: 0.85;
 }
 
+/* A chat reply that failed to come back, with its retry affordance. */
+.errorMsg span {
+  background: #3a2626;
+  color: #e7b4b4;
+}
+.msgRetry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 9px;
+  font-size: 12px;
+  background: transparent;
+  color: #e0a86a;
+  border: 1px solid #5a4b32;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.msgRetry:hover:not(:disabled) {
+  background: #2a241a;
+}
+.msgRetry:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .sq.dragOver {
   outline: 3px solid rgba(143, 196, 95, 0.8);
   outline-offset: -3px;

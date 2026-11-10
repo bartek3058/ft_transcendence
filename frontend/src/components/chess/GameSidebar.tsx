@@ -19,12 +19,16 @@ type Props = {
   onNewGame: () => void;
   newGameLabel?: string;
   onResign: () => void;
-  // Optional AI-chat controls. When onModeChange is given, a persona selector is
-  // shown above the chat; `sending` disables input while the AI is replying.
+  /* Optional AI-chat controls. When onModeChange is given, a persona selector is
+  shown above the chat; 'sending' disables input while the AI is replying.*/
   mode?: string;
   modes?: { value: string; label: string }[];
   onModeChange?: (mode: string) => void;
   sending?: boolean;
+  /* Retry for a failed AI reply: 'retryableId' marks the error bubble that
+  should show the button, 'retry' resends that request.*/
+  retry?: () => void;
+  retryableId?: string | null;
 };
 
 export function GameSidebar({
@@ -41,6 +45,8 @@ export function GameSidebar({
   modes,
   onModeChange,
   sending = false,
+  retry,
+  retryableId = null,
 }: Props) {
   const chatBodyRef = useRef<HTMLDivElement>(null);
 
@@ -103,7 +109,10 @@ export function GameSidebar({
           {messages.map((m) => (
             <div
               key={m.id}
-              className={m.user === "You" || m.user === "Ty" ? "msg mineMsg" : "msg"}
+              className={
+                (m.user === "You" || m.user === "Ty" ? "msg mineMsg" : "msg") +
+                (m.error ? " errorMsg" : "")
+              }
             >
               <b>{m.user}</b>
               <span>{m.text}</span>
@@ -111,6 +120,16 @@ export function GameSidebar({
                 <span className="msgMood" title={`sentiment: ${m.sentiment}`}>
                   {m.sentiment === "positive" ? "🙂" : m.sentiment === "negative" ? "🙁" : "😐"}
                 </span>
+              )}
+              {retry && m.id === retryableId && (
+                <button
+                  className="msgRetry"
+                  onClick={retry}
+                  disabled={sending}
+                  title="Try sending that message again"
+                >
+                  <RotateCcw size={13} /> {sending ? "Retrying…" : "Retry"}
+                </button>
               )}
             </div>
           ))}
