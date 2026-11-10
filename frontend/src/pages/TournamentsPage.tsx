@@ -6,7 +6,7 @@ import { CreateTournamentForm } from "../components/tournaments/CreateTournament
 import { listTournaments, type TournamentPage, type TournamentTab } from "../services/tournaments";
 import { TournamentInvitations } from "../components/tournaments/TournamentInvitations";
 import { TournamentInviteFriends } from "../components/tournaments/TournamentInviteFriends";
-import "./tournaments.css";
+
 
 const tabs: { id: TournamentTab; label: string }[] = [
   { id: "open", label: "Open" }, { id: "live", label: "Live" }, { id: "past", label: "Past" },

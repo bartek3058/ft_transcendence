@@ -1,0 +1,217 @@
+@media (min-width: 851px) {
+  .gameLayout {
+    --game-board-size: min(680px, calc(100vh - 330px), calc(100vw - 460px));
+    width: min(1120px, calc(100vw - 32px));
+    max-width: none;
+    grid-template-columns: minmax(0, var(--game-board-size)) minmax(
+        280px,
+        340px
+      );
+    justify-content: center;
+    align-items: start;
+    margin: 18px auto;
+    padding: 0 16px;
+  }
+  .gameLayout > section {
+    width: var(--game-board-size);
+    min-width: 0;
+  }
+  .woodBoardFrame {
+    width: var(--game-board-size);
+    max-width: 100%;
+  }
+  .gameLayout aside {
+    padding-top: 62px;
+  }
+}
+
+@media (min-width: 851px) and (max-height: 800px) {
+  .gameLayout {
+    --game-board-size: min(620px, calc(100vh - 285px), calc(100vw - 440px));
+    margin: 10px auto;
+  }
+  .player {
+    height: 52px;
+  }
+  .gameLayout aside {
+    padding-top: 52px;
+    gap: 12px;
+  }
+  .moves {
+    min-height: 210px;
+  }
+  .moveList {
+    max-height: 210px;
+  }
+  .chat {
+    height: 270px;
+  }
+  .actions {
+    margin-top: 6px;
+  }
+}
+
+@media (min-width: 851px) {
+  header {
+    height: 56px;
+    padding-left: 4vw;
+    padding-right: 4vw;
+    gap: 34px;
+  }
+  header .brand {
+    font-size: 19px;
+  }
+  header .brand span {
+    font-size: 27px;
+  }
+  header nav a {
+    padding: 8px 12px;
+  }
+
+  .gameLayout {
+    --game-board-size: min(760px, calc(100dvh - 215px), calc(100vw - 430px));
+    width: min(1200px, calc(100vw - 24px));
+    grid-template-columns: minmax(0, var(--game-board-size)) minmax(
+        300px,
+        330px
+      );
+    gap: 24px;
+    margin: 8px auto;
+    padding: 0 12px;
+  }
+  .gameLayout .player {
+    height: 48px;
+  }
+  .gameLayout .avatar {
+    width: 38px;
+    height: 38px;
+  }
+  .gameLayout .clock {
+    padding: 8px 14px;
+    font-size: 19px;
+  }
+  .gameLayout aside {
+    padding-top: 48px;
+    gap: 12px;
+  }
+  .gameLayout .actions {
+    margin-top: 5px;
+  }
+  .gameLayout .actions button {
+    padding: 7px 12px;
+  }
+
+  .gameLayout .moves {
+    min-height: 220px;
+  }
+  .gameLayout .moveList {
+    max-height: 220px;
+  }
+  .gameLayout .chat {
+    height: 300px;
+  }
+}
+
+@media (min-width: 851px) and (max-height: 800px) {
+  .gameLayout {
+    --game-board-size: min(700px, calc(100dvh - 205px), calc(100vw - 420px));
+    margin: 6px auto;
+  }
+  .gameLayout .player {
+    height: 45px;
+  }
+  .gameLayout aside {
+    padding-top: 45px;
+    gap: 10px;
+  }
+  .gameLayout .moves {
+    min-height: 190px;
+  }
+  .gameLayout .moveList {
+    max-height: 190px;
+  }
+  .gameLayout .chat {
+    height: 250px;
+  }
+}
+
+.sidebarActions {
+  margin-top: 0;
+  display: flex;
+  gap: 10px;
+}
+.sidebarActions button {
+  flex: 1;
+  justify-content: center;
+}
+@media (min-width: 851px) {
+  .gameLayout {
+    --game-board-size: min(790px, calc(100dvh - 170px), calc(100vw - 430px));
+  }
+}
+@media (min-width: 851px) and (max-height: 800px) {
+  .gameLayout {
+    --game-board-size: min(730px, calc(100dvh - 160px), calc(100vw - 420px));
+  }
+}
+
+@media (min-width: 851px) {
+  .gameLayout aside {
+    height: calc(var(--game-board-size) + 96px);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .gameLayout .moves {
+    flex: 1 1 42%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .gameLayout .moveList {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+  .gameLayout .chat {
+    flex: 1 1 58%;
+    height: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .gameLayout .chatBody {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+  .gameLayout .cardTitle,
+  .gameLayout .chatInput,
+  .gameLayout .sidebarActions {
+    flex-shrink: 0;
+  }
+}
+
+@media (min-width: 851px) and (max-height: 800px) {
+  .gameLayout aside {
+    height: calc(var(--game-board-size) + 90px);
+  }
+}
+
+@media (max-width: 850px) {
+  .gameLayout aside {
+    height: auto;
+    overflow: visible;
+  }
+  .gameLayout .moves {
+    min-height: 210px;
+  }
+  .gameLayout .moveList {
+    max-height: 210px;
+  }
+  .gameLayout .chat {
+    height: 270px;
+    min-height: 270px;
+  }
+}
+
