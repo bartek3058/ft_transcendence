@@ -12,6 +12,7 @@ import {
   checkInTournamentMatch,
   type TournamentDetail,
 } from "../services/tournaments";
+import { TournamentPodium } from "../components/tournaments/TournamentPodium";
 import "./tournaments.css";
 
 const statusLabels: Record<string, string> = {
@@ -597,6 +598,10 @@ export function TournamentDetailsPage() {
               </div>
             </section>
           )}
+
+        {tournament.status === "FINISHED" && (
+          <TournamentPodium participants={tournament.participants} />
+        )}
 
         {/* PARTICIPANTS */}
 

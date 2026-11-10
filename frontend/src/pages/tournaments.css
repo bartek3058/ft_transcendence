@@ -1124,3 +1124,193 @@
     min-width: 260px;
   }
 }
+
+
+.tournament-podium-section {
+  margin-top: 32px;
+}
+
+.tournament-podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 20px;
+  padding: 30px 20px 0;
+  border: 1px solid rgba(157, 208, 153, 0.18);
+  border-radius: 18px;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(157, 208, 153, 0.09),
+      transparent 65%
+    ),
+    #151d18;
+}
+
+.tournament-podium-place {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  max-width: 260px;
+  min-width: 0;
+  text-align: center;
+}
+
+.tournament-podium-medal {
+  font-size: 42px;
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+
+.tournament-podium-rank {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+  color: #a8c9a1;
+}
+
+.tournament-podium-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(157, 208, 153, 0.3);
+  background: #2a4232;
+  color: #c2e8b4;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.tournament-podium-name {
+  color: #f1f6ee;
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+
+.tournament-podium-description {
+  color: #95ac98;
+  font-size: 12px;
+  margin-top: 6px;
+  margin-bottom: 20px;
+}
+
+.tournament-podium-base {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  font-size: 44px;
+  font-weight: 900;
+  border-radius: 12px 12px 0 0;
+}
+
+.tournament-podium-gold .tournament-podium-base {
+  height: 145px;
+  color: #f6db86;
+  background: linear-gradient(
+    180deg,
+    rgba(202, 162, 66, 0.35),
+    rgba(111, 83, 31, 0.3)
+  );
+  border: 1px solid rgba(220, 184, 89, 0.4);
+  border-bottom: 0;
+}
+
+.tournament-podium-silver .tournament-podium-base {
+  height: 105px;
+  color: #d2dce0;
+  background: linear-gradient(
+    180deg,
+    rgba(155, 169, 174, 0.3),
+    rgba(80, 98, 103, 0.2)
+  );
+  border: 1px solid rgba(176, 191, 195, 0.3);
+  border-bottom: 0;
+}
+
+.tournament-podium-bronze .tournament-podium-base {
+  height: 75px;
+  color: #e2aa7e;
+  background: linear-gradient(
+    180deg,
+    rgba(174, 112, 69, 0.3),
+    rgba(101, 61, 39, 0.2)
+  );
+  border: 1px solid rgba(191, 130, 89, 0.3);
+  border-bottom: 0;
+}
+
+.tournament-podium-bronze-players {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.tournament-podium-bronze-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tournament-podium-bronze-player .tournament-podium-avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+}
+
+.tournament-podium-bronze-player .tournament-podium-name {
+  font-size: 14px;
+}
+
+@media (max-width: 700px) {
+  .tournament-podium {
+    gap: 8px;
+    padding: 20px 8px 0;
+  }
+
+  .tournament-podium-medal {
+    font-size: 30px;
+  }
+
+  .tournament-podium-rank {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+
+  .tournament-podium-avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .tournament-podium-name {
+    font-size: 13px;
+  }
+
+  .tournament-podium-description {
+    font-size: 10px;
+  }
+
+  .tournament-podium-base {
+    font-size: 30px;
+  }
+
+  .tournament-podium-gold .tournament-podium-base {
+    height: 100px;
+  }
+
+  .tournament-podium-silver .tournament-podium-base {
+    height: 75px;
+  }
+
+  .tournament-podium-bronze .tournament-podium-base {
+    height: 55px;
+  }
+}
