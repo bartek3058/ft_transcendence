@@ -113,6 +113,8 @@ Four data modules (full contract in [docs/database-setup.md](docs/database-setup
 
 The DB roles are split: an owner role runs migrations and seeding, while the app connects with a restricted role that can only do CRUD.
 
+Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): [docs/database-schema.md](docs/database-schema.md).
+
 ---
 
 # Features List
