@@ -1,8 +1,6 @@
-// Integration test: GameService cold-path persistence against a REAL PostgreSQL.
-// In-memory fakes cannot prove FK / UNIQUE / CHECK / UUID behaviour (project rule:
-// "No Mock Blindness"), so this runs the real GameService with the real PrismaService.
-//
-// Usage: TEST_DATABASE_URL=postgresql://chess_app:...@host/xxx_test npm run test:game-moves:db
+/* Integration test: GameService cold-path persistence against a REAL PostgreSQL.
+Usage: TEST_DATABASE_URL=postgresql://chess_app:...@host/xxx_test npm run test:game-moves:db
+*/
 require('reflect-metadata');
 require('ts-node').register({ project: 'tsconfig.tools.json' });
 const { requireTestDatabaseUrl } = require('../test-database-url.ts');

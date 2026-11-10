@@ -1,5 +1,6 @@
-// Wspólny helper dla przyszłych endpointów REST. W Docker/Nginx frontend i API
-// działają pod tym samym originem, więc używamy względnego /api.
+/* Shared helper for upcoming REST endpoints. Under Docker/Nginx the frontend
+and API sit on the same origin, so we just use a relative /api.
+*/
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     credentials: "same-origin",

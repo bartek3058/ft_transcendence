@@ -1,6 +1,6 @@
-// Same as backend/src/tournament/types/tournament.types.ts but dates are ISO strings.
-// Keep both in sync. "Dto" names avoid a clash with the mock Tournament type in ./index.ts.
-
+/* Same as backend/src/tournament/types/tournament.types.ts but dates are ISO strings.
+"Dto" names avoid a clash with the mock Tournament type.
+*/
 export const VALID_TOURNAMENT_SIZES = [2, 4, 8, 16, 32] as const;
 export type TournamentSize = (typeof VALID_TOURNAMENT_SIZES)[number];
 

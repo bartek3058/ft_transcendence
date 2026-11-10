@@ -23,7 +23,7 @@ export async function getLeaderboard(limit = 20, offset = 0): Promise<Leaderboar
     try {
       message = (await response.json())?.error?.message ?? message;
     } catch {
-      /* non-json */
+      // non-json
     }
     throw new Error(message);
   }

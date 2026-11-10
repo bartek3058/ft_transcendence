@@ -183,15 +183,15 @@ export function useAiGame() {
       const next = new Chess(game.fen());
       const move = next.move({ from, to, ...(promotion ? { promotion } : {}) });
       if (!move) return;
-      // Optimistic: show our own move immediately; the server reply reconciles
-      // the board (and adds the bot's answer) a moment later.
+      /* Optimistic: show our own move immediately; the server reply reconciles
+      the board (and adds the bot's answer) a moment later.*/
       setGame(next);
       setSelected(null);
       setHint(null);
       setThinking(true);
       getAiGameSocket().emit("ai:move", { gameId: id, from, to, promotion });
     } catch {
-      /* illegal move - ignore */
+      // illegal move - ignore
     }
   }
 
@@ -225,8 +225,6 @@ export function useAiGame() {
     submitMove(selected, square);
   }
 
-  // Drag-and-drop entry point: given a from/to, behaves like a click-move
-  // (turn/ownership checks + promotion dialog), then submits.
   function movePiece(from: Square, to: Square) {
     if (status !== "playing" || thinking || pendingPromotion || result) return;
     if (game.turn() !== humanColor) return;
@@ -273,7 +271,7 @@ export function useAiGame() {
   }, []);
 
   const leave = useCallback(() => {
-    // Tell the server to abandon the game so it isn't left orphaned in RAM / DB.
+    // Tell the server to abandon the game so it isn't left orphaned in RAM/DB.
     const id = gameIdRef.current;
     if (id) getAiGameSocket().emit("ai:leave", { gameId: id });
     pendingStartRef.current = null;
