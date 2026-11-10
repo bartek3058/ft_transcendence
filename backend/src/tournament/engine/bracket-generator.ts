@@ -21,8 +21,8 @@ export function getBracketSize(playerCount: number): number {
   return Math.min(Math.max(power, 2), 32);
 }
 
-// Rating desc, then earlier sign-up, then userId. Total order, so the result
-// doesn't depend on input order or locale.
+/* Rating desc, then earlier sign-up, then userId. Total order, so the result
+doesn't depend on input order or locale. */
 export function seedParticipants(
   participants: ParticipantToSeed[],
 ): SeededParticipant[] {

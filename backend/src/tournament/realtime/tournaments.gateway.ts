@@ -37,8 +37,8 @@ interface Connection {
   rooms: Set<string>;
 }
 
-// Live tournament updates (#168). Server -> client only, after a reconnect the client
-// reloads over REST.
+/* Live tournament updates (#168). Server -> client only, after a reconnect the client
+reloads over REST. */
 @WebSocketGateway({ namespace: '/tournaments' })
 export class TournamentsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
   private readonly logger = new Logger(TournamentsGateway.name);

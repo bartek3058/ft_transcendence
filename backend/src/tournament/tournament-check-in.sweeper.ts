@@ -27,8 +27,8 @@ type LockedMatch = {
   player2_checked_in_at: Date | null;
 }[];
 
-// Resolves matches past their check-in deadline (#161): one player in = walkover, nobody = double
-// forfeit. An error after the row lock means bad data, nobody gets forfeited because of it.
+/* Resolves matches past their check-in deadline (#161): one player in = walkover, nobody = double
+forfeit. An error after the row lock means bad data, nobody gets forfeited because of it.*/
 @Injectable()
 export class TournamentCheckInSweeper implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TournamentCheckInSweeper.name);
