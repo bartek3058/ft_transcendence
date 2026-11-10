@@ -7,8 +7,8 @@ import { GameService } from '../src/game/game.service';
 import { AI_BOT_USER_ID } from '../src/ai/ai.constants';
 import { SERVER_RESTART_REASON } from '../src/game/types/chess.types';
 
-// Unit tests for GameService.recoverInterruptedGames (#76): startup recovery of games
-// whose in-memory session was lost by a backend restart. Control flow only.
+/* Unit tests for GameService.recoverInterruptedGames (#76): startup recovery of games
+whose in-memory session was lost by a backend restart. Control flow only. */
 
 const WHITE = randomUUID();
 const BLACK = randomUUID();

@@ -30,9 +30,6 @@ describe('PostgreSQL Database & Security Verification', () => {
     }
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 1: Schema Integrity & Core Relations
-   * ------------------------------------------------------------------------- */
   describe('Suite 1: Schema Integrity & Core Relations', () => {
     it('should retrieve its own user fixture without requiring an admin seed', async () => {
       const fixture = await prisma.user.findFirst({
@@ -194,9 +191,6 @@ describe('PostgreSQL Database & Security Verification', () => {
     });
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 2: SQL Check Constraints & Data Integrity Defense
-   * ------------------------------------------------------------------------- */
   describe('Suite 2: SQL Check Constraints & Data Integrity Defense', () => {
     it('should reject non-canonical uppercase email (SQL check constraint)', async () => {
       await assert.rejects(
@@ -382,9 +376,6 @@ describe('PostgreSQL Database & Security Verification', () => {
     });
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 3: Defensive Security & Vulnerability Hardening
-   * ------------------------------------------------------------------------- */
   describe('Suite 3: Defensive Security & Vulnerability Hardening', () => {
     it('should safely escape SQL injection payloads in user queries (Parameterization check)', async () => {
       const sqliPayload = "' OR '1'='1' --";

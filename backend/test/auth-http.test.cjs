@@ -8,8 +8,8 @@ const { RegisterDto } = require('../dist/auth/dto/register.dto');
 const { HealthModule } = require('../dist/health/health.module');
 const { AUTH_CONFIG, loadAuthConfig } = require('../dist/auth/auth.config');
 
-// Test-only route: exercises the real Express parser and global validation pipe.
-// It is never registered in the production application.
+/* Test-only route: exercises the real Express parser and global validation pipe.
+It is never registered in the production application. */
 class InputProbe {
   register(dto) { return { email: dto.email, username: dto.username }; }
 }

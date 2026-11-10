@@ -6,15 +6,14 @@ import { GameService } from '../src/game/game.service';
 import { RatingService } from '../src/rating/rating.service';
 import { AI_BOT_USER_ID, AI_BOT_DISPLAY_RATING, AI_BOT_ROLE } from '../src/ai/ai.constants';
 
-// Play the bot's moves instantly here: the human-like pause is pure timing and is
-// tested on its own below, so the move tests shouldn't sit through real sleeps.
+/* Play the bot's moves instantly here: the human-like pause is pure timing and is
+tested on its own below, so the move tests shouldn't sit through real sleeps.
+*/
 process.env.AI_BOT_MOVE_DELAY = 'off';
 
 const STARTPOS = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-// Fake Prisma for the AI game service: a stub bot row for the seed check, a spy
-// on game.create, and a no-op game_moves sink (executeMove queues moves for
-// persistence). `botMove` is the UCI move the stubbed engine will always reply.
+// 'botMove' is the UCI move the stubbed engine will always reply.
 function makeAiGameService(botMove = 'e7e5', stockfishOverride?: any) {
   const created: any[] = [];
   const prisma = {

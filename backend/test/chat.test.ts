@@ -6,9 +6,6 @@ import { SentimentService } from '../src/chat/sentiment.service';
 import { ModerationService } from '../src/chat/moderation.service';
 import type { LlmMessage } from '../src/chat/chat.types';
 
-// Fake LLM. `completeImpl` lets a test control what each call returns (the first
-// call is moderation, the second is the chat reply). Default: a plain reply,
-// which moderation treats as "not JSON" -> allow.
 function makeService(completeImpl?: (messages: LlmMessage[]) => string) {
   const calls: LlmMessage[][] = [];
   const llm = {
@@ -122,7 +119,7 @@ describe('SentimentService (lexicon)', () => {
   });
 
   it('lets an intensifier push a weak signal across the threshold', () => {
-    // A lone "ok"-ish token is neutral; "very bad" should read clearly negative.
+    // "ok-related" token is neutral; "very bad" should read clearly negative.
     assert.equal(s.analyze('very bad').label, 'negative');
     assert.ok(s.analyze('very good').score >= s.analyze('good').score);
   });

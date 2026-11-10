@@ -11,9 +11,9 @@ import { TournamentRealtimePayloads } from '../src/tournament/realtime/tournamen
 import { REALTIME_LIMITS, TournamentsGateway } from '../src/tournament/realtime/tournaments.gateway';
 import { TournamentEventsPublisher } from '../src/tournament/tournament-events.publisher';
 
-// Gateway logic with fakes: handshake checks, subscribe validation and limits, and the
-// mapping from publisher events to Socket.IO event names, rooms and payloads.
-// The real Socket.IO + PostgreSQL flow is covered by tournaments-realtime-postgres.test.cjs.
+/* Gateway logic with fakes: handshake checks, subscribe validation and limits, and the
+mapping from publisher events to Socket.IO event names, rooms and payloads.
+The real Socket.IO + PostgreSQL flow is covered by tournaments-realtime-postgres.test.cjs. */
 Logger.overrideLogger(false);
 
 const ORIGIN = 'https://localhost';
@@ -80,7 +80,7 @@ function harness(options: { exists?: (id: string) => boolean } = {}) {
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
-/** Deferred delivery + async payload loads: wait for the expected count, not a fixed time. */
+// Deferred delivery + async payload loads: wait for the expected count, not a fixed time.
 async function waitFor(condition: () => boolean, timeoutMs = 2000) {
   const end = Date.now() + timeoutMs;
   while (!condition() && Date.now() < end) await tick();

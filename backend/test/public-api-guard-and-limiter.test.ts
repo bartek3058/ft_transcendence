@@ -63,9 +63,6 @@ describe('Public API Security: ApiKeyGuard & ApiKeyRateLimiter', () => {
     } as any;
   }
 
-  /* -------------------------------------------------------------------------
-   * Suite 1: Input Validation & Injection Resistance
-   * ------------------------------------------------------------------------- */
   describe('Suite 1: Header Parsing & Key Format Validation', () => {
     it('rejects missing X-API-Key header with 401 MISSING_API_KEY', async () => {
       const guard = new ApiKeyGuard(createMockApiKeyService(), new ApiKeyRateLimiter());
@@ -128,9 +125,6 @@ describe('Public API Security: ApiKeyGuard & ApiKeyRateLimiter', () => {
     });
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 2: Authentication Lifecycles
-   * ------------------------------------------------------------------------- */
   describe('Suite 2: Authentication Lifecycles', () => {
     it('authenticates valid key and attaches user and key ID to request', async () => {
       const guard = new ApiKeyGuard(createMockApiKeyService(), new ApiKeyRateLimiter());
@@ -164,9 +158,6 @@ describe('Public API Security: ApiKeyGuard & ApiKeyRateLimiter', () => {
     });
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 3: Rate Limiting & DoS Protection
-   * ------------------------------------------------------------------------- */
   describe('Suite 3: Rate Limiting & DoS Protection', () => {
     it('allows requests up to the defined limit within the time window', () => {
       const limiter = new ApiKeyRateLimiter();
@@ -212,9 +203,6 @@ describe('Public API Security: ApiKeyGuard & ApiKeyRateLimiter', () => {
     });
   });
 
-  /* -------------------------------------------------------------------------
-   * Suite 4: PublicApiExceptionFilter Headers & Information Disclosure
-   * ------------------------------------------------------------------------- */
   describe('Suite 4: PublicApiExceptionFilter Defense', () => {
     it('sets Retry-After and Cache-Control: no-store on rate-limited responses', () => {
       const filter = new PublicApiExceptionFilter();
