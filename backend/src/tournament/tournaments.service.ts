@@ -138,8 +138,8 @@ export class TournamentsService {
     return { currentParticipants: result.currentParticipants };
   }
 
-  // One conditional UPDATE, so the last slot can't be overbooked. A duplicate throws P2002,
-  // map it with mapJoinError outside the transaction.
+  /* One conditional UPDATE, so the last slot can't be overbooked. A duplicate throws P2002,
+  map it with mapJoinError outside the transaction. */
   async joinInTx(tx: Prisma.TransactionClient, userId: string, id: string): Promise<JoinResult> {
     const rows = await tx.$queryRaw<{ current_participants: number; max_participants: number }[]>`
       UPDATE tournaments

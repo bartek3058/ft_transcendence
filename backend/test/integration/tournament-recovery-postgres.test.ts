@@ -16,9 +16,10 @@ import {
 } from '../../src/tournament/tournament-recovery.service';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
-// Real PostgreSQL test for tournament recovery (PR #173 review, #168): a result whose
-// listener never ran is applied exactly once; a restart (or an aborted game) sends the
-// match back to check-in; recent results are left to the listener; races give one outcome.
+/* Real PostgreSQL test for tournament recovery: a result whose listener 
+never ran is applied exactly once; a restart (or an aborted game) sends the
+match back to check-in; recent results are left to the listener; races give one outcome.
+*/
 Logger.overrideLogger(['error']);
 
 const prisma = new PrismaService({
@@ -45,7 +46,7 @@ async function createUser(rating: number) {
   return user;
 }
 
-/** IN_PROGRESS tournament whose match R1-M1 has a live game (both players checked in). */
+// IN_PROGRESS tournament whose match R1-M1 has a live game (both players checked in).
 async function liveMatch(playerCount = 4) {
   const players = [];
   for (let i = 0; i < playerCount; i++) players.push(await createUser(2000 - i * 100));
@@ -64,16 +65,16 @@ async function liveMatch(playerCount = 4) {
   return { tournamentId: t.id, match: m, gameId: started.gameId! };
 }
 
-/**
- * Moves a game's end into the past. game_start moves too, because the DB requires
- * game_end >= game_start (games_end_after_start_check).
- */
+/*
+Moves a game's end into the past. game_start moves too, because the DB requires
+game_end >= game_start (games_end_after_start_check).
+*/
 function endedAgo(endedMsAgo: number) {
   const gameEnd = new Date(Date.now() - endedMsAgo);
   return { gameStart: new Date(gameEnd.getTime() - MINUTE), gameEnd };
 }
 
-/** What GameService writes when a game ends; the tournament listener is not run. */
+// What GameService writes when a game ends; the tournament listener is not run.
 async function concludeWithoutListener(gameId: string, result: string, endReason: string | null, endedMsAgo = MINUTE) {
   await prisma.game.update({ where: { id: gameId }, data: { result, endReason, ...endedAgo(endedMsAgo) } });
 }

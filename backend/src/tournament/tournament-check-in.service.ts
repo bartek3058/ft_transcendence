@@ -18,8 +18,8 @@ export interface CheckInState {
 
 type CheckedIn = { player1_checked_in_at: Date | null; player2_checked_in_at: Date | null }[];
 
-// Match check-in (#161). The conditional UPDATE locks the row, so exactly one
-// transaction sees both players in and creates the game.
+/* Match check-in (#161). The conditional UPDATE locks the row, so exactly one
+transaction sees both players in and creates the game. */
 @Injectable()
 export class TournamentCheckInService {
   constructor(private readonly prisma: PrismaService,

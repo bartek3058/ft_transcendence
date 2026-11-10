@@ -5,8 +5,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Header } from "./components/layout/Header";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { GamePage } from "./pages/GamePage";
+import { TournamentGamePage } from "./pages/TournamentGamePage";
 import { AiGamePage } from "./pages/AiGamePage";
 import { TournamentsPage } from "./pages/TournamentsPage";
+import { TournamentDetailsPage } from "./pages/TournamentDetailsPage";
 import { RankingPage } from "./pages/RankingPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -22,8 +24,10 @@ function AppLayout() {
       <main>
         <Routes>
           <Route path="/" element={<GamePage />} />
+          <Route path="/game/:gameId" element={<TournamentGamePage />} />
           <Route path="/ai" element={<AiGamePage />} />
           <Route path="/tournaments" element={<TournamentsPage />} />
+          <Route path="/tournaments/:id" element={<TournamentDetailsPage />} />
           <Route path="/ranking" element={<RankingPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/profile" element={<ProfilePage />} />

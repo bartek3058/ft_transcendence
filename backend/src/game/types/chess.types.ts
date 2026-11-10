@@ -95,8 +95,8 @@ export interface CreateGameOptions
     initialFen?: string;
 }
 
-//Represents a verified move waiting in the asynchronous Cold-Path RAM buffer
-//before being persisted to PostgreSQL and purged from memory.
+/*Represents a verified move waiting in the asynchronous Cold-Path RAM buffer
+before being persisted to PostgreSQL and purged from memory. */
 
 export interface PendingMoveRecord
 {
@@ -114,7 +114,7 @@ export interface PendingMoveRecord
 }
 
 
-//Internal authoritative representation of a live match stored in server RAM (Task #120).
+//Internal authoritative representation of a live match stored in server RAM
 
 export interface GameSession
 {

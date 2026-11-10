@@ -22,7 +22,7 @@ type LockedInvitation = {
   expires_at: Date;
 }[];
 
-// Tournament invitations (#154). Only friends can be invited, accepting reuses the #102 join.
+// Tournament invitations (#154). Only friends can be invited.
 @Injectable()
 export class TournamentInvitationsService {
   constructor(private readonly prisma: PrismaService,
@@ -112,7 +112,7 @@ export class TournamentInvitationsService {
   }
 
   async respond(userId: string, invitationId: string, response: InvitationResponse): Promise<InvitationAnswer> {
-    // `as` stops TS from narrowing it to null
+    // 'as' stops TS from narrowing it to null
     let joined = null as JoinResult | null;
     let declined = null as { tournamentId: string; senderId: string } | null;
     let answer: InvitationAnswer;

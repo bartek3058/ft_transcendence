@@ -58,7 +58,7 @@ export function useAiChat(getContext?: () => GameContext) {
           turn: ctx.turn,
         }),
       });
-      // Tag the user's own message with its sentiment (minor AI feature).
+      // Tag the user's own message with its sentiment
       if (res.sentiment) {
         setMessages((v) =>
           v.map((m) => (m.id === mineId ? { ...m, sentiment: res.sentiment!.label } : m)),

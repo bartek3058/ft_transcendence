@@ -16,10 +16,10 @@ import { ProfileService } from '../src/profile/profile.service';
 import { HistoryQueryDto } from '../src/profile/dto/history-query.dto';
 
 /*
- * Unit tests with an in-memory Prisma double. They prove service logic only;
- * SQL, collation and index behaviour are covered by
- * test/integration/leaderboard-postgres.test.ts (run against a real *_test DB).
- */
+Unit tests with an in-memory Prisma double. They prove service logic only;
+SQL, collation and index behaviour are covered by
+test/integration/leaderboard-postgres.test.ts (run against a real *_test DB).
+*/
 
 interface MockUser {
   id: string;
@@ -38,7 +38,7 @@ interface MockGame {
 
 const FINISHED = ['WHITE_WON', 'BLACK_WON', 'DRAW'];
 
-/** Byte-order comparison, matching the users.username COLLATE "C" column. */
+// Byte-order comparison, matching the users.username COLLATE "C" column.
 const byteCompare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 function createMockPrisma(users: MockUser[] = [], games: MockGame[] = []) {

@@ -8,7 +8,7 @@ import { ModerationService } from './moderation.service';
 
 /*
 AI chat: a REST endpoint (POST /api/ai/chat) that talks to an LLM in a chosen
-persona (coach / commentator / rival / casual)
+persona (coach/commentator/rival/casual)
 */
 @Module({
   imports: [AuthModule],

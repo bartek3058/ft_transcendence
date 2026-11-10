@@ -33,9 +33,9 @@ export interface StuckMatch {
   black_id: string | null;
 }
 
-// Fixes tournament matches stuck IN_PROGRESS (#168). On startup, games lost by a restart
-// are aborted. Every 30 s, finished games get their result applied again and aborted
-// ones send the match back to check-in. Assumes a single backend instance.
+/*Fixes tournament matches stuck IN_PROGRESS (#168). On startup, games lost by a restart
+are aborted. Every 30 s, finished games get their result applied again and aborted
+ones send the match back to check-in. Assumes a single backend instance.*/
 @Injectable()
 export class TournamentRecoveryService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(TournamentRecoveryService.name);

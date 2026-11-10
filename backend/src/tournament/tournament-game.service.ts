@@ -21,8 +21,8 @@ export interface TournamentGameCreated {
   blackPlayerId: string;
 }
 
-// Connects finished games to the bracket (#68). ABANDONMENT is a forfeit, with no winner
-// both players lose. Only depends on GameModule, never the other way round.
+/* Connects finished games to the bracket (#68). ABANDONMENT is a forfeit, with no winner
+both players lose. Only depends on GameModule, never the other way round. */
 @Injectable()
 export class TournamentGameService implements OnModuleInit {
   private readonly logger = new Logger(TournamentGameService.name);
@@ -114,7 +114,7 @@ export class TournamentGameService implements OnModuleInit {
       replay: TournamentGameCreated | null; advanced: AdvanceWinnerResult | null;
     }> => {
       if (event.endReason === 'ABANDONMENT') {
-        // no-show / abandonment is a forfeit
+        // no-show/abandonment is a forfeit
         if (event.result === 'DRAW') {
           // nobody showed up, nobody advances
           return { replay: null, advanced: await this.bracket.handleDoubleForfeit(tx, tournamentId, matchId) };

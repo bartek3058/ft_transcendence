@@ -15,8 +15,7 @@ const { AUTH_CONFIG } = require('../../dist/auth/auth.config');
 const { TournamentsService } = require('../../dist/tournament/tournaments.service');
 const { TournamentCheckInSweeper } = require('../../dist/tournament/tournament-check-in.sweeper');
 
-// End-to-end #168 test: real app, real HTTP, real Socket.IO client, real PostgreSQL.
-// Also covers the HTTP-level check-in cases of #161 (400 / 401 / 403 / 409).
+// End-to-end test: real app, real HTTP, real Socket.IO client, real PostgreSQL.
 
 function waitFor(socket, name, predicate = () => true, ms = 5000) {
   return new Promise((resolve, reject) => {
@@ -152,7 +151,7 @@ test('registration, invitations, start and check-in events reach the right rooms
     tournamentId: id, currentParticipants: 1, maxParticipants: 4, participant: { userId: bob.id, username: bob.username },
   });
 
-  // Join / leave; a rolled-back join announces nothing.
+  // Join/leave; a rolled-back join announces nothing.
   joined = waitFor(aliceS, 'tournament:participant_joined', (e) => e.participant.userId === carol.id);
   assert.equal((await h.request(carol, `tournaments/${id}/join`, 'POST')).status, 200);
   assert.equal((await joined).currentParticipants, 2);
@@ -175,7 +174,6 @@ test('registration, invitations, start and check-in events reach the right rooms
   assert.ok(!JSON.stringify(snapshot).includes('"rating"'));
   const match = snapshot.matches[0];
 
-  // #161 over real HTTP: 400 / 401 / 403, then two check-ins.
   const path = `tournaments/${id}/matches/${match.id}/check-in`;
   assert.equal((await h.request(bob, `tournaments/${id}/matches/R1-M1/check-in`, 'POST')).status, 400);
   assert.equal((await h.request(null, path, 'POST')).status, 401);
@@ -207,7 +205,6 @@ test('a double-forfeit cascade emits one match_updated per changed match, then f
 
   await h.db.tournamentMatch.updateMany({ where: { id: { in: round1.map((m) => m.id) } },
     data: { checkInDeadline: new Date(Date.now() - 60_000) } });
-  // #161 over real HTTP: a late check-in is 409.
   const player = players.find((p) => p.id === round1[0].player1.id);
   const late = await h.request(player, `tournaments/${id}/matches/${round1[0].id}/check-in`, 'POST');
   assert.deepEqual([late.status, late.body.error.code], [409, 'CHECK_IN_CLOSED']);

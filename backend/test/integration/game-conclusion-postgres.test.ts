@@ -7,8 +7,9 @@ import { RatingService } from '../../src/rating/rating.service';
 import { GameService } from '../../src/game/game.service';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
-// Real PostgreSQL integration test for GameService.removeGame (#143):
-// result / end_reason / game_end land in `games` and the Elo update is applied atomically.
+/* Real PostgreSQL integration test for GameService.removeGame (#143):
+result / end_reason / game_end land in 'games' and the Elo update is applied atomically.
+*/
 const prisma = new PrismaService({
   datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
 });
@@ -26,8 +27,9 @@ async function createPlayer(startRating: number) {
   return user;
 }
 
-// Mirrors MatchmakingService.createMatch: an IN_PROGRESS row with the pre-game ratings,
-// plus the in-memory session under the same UUID.
+/* Mirrors MatchmakingService.createMatch: an IN_PROGRESS row with the pre-game ratings,
+plus the in-memory session under the same UUID.
+*/
 async function startGame(service: GameService, initialFen?: string) {
   const white = await createPlayer(1500);
   const black = await createPlayer(1500);

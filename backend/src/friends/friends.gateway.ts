@@ -66,9 +66,9 @@ export class FriendsGateway
 
         let validOrigin = origin === this.config.origin;
 
-        // Same-origin GET requests may omit Origin.
-        // Only allow the fallback when browser metadata
-        // and the Referer both confirm the expected origin.
+        /* Same-origin GET requests may omit Origin.
+        Only allow the fallback when browser metadata
+        and the Referer both confirm the expected origin. */
         if (origin === undefined) {
           let validReferer = false;
 
@@ -239,8 +239,7 @@ export class FriendsGateway
         ),
       );
     } catch {
-      // REST refetch on focus/reconnect repairs
-      // missed presence notifications.
+      // REST refetch on focus/reconnect repairs missed presence notifications.
     }
   }
 

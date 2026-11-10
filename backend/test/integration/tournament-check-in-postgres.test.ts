@@ -16,9 +16,10 @@ import { TournamentLifecycleService } from '../../src/tournament/tournament-life
 import { TOURNAMENT_CHECK_IN_WINDOW_MS } from '../../src/tournament/tournament-rules';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
-// Real PostgreSQL test for match check-in (#161): server-set deadlines, the
-// conditional check-in UPDATE, concurrent check-ins, check-in vs deadline sweep,
-// walkover / double-forfeit resolution and the final-round guard.
+/* Real PostgreSQL test for match check-in: server-set deadlines, the
+conditional check-in UPDATE, concurrent check-ins, check-in vs deadline sweep,
+walkover / double-forfeit resolution and the final-round guard.
+*/
 Logger.overrideLogger(['error']);
 
 const prisma = new PrismaService({
@@ -45,7 +46,7 @@ async function createUser(rating = 1200) {
   return user;
 }
 
-/** An IN_PROGRESS tournament with a generated bracket; players[0] is the best seed. */
+// An IN_PROGRESS tournament with a generated bracket; players[0] is the best seed.
 async function startedTournament(playerCount: number) {
   const players = [];
   for (let i = 0; i < playerCount; i++) players.push(await createUser(2000 - i * 100));
@@ -118,7 +119,7 @@ describe('Tournament match check-in against PostgreSQL (#161)', () => {
       const m1 = await matchOf(tournamentId, 'R1-M1');
       const m2 = await matchOf(tournamentId, 'R1-M2');
       await prisma.$transaction((tx) => bracket.advanceWinner(tx, tournamentId, m1.id, m1.player1Id!));
-      assert.equal((await matchById(m1.nextMatchId!)).checkInDeadline, null); // still PENDING
+      assert.equal((await matchById(m1.nextMatchId!)).checkInDeadline, null);
       const before = Date.now();
       await prisma.$transaction((tx) => bracket.advanceWinner(tx, tournamentId, m2.id, m2.player2Id!));
       const final = await matchById(m1.nextMatchId!);
@@ -170,7 +171,7 @@ describe('Tournament match check-in against PostgreSQL (#161)', () => {
 
       const m2 = await matchOf(tournamentId, 'R1-M2');
       await prisma.$transaction((tx) => bracket.advanceWinner(tx, tournamentId, m2.id, m2.player1Id!));
-      const final = await matchById(m2.nextMatchId!); // PENDING, one player known
+      const final = await matchById(m2.nextMatchId!);
       await expectError(checkIns.checkIn(m2.player1Id!, tournamentId, final.id), 409, 'MATCH_NOT_SCHEDULED');
 
       await prisma.tournament.update({ where: { id: tournamentId }, data: { status: 'FINISHED' } });

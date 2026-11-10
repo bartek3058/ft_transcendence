@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { GameService } from '../src/game/game.service';
 
-// Unit tests for GameService.removeGame (#143). They check the control flow only;
-// SQL validity is covered by test/integration/game-conclusion-postgres.test.ts.
+/* Unit tests for GameService.removeGame. They check the control flow only;
+SQL validity is covered by test/integration/game-conclusion-postgres.test.ts. */
 
-// Fake PrismaService emulating `games` with the same conditional update the service uses.
+// Fake PrismaService emulating 'games' with the same conditional update the service uses.
 function makeFakePrisma(rows: Record<string, { result: string }> = {}) {
   const updates: any[] = [];
   return {

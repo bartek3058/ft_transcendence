@@ -181,11 +181,6 @@ export function FriendsPage() {
           <h1>Friends</h1>
           <p>Find players, manage invitations and see who's online.</p>
         </div>
-        <div className="friends-connection">
-          <span className={connected ? "friends-light on" : "friends-light"} />
-          {connected ? "Live updates" : "Connection unavailable"}
-          {!connected && <button onClick={retry}>Retry</button>}
-        </div>
       </div>
       {error && (
         <div className="friends-alert" role="alert">

@@ -17,6 +17,7 @@ type Props = {
   setDraft: (v: string) => void;
   send: () => void;
   onNewGame: () => void;
+  newGameLabel?: string;
   onResign: () => void;
   // Optional AI-chat controls. When onModeChange is given, a persona selector is
   // shown above the chat; `sending` disables input while the AI is replying.
@@ -34,6 +35,7 @@ export function GameSidebar({
   setDraft,
   send,
   onNewGame,
+  newGameLabel = "New game",
   onResign,
   mode,
   modes,
@@ -130,7 +132,7 @@ export function GameSidebar({
 
       <div className="actions sidebarActions">
         <button onClick={onNewGame}>
-          <RotateCcw size={16} /> New game
+          <RotateCcw size={16} /> {newGameLabel}
         </button>
         <button onClick={onResign}>
           <Flag size={16} /> Resign

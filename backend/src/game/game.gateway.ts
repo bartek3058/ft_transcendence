@@ -90,8 +90,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
 
       client.data.userId = account.id;
 
-      // The client must wait until authentication has completed
-      // before sending game:join.
+      /* The client must wait until authentication has completed
+      before sending game:join. */
       client.emit('game:ready');
     } catch {
       client.emit('game:error', {
@@ -102,8 +102,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
     }
   }
 
-  // Discover an ongoing match using the authenticated server-side identity.
-  // Never trust a player ID supplied by the browser.
+  /* Discover an ongoing match using the authenticated server-side identity.
+  Never trust a player ID supplied by the browser.*/
   @SubscribeMessage('game:resume')
   async handleResume(@ConnectedSocket() client: Socket): Promise<void> {
     const userId: string | undefined = client.data.userId;
