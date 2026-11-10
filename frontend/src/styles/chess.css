@@ -192,6 +192,66 @@ aside {
   border-radius: 8px;
   display: inline-block;
 }
+/* AI replies are rendered from markdown, so they live in a block bubble. The
+model loves headings and lists, so everything here is deliberately compact -
+headings are just bold accent text, not big titles - to sit well in the narrow
+sidebar. */
+.msgMd {
+  font-size: 13px;
+  line-height: 1.5;
+  background: #262b27;
+  padding: 7px 11px;
+  border-radius: 8px;
+  display: inline-block;
+  max-width: 100%;
+  text-align: left;
+}
+.msgMd > :first-child {
+  margin-top: 0;
+}
+.msgMd > :last-child {
+  margin-bottom: 0;
+}
+.msgMd p {
+  margin: 0 0 8px;
+}
+.msgMd h1,
+.msgMd h2,
+.msgMd h3,
+.msgMd h4,
+.msgMd h5,
+.msgMd h6 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b7d79a;
+  margin: 10px 0 4px;
+}
+.msgMd ul,
+.msgMd ol {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+}
+.msgMd li {
+  margin-bottom: 3px;
+}
+.msgMd strong {
+  color: #d7e6c7;
+}
+.msgMd code {
+  background: #1b201c;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.msgMd a {
+  color: #8fbd62;
+}
+.msgMd blockquote {
+  margin: 4px 0;
+  padding-left: 8px;
+  border-left: 2px solid #3a423a;
+  color: #b9c2b2;
+}
 .mineMsg {
   text-align: right;
 }
