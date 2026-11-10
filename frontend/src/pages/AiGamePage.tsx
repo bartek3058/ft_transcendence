@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { getMyProfile } from "../services/profile";
 import { ChessBoard } from "../components/chess/ChessBoard";
 import { GameSidebar } from "../components/chess/GameSidebar";
 import { PromotionDialog } from "../components/chess/PromotionDialog";
@@ -8,7 +10,29 @@ import { useAiGame } from "../hooks/useAiGame";
 
 export function AiGamePage() {
   const { user } = useAuth();
+  const [myRating, setMyRating] = useState<number | null>(null);
   const ai = useAiGame();
+
+  useEffect(() => {
+    let active = true;
+    setMyRating(null);
+
+    if (user?.id) {
+      getMyProfile()
+        .then((profile) => {
+          if (active && profile.user.id === user.id) {
+            setMyRating(profile.user.rating);
+          }
+        })
+        .catch(() => {
+          if (active) setMyRating(null);
+        });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
   const chat = useAiChat(() => ({
     fen: ai.game.fen(),
     moves: ai.moves,
@@ -23,8 +47,6 @@ export function AiGamePage() {
     );
   }
 
-  const myColorLabel = ai.humanColor === "w" ? "White" : "Black";
-
   return (
     <>
       <div className="gameLayout">
@@ -32,8 +54,12 @@ export function AiGamePage() {
           <div className="player">
             <div className="avatar">🤖</div>
             <div>
-              <b>Stockfish</b>
-              <small>{ai.thinking ? "Thinking…" : `Difficulty: ${ai.difficulty}`}</small>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <b>Stockfish</b>
+                <span className="playerElo">
+                  {ai.difficulty.charAt(0).toUpperCase() + ai.difficulty.slice(1)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -51,20 +77,15 @@ export function AiGamePage() {
               {(user?.username?.[0] ?? "P").toUpperCase()}
             </div>
             <div>
-              <b>{user?.username ?? "Player"}</b>
-              <small>Playing as: {myColorLabel}</small>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <b>{user?.username ?? "Player"}</b>
+                {myRating != null && (
+                  <span className="playerElo">{myRating} ELO</span>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="actions aiActions">
-            <button
-              onClick={ai.requestHint}
-              disabled={!ai.myTurn || ai.hintPending}
-              title="Suggest a move"
-            >
-              {ai.hintPending ? "💡 Thinking…" : "💡 Hint"}
-            </button>
-          </div>
         </section>
 
         <GameSidebar
@@ -76,6 +97,9 @@ export function AiGamePage() {
           send={chat.send}
           onNewGame={ai.leave}
           onResign={ai.resign}
+          onHint={ai.requestHint}
+          hintDisabled={!ai.myTurn || ai.hintPending}
+          hintPending={ai.hintPending}
           mode={chat.mode}
           modes={CHAT_MODES}
           onModeChange={(m) => chat.setMode(m as ChatMode)}
