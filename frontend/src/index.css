@@ -1,0 +1,24 @@
+
+/* ChessHub: separate ELO badge next to player nickname */
+.playerElo {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.12);
+  border: 1px solid rgba(128, 128, 128, 0.18);
+  color: var(--muted, #9ca3af);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle ELO badge */
+.playerElo {
+  color: #a0aaa3;
+  background: rgba(140, 160, 145, 0.10);
+  border: 1px solid rgba(140, 160, 145, 0.20);
+  font-weight: 500;
+}

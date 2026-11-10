@@ -76,6 +76,29 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     private queueCapWarned = false;
     private missingPrismaWarned = false;
     private readonly conclusionListeners: GameConclusionListener[] = [];
+    async getGamePlayerDetails(gameId: string) {
+      const game = await this.prisma.game.findUnique({
+        where: { id: gameId },
+        select: {
+          whiteRating: true,
+          blackRating: true,
+          whitePlayer: {
+            select: { username: true },
+          },
+          blackPlayer: {
+            select: { username: true },
+          },
+        },
+      });
+
+      return {
+        whiteUsername: game?.whitePlayer?.username ?? null,
+        blackUsername: game?.blackPlayer?.username ?? null,
+        whiteRating: game?.whiteRating ?? null,
+        blackRating: game?.blackRating ?? null,
+      };
+    }
+
     constructor(
       private readonly prisma: PrismaService,
       private readonly ratingService: RatingService,

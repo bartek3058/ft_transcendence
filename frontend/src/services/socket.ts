@@ -94,6 +94,10 @@ export interface GameJoined {
   gameId: string;
   color: PlayerColor;
   state: PublicGameState;
+  whiteUsername?: string | null;
+  blackUsername?: string | null;
+  whiteRating?: number | null;
+  blackRating?: number | null;
 }
 
 let matchmakingSocket: Socket | null = null;

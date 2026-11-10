@@ -185,10 +185,13 @@ export class GameGateway implements OnGatewayConnection, OnGatewayInit, OnModule
       state.blackTimeRemainingMs = clock.blackTimeRemainingMs;
     }
 
+    const players = await this.game.getGamePlayerDetails(gameId);
+
     client.emit('game:joined', {
       gameId,
       color: session.whitePlayerId === userId ? 'w' : 'b',
       state,
+      ...players,
     });
   }
 
