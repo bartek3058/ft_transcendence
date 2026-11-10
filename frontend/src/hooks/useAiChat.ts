@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ChatMessage, Sentiment } from "../types";
 import { api } from "../services/api";
 
@@ -32,6 +32,27 @@ type ChatPayload = {
 // The last request that failed, kept so the user can retry it without retyping.
 type FailedRequest = { errorMsgId: string; userMsgId: string; payload: ChatPayload };
 
+/* We stash the thread in sessionStorage so a page refresh doesn't wipe it -
+same storage the PvP game uses for its reconnect id. Per-tab and cleared when
+the tab closes, which is the behaviour we want for an in-game chat. */
+const STORAGE_KEY = "ai-chat";
+
+function loadPersisted(): { messages: ChatMessage[]; mode: ChatMode } {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as { messages?: ChatMessage[]; mode?: ChatMode };
+      return {
+        messages: Array.isArray(saved.messages) ? saved.messages : [],
+        mode: saved.mode ?? "coach",
+      };
+    }
+  } catch {
+    /* storage disabled, full, or corrupt JSON - just start empty */
+  }
+  return { messages: [], mode: "coach" };
+}
+
 /*
 AI chat panel state. Talks to POST /api/ai/chat in the selected persona, with
 optional live game context (FEN + moves) so coach/commentator modes can talk
@@ -42,11 +63,25 @@ reaches us is a real outage - we surface it as an error bubble and let the
 user retry that exact request (backend hiccups do clear up).
 */
 export function useAiChat(getContext?: () => GameContext) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Seed from sessionStorage once, so a refresh keeps the conversation.
+  const [restored] = useState(loadPersisted);
+  const [messages, setMessages] = useState<ChatMessage[]>(restored.messages);
   const [draft, setDraft] = useState("");
-  const [mode, setMode] = useState<ChatMode>("coach");
+  const [mode, setMode] = useState<ChatMode>(restored.mode);
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState<FailedRequest | null>(null);
+
+  /* Keep sessionStorage in sync with the thread. Error bubbles are UI-only and
+  their retry state isn't restored, so we drop them before saving - otherwise a
+  refresh would show a dead error with a retry button that does nothing. */
+  useEffect(() => {
+    try {
+      const toSave = messages.filter((m) => !m.error);
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ messages: toSave, mode }));
+    } catch {
+      /* ignore storage write failures (private mode, quota, etc.) */
+    }
+  }, [messages, mode]);
 
   /* Fire one request and reconcile the thread with the result. 'userMsgId' is
   the user's bubble this reply belongs to (so we can tag its sentiment).*/

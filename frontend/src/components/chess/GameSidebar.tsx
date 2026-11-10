@@ -6,6 +6,7 @@ import {
   Send,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import type { ChatMessage } from "../../types";
 
 type Props = {
@@ -117,7 +118,16 @@ export function GameSidebar({
               }
             >
               <b>{m.user}</b>
-              <span>{m.text}</span>
+              {/* AI replies come back as markdown (headings, bold, lists), so
+              render them; the user's own messages and error bubbles stay plain
+              text. */}
+              {m.user === "You" || m.user === "Ty" || m.error ? (
+                <span>{m.text}</span>
+              ) : (
+                <div className="msgMd">
+                  <ReactMarkdown>{m.text}</ReactMarkdown>
+                </div>
+              )}
               {m.sentiment && (
                 <span className="msgMood" title={`sentiment: ${m.sentiment}`}>
                   {m.sentiment === "positive" ? "🙂" : m.sentiment === "negative" ? "🙁" : "😐"}

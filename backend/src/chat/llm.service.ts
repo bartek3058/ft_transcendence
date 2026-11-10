@@ -84,7 +84,9 @@ export class LlmService {
           model: this.model,
           messages,
           temperature: 0.8,
-          max_tokens: 300,
+          // Headroom for a fuller answer; the brevity prompt keeps most replies
+          // well under this, and tidyTruncated cleans up the rare overshoot.
+          max_tokens: 500,
         }),
         signal: controller.signal,
       });
@@ -99,14 +101,27 @@ export class LlmService {
       }
 
       const data = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
+        choices?: { message?: { content?: string }; finish_reason?: string }[];
       };
-      const content = data.choices?.[0]?.message?.content;
+      const choice = data.choices?.[0];
+      const content = choice?.message?.content;
       if (typeof content !== 'string' || content.trim().length === 0) {
         this.logger.error('LLM response contained no message content.');
         throw new ServiceUnavailableException('The AI chat service returned an empty response.');
       }
-      return content.trim();
+      const trimmed = content.trim();
+      /* The token cap can cut the reply off mid-flow. OpenAI signals this with
+      finish_reason "length", but gateways vary (Gemini's OpenAI endpoint sends
+      "MAX_TOKENS"), so match loosely - and log whatever we actually got, so a
+      future surprise value is visible instead of silently slipping through. */
+      const finish = choice?.finish_reason;
+      if (finish && finish !== 'stop') {
+        this.logger.warn(`LLM reply did not end naturally (finish_reason=${finish}).`);
+      }
+      if (typeof finish === 'string' && /length|max.?token/i.test(finish)) {
+        return tidyTruncated(trimmed);
+      }
+      return trimmed;
     } catch (error) {
       if (error instanceof ServiceUnavailableException || error instanceof RetryableLlmError) {
         throw error;
@@ -160,4 +175,43 @@ function parseRetryAfter(response: Response): number | undefined {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* The reply was cut off at the token cap, so it likely ends in a broken state:
+either mid-sentence, or - just as common with structured answers - right after a
+section heading whose body never got written. Tidy that tail so the reader gets
+a reply that ends on something complete. */
+function tidyTruncated(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+
+  /* 1. Drop dangling scaffolding at the very end: blank lines, horizontal
+  rules, and a heading left with no content under it (its body got cut off).
+  A heading reads as a clean sentence end on its own, so without this the trim
+  below would happily keep an empty "### 3. ..." section. */
+  const isOrphan = (line: string): boolean => {
+    const t = line.trim();
+    return t === '' || /^#{1,6}\s/.test(t) || /^[-*_]{3,}$/.test(t);
+  };
+  while (lines.length > 1 && isOrphan(lines[lines.length - 1])) lines.pop();
+
+  const out = lines.join('\n').trimEnd();
+
+  // 2. If what's left already lands on sentence punctuation, it's clean enough.
+  // (No digit rule here, so a sentence ending on a move like "...1.e4." counts.)
+  if (/[.!?]["'”’)\]]?$/.test(out)) return out;
+
+  /* 3. Otherwise it ends mid-sentence - cut back to the last real sentence end.
+  Here we DO ignore a '.' that follows a digit, so we don't mistake a move
+  number ("1.", "15.") for the spot to cut back to. */
+  const sentenceEnd = /(?<![0-9])[.!?]["'”’)\]]?/g;
+  let lastEnd = -1;
+  for (const m of out.matchAll(sentenceEnd)) {
+    const end = m.index + m[0].length;
+    if (end >= out.length || /\s/.test(out[end])) lastEnd = end;
+  }
+  if (lastEnd > 0) {
+    const kept = out.slice(0, lastEnd).trim();
+    if (kept) return kept;
+  }
+  return `${out}…`;
 }
