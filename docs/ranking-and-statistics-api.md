@@ -115,6 +115,28 @@ The statistics and ranking subsystem provides global and individual performance 
 
 ---
 
+### F. ELO Progression (`GET /api/profile/me/rating-history`)
+* **Authentication**: Session cookie (`SessionGuard`).
+* **Query Parameters**: `limit` (integer 1–500, default `100`): the latest N rated games. Unknown query keys are rejected with 400.
+* **Response**: `{ currentRating, total, limit, points[] }`, **oldest first** so it can go straight into a chart. Each point has `gameId`, `playedAt`, `ratingBefore`, `ratingAfter`, `change`, `outcome` (`WIN`/`LOSS`/`DRAW`), `opponent`.
+* **Source**: only the frozen snapshot on the game row (`white_rating` / `black_rating` + `white_rating_change` / `black_rating_change`), never the live `users.rating`. `ratingAfter = ratingBefore + change`, and each point's `ratingBefore` equals the previous point's `ratingAfter`. Games without a rating change (vs the AI bot, aborted, in progress) are skipped.
+* **Charting**: draw the line through `ratingAfter` and start it at `points[0].ratingBefore`. An empty `points` list means no rated games yet; `currentRating` is still returned.
+* **Errors**: `400` invalid `limit`, `401` no session, `404 USER_NOT_FOUND` if the account is gone.
+
+```json
+{
+  "currentRating": 1216,
+  "total": 3,
+  "limit": 100,
+  "points": [
+    { "gameId": "…", "playedAt": "2026-11-01T18:42:24.753Z", "ratingBefore": 1200, "ratingAfter": 1216, "change": 16, "outcome": "WIN", "opponent": "bob" },
+    { "gameId": "…", "playedAt": "2026-11-02T19:10:03.120Z", "ratingBefore": 1216, "ratingAfter": 1200, "change": -16, "outcome": "LOSS", "opponent": "bob" }
+  ]
+}
+```
+
+---
+
 ## 3. Profile Statistics Enrichment
 
 In `backend/src/profile/profile.service.ts`:
@@ -124,6 +146,7 @@ In `backend/src/profile/profile.service.ts`:
   - `recentGames`: the 8 most recent finished games (used by the profile page).
   - Neutral fallback `"Unknown player"` for games where player accounts were deleted.
 - `getMyGames(userId, page, limit)` backs the full history endpoint above.
+- `getMyRatingHistory(userId, limit)` backs the ELO progression endpoint (§2 F): rated finished games of the user, newest `limit` taken, returned oldest first.
 
 ---
 
@@ -146,9 +169,14 @@ In `backend/src/profile/profile.service.ts`:
 # Leaderboard, validation, guard and history unit tests (no DB)
 docker compose run --rm backend npm run test:leaderboard:api
 
+# ELO progression: query bounds and mapping (no DB)
+docker compose run --rm backend npm run test:rating-history
+
 # Real PostgreSQL checks (collation, GROUP BY, admin filter, indexes).
 # Requires a disposable *_test database with migrations applied (see docs/database-setup.md).
 docker compose run --rm -e TEST_DATABASE_URL='<application-role URL for chess_test>' backend npm run test:leaderboard:db
+# ELO progression with games rated by the real RatingService
+docker compose run --rm -e TEST_DATABASE_URL='<application-role URL for chess_test>' backend npm run test:rating-history:db
 
 # Public API & Security Guard Regressions
 docker compose run --rm backend npm run test:public-api

@@ -131,6 +131,7 @@ Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): 
 | AI opponent (Stockfish) | astefans | Human-vs-AI chess over Socket.IO, backed by a real Stockfish engine (UCI). Three difficulties driven by Stockfish's own Skill Level (easy / medium / hard), full-strength move hints, and a seeded `stockfish` bot user so AI games appear in match history while staying out of the ELO system. |
 | AI chat, sentiment & moderation | astefans | `POST /api/ai/chat`: an LLM chat companion in four personas (coach / commentator / rival / casual) that gets the live game context (FEN + moves). A local lexicon tags each message's sentiment (words + emoji), and moderation (deterministic blocklist + LLM classifier) blocks abusive input before it reaches the model. |
 | Live game restart recovery | tszymans | After a backend restart, casual games are rebuilt from saved moves and players rejoin at the same position with the same clocks; interrupted AI games are aborted (unrated). Details: [docs/game-restart-recovery.md](docs/game-restart-recovery.md). |
+| ELO progression | tszymans | Rating history for the profile chart (`GET /api/profile/me/rating-history`), built from the frozen per-game rating snapshots, so past points never change when the live rating does. |
 | Account settings | tszymans | Change your username (case is kept, uniqueness ignores case) or password from a logged-in session; a password change signs out every other device. Details: [docs/account-settings.md](docs/account-settings.md). |
 
 ---
@@ -153,6 +154,7 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
     - Web User API Keys (Session Auth): `POST /api/user/api-keys`, `GET /api/user/api-keys`, `DELETE /api/user/api-keys/:id`
     - Web Leaderboard (no auth, 60 req/min per IP): `GET /api/leaderboard`
     - Web Match History (session auth): `GET /api/profile/me/games?page=&limit=`
+    - Web ELO Progression (session auth): `GET /api/profile/me/rating-history?limit=`
   - **Verification Commands**:
     ```bash
     docker compose run --rm backend npm run test:leaderboard:api
@@ -160,6 +162,7 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
     docker compose run --rm backend npm run test:public-api
     docker compose run --rm backend npm run test:api-guard
     docker compose run --rm backend npm run test:apikey
+    docker compose run --rm backend npm run test:rating-history
     ```
 
 - _TODO: list the modules the project implements, grouped by category, with a running subtotal and total._
@@ -180,6 +183,7 @@ Product Owner, Public API subsystem, API key security, sliding-window rate limit
 - Built test suites covering API security, rate limit headers, match queries, and leaderboard pagination.
 - Built tournament registration and lifecycle (Issue #102): seven `/api/tournaments` routes, a registration-deadline scheduler, and start/cancel transitions that stay consistent under concurrent requests, all tested against real PostgreSQL.
 - Made live games survive a backend restart (Issue #76): casual games are restored from move history on startup, AI games are cleanly aborted, and corrupt histories are aborted instead of crashing the boot.
+- Added the ELO progression endpoint for the profile chart, read from frozen per-game rating snapshots.
 - Added account settings: username change with mixed-case names and case-insensitive uniqueness, and password change that rotates every session in one transaction.
 
 ### Challenges
