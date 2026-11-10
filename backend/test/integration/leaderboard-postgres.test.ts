@@ -10,11 +10,11 @@ import { ProfileService } from '../../src/profile/profile.service';
 import { AI_BOT_EMAIL, AI_BOT_ROLE, AI_BOT_USER_ID, AI_BOT_USERNAME } from '../../src/ai/ai.constants';
 
 /*
- * Real-PostgreSQL checks for what the in-memory unit tests cannot prove
- * (constitution §8 "No Mock Blindness"): COLLATE "C" tie ordering, GROUP BY
- * aggregation, the role filter (admins, AI bot) and the new indexes. Requires TEST_DATABASE_URL
- * (application role, database name ending in _test) with migrations applied.
- */
+Real-PostgreSQL checks for what the in-memory unit tests cannot prove:
+COLLATE "C" tie ordering, GROUP BY aggregation,
+the role filter (admins, AI bot) and the new indexes. Requires TEST_DATABASE_URL
+(application role, database name ending in _test) with migrations applied.
+*/
 
 const prisma = new PrismaClient({
   datasources: { db: { url: resolveTestDatabaseUrl() } },
@@ -37,11 +37,11 @@ const ids: Record<keyof typeof names, string> = { tieUpper: '', tieLower: '', th
 const gameIds: string[] = [];
 let createdAiBot = false;
 
-/**
- * Records exclude games by the bot's fixed id, so the game against the bot must use
- * the real account. Reuse the seeded row when present; otherwise create it and
- * remove it afterwards.
- */
+/*
+Records exclude games by the bot's fixed id, so the game against the bot must use
+the real account. Reuse the seeded row when present; otherwise create it and
+remove it afterwards.
+*/
 async function ensureAiBot() {
   const existing = await prisma.user.findUnique({ where: { id: AI_BOT_USER_ID }, select: { id: true } });
   if (existing) return;

@@ -10,10 +10,10 @@ import { TournamentGameService } from '../../src/tournament/tournament-game.serv
 import { TournamentEventsPublisher } from '../../src/tournament/tournament-events.publisher';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
-// Real PostgreSQL integration test for the tournament engine (#68):
-// unique indexes, conditional status transitions under concurrency, the
-// one-live-game-per-match partial index and the GameService -> bracket hook.
-// In-memory mocks cannot prove any of this (constitution: "No Mock Blindness").
+/* Real PostgreSQL integration test for the tournament engine (#68):
+unique indexes, conditional status transitions under concurrency, the
+one-live-game-per-match partial index and the GameService -> bracket hook.
+*/
 const prisma = new PrismaService({
   datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
 });
@@ -33,7 +33,7 @@ async function createPlayer(startRating: number) {
   return user;
 }
 
-/** Creates a REGISTRATION_CLOSED tournament; players[0] is the best seed. */
+// Creates a REGISTRATION_CLOSED tournament; players[0] is the best seed.
 async function createTournament(playerCount: number) {
   const players = [];
   for (let i = 0; i < playerCount; i++) {
@@ -73,8 +73,8 @@ describe('Tournament engine against PostgreSQL (#68)', () => {
 
   after(async () => {
     try {
-      // Test fixtures only (dedicated *_test database). Games first (no cascade),
-      // then tournaments (cascade participants/matches), then users.
+      /* Test fixtures only (dedicated *_test database). Games first (no cascade),
+      then tournaments (cascade participants/matches), then users.*/
       await prisma.game.deleteMany({ where: { tournamentId: { in: tournamentIds } } });
       await prisma.tournament.deleteMany({ where: { id: { in: tournamentIds } } });
       await prisma.game.deleteMany({

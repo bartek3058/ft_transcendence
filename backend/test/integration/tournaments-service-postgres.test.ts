@@ -11,8 +11,8 @@ import { TournamentLifecycleService } from '../../src/tournament/tournament-life
 import { TournamentsService } from '../../src/tournament/tournaments.service';
 import { requireTestDatabaseUrl } from '../test-database-url';
 
-// Real PostgreSQL test for the #102 routes' service layer: the conditional raw-SQL
-// counter updates, unique-index rollback and close-once behaviour under concurrency.
+/* Real PostgreSQL test: the conditional raw-SQL counter updates,
+unique-index rollback and close-once behaviour under concurrency.*/
 const prisma = new PrismaService({
   datasources: { db: { url: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL) } },
 });
@@ -20,7 +20,7 @@ const publisher = new TournamentEventsPublisher();
 const lifecycle = new TournamentLifecycleService(prisma, new TournamentBracketService(prisma), publisher);
 const service = new TournamentsService(prisma, lifecycle, publisher);
 
-/** Collects registration-closed events for one tournament; each entry has the status seen by the listener. */
+// Collects registration-closed events for one tournament; each entry has the status seen by the listener.
 function recordEvents(tournamentId: string) {
   const seen: (RegistrationClosedEvent & { dbStatus: string })[] = [];
   const unsubscribe = publisher.onRegistrationClosed(async (event) => {
@@ -31,7 +31,7 @@ function recordEvents(tournamentId: string) {
   return { seen, unsubscribe };
 }
 
-/** Lets deferred listeners (setImmediate + their DB read) finish. */
+// Lets deferred listeners (setImmediate + their DB read) finish.
 const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
 
 const userIds: string[] = [];
