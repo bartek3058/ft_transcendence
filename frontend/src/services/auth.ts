@@ -63,7 +63,7 @@ export async function login(
 }
 
 export async function getMe(): Promise<AuthUser | null> {
-  const response = await fetch("/api/auth/session", { credentials: "same-origin" });
+  const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw await readError(response);
   return (await response.json()).user as AuthUser | null;
 }
