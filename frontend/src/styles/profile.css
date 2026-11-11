@@ -483,3 +483,133 @@
     transition: none;
   }
 }
+
+
+/* CHESSHUB PROFILE ACHIEVEMENTS V2 */
+
+.profileAchievements {
+  padding: 26px;
+  margin-bottom: 24px;
+}
+
+.profileAchievementGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.profileAchievement {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid #354138;
+  border-radius: 14px;
+  background: #1c241f;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.profileAchievement.isUnlocked {
+  border-color: #73965b;
+  background: linear-gradient(145deg, #253525, #1c271f);
+}
+
+.profileAchievement.isLocked {
+  opacity: 0.7;
+}
+
+.profileAchievementTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.profileAchievementIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #303b32;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.profileAchievement.isUnlocked .profileAchievementIcon {
+  background: #354c2d;
+}
+
+.profileAchievementStatus {
+  color: #9eaaa0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profileAchievement.isUnlocked .profileAchievementStatus {
+  color: #b8e48e;
+}
+
+.profileAchievement h3 {
+  margin: 0 0 8px;
+  color: #f0f5ef;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.profileAchievement p {
+  margin: 0 0 22px;
+  color: #aab8ac;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.profileAchievementProgress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #374139;
+}
+
+.profileAchievementProgressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: #9dcc70;
+  transition: width 0.3s ease;
+}
+
+.profileAchievement small {
+  display: block;
+  margin-top: 10px;
+  color: #aab8ac;
+  font-size: 12px;
+}
+
+@media (max-width: 800px) {
+  .profileAchievementGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .profileAchievements {
+    padding: 18px;
+  }
+
+  .profileAchievementGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .profileAchievement {
+    padding: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profileAchievement,
+  .profileAchievementProgressFill {
+    transition: none;
+  }
+}

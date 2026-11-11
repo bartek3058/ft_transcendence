@@ -315,6 +315,93 @@ export function ProfilePage() {
         </div>
       </section>
 
+      
+      {/* CHESSHUB PROFILE ACHIEVEMENTS V2 */}
+      <section className="profileAchievements card">
+        <div className="profileSectionTitle">
+          <div>
+            <h2>Achievements</h2>
+            <p>Earn achievements by winning online games</p>
+          </div>
+          <span>
+            {[1, 5, 25].filter((required) => stats.wins >= required).length} / 3
+          </span>
+        </div>
+
+        <div className="profileAchievementGrid">
+          {[
+            {
+              id: "first-victory",
+              name: "First Victory",
+              description: "Win your first game",
+              required: 1,
+              symbol: "🏆",
+            },
+            {
+              id: "winning-spirit",
+              name: "Winning Spirit",
+              description: "Win 5 games",
+              required: 5,
+              symbol: "🔥",
+            },
+            {
+              id: "champion",
+              name: "Champion",
+              description: "Win 25 games",
+              required: 25,
+              symbol: "👑",
+            },
+          ].map((achievement) => {
+            const unlocked = stats.wins >= achievement.required;
+            const progress = Math.min(
+              Math.max(stats.wins, 0),
+              achievement.required
+            );
+
+            return (
+              <div
+                key={achievement.id}
+                className={`profileAchievement ${unlocked ? "isUnlocked" : "isLocked"}`}
+              >
+                <div className="profileAchievementTop">
+                  <span className="profileAchievementIcon" aria-hidden="true">
+                    {achievement.symbol}
+                  </span>
+                  <span className="profileAchievementStatus">
+                    {unlocked ? "Unlocked" : "Locked"}
+                  </span>
+                </div>
+
+                <h3>{achievement.name}</h3>
+                <p>{achievement.description}</p>
+
+                <div
+                  className="profileAchievementProgress"
+                  role="progressbar"
+                  aria-label={`${achievement.name} progress`}
+                  aria-valuemin={0}
+                  aria-valuemax={achievement.required}
+                  aria-valuenow={progress}
+                >
+                  <div
+                    className="profileAchievementProgressFill"
+                    style={{
+                      width: `${(progress / achievement.required) * 100}%`,
+                    }}
+                  />
+                </div>
+
+                <small>
+                  {unlocked
+                    ? "Achievement completed"
+                    : `${progress} / ${achievement.required} wins`}
+                </small>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="profileHistory card">
         <div className="profileSectionTitle">
           <div>
