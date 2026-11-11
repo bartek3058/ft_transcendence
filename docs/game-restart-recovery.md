@@ -24,7 +24,7 @@ server accepts clients and calls `recoverInterruptedGames()`:
 onApplicationBootstrap()
   └─ recoverInterruptedGames()
        1. updateMany: AI games IN_PROGRESS            -> ABORTED (SERVER_RESTART)
-       2. findMany:   other IN_PROGRESS non-tournament games + moves ordered by ply
+       2. findMany:   IN_PROGRESS casual + active tournament games, moves ordered by ply
        3. for each game:
             already in activeGames?   -> skip
             rebuildSession() == null  -> ABORTED (SERVER_RESTART)
@@ -32,14 +32,14 @@ onApplicationBootstrap()
             otherwise                 -> activeGames.set()  ("Restored game session [...]")
 ```
 
-Only rows with `result = 'IN_PROGRESS'` and `tournament_match_id IS NULL` are handled:
+Recovery includes unfinished casual games and games linked to an unfinished match in an active tournament:
 
 | Game type | Action |
 | :--- | :--- |
-| Tournament (`tournament_match_id` set) | Skipped. `TournamentRecoveryService` aborts it at startup. |
+| Tournament (`tournament_match_id` set) | Restored with the same ID, moves and clocks when the match and tournament are IN_PROGRESS. |
 | AI (`white_id` or `black_id` = `AI_BOT_USER_ID`) | `ABORTED`, `end_reason = 'SERVER_RESTART'`. Not rated. The Stockfish side is not restored. |
 | Casual | Rebuilt from `game_moves` and put back in `activeGames`. |
-| Casual with damaged history | `ABORTED`, `end_reason = 'SERVER_RESTART'`. |
+| Human game with damaged history | `ABORTED`, `end_reason = 'SERVER_RESTART'`. |
 | Casual whose last saved move ended the game | Concluded through `removeGame()` (result persisted, rating applied). |
 
 The method returns `{ restored, aborted, concluded }` for tests and logging. Any error is logged
@@ -122,3 +122,28 @@ docker compose run --rm backend npm run test:game-recovery
 5. Reload both clients: same position, same move list, clocks as at the last move.
 6. Repeat with an AI game: the row becomes `ABORTED` / `SERVER_RESTART` and the client shows the
    game as finished.
+
+
+## Tournament restart regression (11 November 2026)
+
+GameService is the only owner of session restoration. TournamentRecoveryService
+never aborts ongoing games at bootstrap: it only reconciles already-ended games.
+Unrestorable histories are still aborted and reopened for check-in by that worker.
+Finished/aborted responses clear the old frontend board and offer a return link.
+Shutdown hooks flush queued moves on graceful termination. A hard kill can still
+lose moves not yet committed; recovery uses the last persisted position. Clocks
+resume at backend startup from saved per-player values, not when both users rejoin.
+Outage time is not deducted; thinking time since the last saved move may be refunded.
+
+Run backend `npm run test:game-recovery`, `npm run test:tournament-recovery` and
+`npm run test:tournament-games`. With a separately prepared test database, run
+`npm run test:tournament-recovery:db` using TEST_DATABASE_URL.
+
+Manual verification:
+1. Start a tournament, check in both players, and play several moves.
+2. Run `docker compose down` (never `down -v`), then `docker compose up --build -d`.
+3. Reconnect both browsers to the existing game URL. Confirm the same position,
+   move history and game ID; no replacement check-in is required.
+4. Make another move, resign or finish the game, and verify the bracket advances
+   exactly once and the original game row contains the result.
+5. Repeat with a browser refresh and with disconnection during the final move.

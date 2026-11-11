@@ -116,8 +116,8 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
-  /* Tournament games are handled by TournamentRecoveryService, AI games get aborted,
-  casual games are replayed from game_moves. Clock of the side to move restarts at boot.*/
+  /* Restore human games from saved moves, including active tournament matches.
+  AI games are aborted. Server downtime is not charged to either player. */
   public async recoverInterruptedGames(): Promise<{ restored: number; aborted: number; concluded: number }> {
     const summary = { restored: 0, aborted: 0, concluded: 0 };
     if (!this.prisma) return summary;
@@ -134,7 +134,16 @@ export class GameService implements OnApplicationBootstrap, OnModuleDestroy
     summary.aborted += count;
 
     const games = await this.prisma.game.findMany({
-      where: { result: 'IN_PROGRESS', tournamentMatchId: null },
+      where: {
+        result: 'IN_PROGRESS',
+        OR: [
+          { tournamentMatchId: null },
+          { tournamentMatch: { is: {
+            status: 'IN_PROGRESS', winnerId: null,
+            tournament: { status: 'IN_PROGRESS' },
+          } } },
+        ],
+      },
       select: {
         id: true,
         whiteId: true,

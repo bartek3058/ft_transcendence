@@ -17,8 +17,8 @@ import {
 import { requireTestDatabaseUrl } from '../test-database-url';
 
 /* Real PostgreSQL test for tournament recovery: a result whose listener 
-never ran is applied exactly once; a restart (or an aborted game) sends the
-match back to check-in; recent results are left to the listener; races give one outcome.
+never ran is applied exactly once; restart restores the same game; aborted games
+return to check-in; recent results are left to the listener; races give one outcome.
 */
 Logger.overrideLogger(['error']);
 
@@ -138,9 +138,51 @@ describe('Tournament recovery against PostgreSQL', () => {
     assert.equal((await matchById(match.id)).status, 'IN_PROGRESS');
   });
 
-  it('after a restart the interrupted game is aborted and the match goes back to check-in', async () => {
+  it('restores the same tournament game after restart and advances its bracket once', async () => {
+    const { match, gameId } = await liveMatch();
+    const { Chess } = await import('chess.js');
+    const engine = new Chess();
+    const uciMoves = ['e2e4', 'e7e5'];
+    for (const [i, uci] of uciMoves.entries()) {
+      const move = engine.move({ from: uci.slice(0, 2), to: uci.slice(2) });
+      await prisma.gameMove.create({ data: {
+        gameId, ply: i + 1, moveNumber: 1, color: i === 0 ? 'WHITE' : 'BLACK',
+        playedById: i === 0 ? match.player1Id : match.player2Id,
+        san: move.san, uci, fenAfter: engine.fen(), timeRemainingMs: 580000 - i * 10000,
+      } });
+    }
+    // A new service instance has no sessions: model a process restart.
+    const restored = new GameService(prisma, new RatingService(prisma));
+    const listener = new TournamentGameService(prisma, restored, bracket, publisher);
+    listener.onModuleInit();
+    const recovery = newRecovery();
+    try {
+      // Independent bootstrap order must not abort recoverable games.
+      await recovery.onApplicationBootstrap();
+      await restored.recoverInterruptedGames();
+      const state = restored.getPublicGameState(gameId);
+      assert.equal(state.fen, engine.fen());
+      assert.deepEqual([state.whiteTimeRemainingMs, state.blackTimeRemainingMs], [580000, 570000]);
+      assert.equal((await prisma.game.findUniqueOrThrow({ where: { id: gameId } })).result, 'IN_PROGRESS');
+      assert.equal((await matchById(match.id)).status, 'IN_PROGRESS');
+      assert.equal((await gamesOf(match.id)).length, 1);
+      assert.equal(restored.executeMove({ gameId, from: 'g1', to: 'f3' }, match.player1Id!).success, true);
+      restored.resignGame(gameId, match.player2Id!);
+      assert.equal(await restored.removeGame(gameId), true);
+      assert.equal((await matchById(match.id)).winnerId, match.player1Id);
+      assert.equal(await restored.removeGame(gameId), false);
+      await recovery.tick();
+      assert.equal((await gamesOf(match.id)).length, 1);
+      assert.equal((await matchById(match.id)).winnerId, match.player1Id);
+    } finally {
+      recovery.onModuleDestroy();
+      await restored.onModuleDestroy();
+    }
+  });
+
+  it('an explicitly aborted unrestorable game goes back to check-in', async () => {
     const { tournamentId, match, gameId } = await liveMatch();
-    assert.ok(await newRecovery().abortOrphanedGames() >= 1);
+    await prisma.game.update({ where: { id: gameId }, data: { result: 'ABORTED', endReason: SERVER_RESTART_REASON } });
     const aborted = await prisma.game.findUniqueOrThrow({ where: { id: gameId } });
     assert.deepEqual([aborted.result, aborted.endReason], ['ABORTED', SERVER_RESTART_REASON]);
 
