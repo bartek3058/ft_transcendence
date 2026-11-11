@@ -53,6 +53,23 @@ test('register → login → me → logout, with safe responses and hashed sessi
   assert.equal((await h.request('logout', { method: 'POST', cookie })).status, 204);
 });
 
+test('session check is 200 with null when logged out and returns the user when logged in', async (t) => {
+  const h = await harness(t);
+  const anonymous = await h.request('session');
+  assert.equal(anonymous.status, 200);
+  assert.deepEqual(await anonymous.json(), { user: null });
+  const malformed = await h.request('session', { cookie: '__Host-session=short' });
+  assert.equal(malformed.status, 200);
+  assert.deepEqual(await malformed.json(), { user: null });
+  await register(h);
+  const cookie = sessionCookie(await login(h));
+  const loggedIn = await h.request('session', { cookie });
+  assert.equal(loggedIn.status, 200);
+  assert.equal((await loggedIn.json()).user.username, 'Chess_Fan');
+  await h.request('logout', { method: 'POST', cookie });
+  assert.deepEqual(await (await h.request('session', { cookie })).json(), { user: null });
+});
+
 test('duplicate identities map to 409, including racing registration requests', async (t) => {
   const h = await harness(t);
   const responses = await Promise.all([registerRequest(), registerRequest()]);
@@ -178,4 +195,33 @@ test('unrelated accounts remain isolated and session lookup never exposes passwo
   assert.equal(result.user.email, second.email);
   assert.ok(!JSON.stringify(result).includes('password'));
   assert.equal((await h.request('me', { cookie: aliceCookie })).status, 401);
+});
+
+test('session probe accepts invalid/expired sessions as guests but keeps me protected', async (t) => {
+  const h = await harness(t);
+  for (const cookie of ['__Host-session=invalid', `__Host-session=${'a'.repeat(64)}`]) {
+    const response = await h.request('session', { cookie });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await response.json(), { user: null });
+    assert.equal((await h.request('me', { cookie })).status, 401);
+  }
+  await register(h);
+  const cookie = sessionCookie(await login(h));
+  const stored = [...h.repository.sessions.values()][0];
+  stored.expiresAt = new Date(Date.now() - 1000);
+  const expired = await h.request('session', { cookie });
+  assert.equal(expired.status, 200);
+  assert.deepEqual(await expired.json(), { user: null });
+  assert.equal((await h.request('me', { cookie })).status, 401);
+});
+
+test('session probe preserves database failures as 503', async (t) => {
+  const h = await harness(t);
+  await register(h);
+  const cookie = sessionCookie(await login(h));
+  h.repository.failure = 'findSession';
+  const response = await h.request('session', { cookie });
+  assert.equal(response.status, 503);
+  assert.ok(!JSON.stringify(await response.json()).includes('PRIVATE_DETAILS'));
 });

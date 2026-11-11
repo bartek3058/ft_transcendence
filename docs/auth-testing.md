@@ -110,3 +110,15 @@ Verified in this folder on Node 22.23.3 and PostgreSQL 16.15: 37 auth tests,
 5 bootstrap tests, 20 database checks and 2 database-backed integration scenarios
 passed. Build and TypeScript checks also passed. Docker/browser verification
 remains pending. The isolated PostgreSQL test server was stopped afterward.
+
+## Initial session check
+
+The frontend uses `GET /api/auth/session` with caching disabled. This endpoint
+returns 200 with `{ "user": null }` for missing, invalid, expired or revoked
+sessions, and the safe account for valid sessions. Database errors remain 503.
+The protected `/api/auth/me` endpoint and account writes still require a session.
+
+Rebuild the services, open a fresh private browser window and verify the initial
+session request returns 200 without a guest-session 401 console entry. Log in and
+refresh to verify restoration, then log out and refresh to verify signed-out state.
+Run `npm test` in backend for authentication regression coverage.
