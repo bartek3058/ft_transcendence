@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Req, Res, UseFilters, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Req, Res, UnauthorizedException, UseFilters, UseGuards } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthExceptionFilter } from './auth-exception.filter';
 import { AuthRequestGuard } from './auth-request.guard';
@@ -35,6 +35,19 @@ export class AuthController {
       ...SESSION_COOKIE_OPTIONS, expires: result.session.expiresAt,
     });
     return { user: result.user };
+  }
+
+  @Get('session')
+  async session(@Req() request: Request) {
+    try {
+      const user = await this.sessions.authenticate(readSessionToken(request));
+      return { user };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        return { user: null };
+      }
+      throw error;
+    }
   }
 
   @Get('me')
