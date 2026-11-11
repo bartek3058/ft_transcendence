@@ -132,7 +132,7 @@ Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): 
 | AI chat, sentiment & moderation | astefans | `POST /api/ai/chat`: an LLM chat companion in four personas (coach / commentator / rival / casual) that gets the live game context (FEN + moves). A local lexicon tags each message's sentiment (words + emoji), and moderation (deterministic blocklist + LLM classifier) blocks abusive input before it reaches the model. |
 | Live game restart recovery | tszymans | After a backend restart, casual games are rebuilt from saved moves and players rejoin at the same position with the same clocks; interrupted AI games are aborted (unrated). Details: [docs/game-restart-recovery.md](docs/game-restart-recovery.md). |
 | ELO progression | tszymans | Rating history for the profile chart (`GET /api/profile/me/rating-history`), built from the frozen per-game rating snapshots, so past points never change when the live rating does. |
-| Account settings | tszymans | Change your username (case is kept, uniqueness ignores case) or password from a logged-in session; a password change signs out every other device. Details: [docs/account-settings.md](docs/account-settings.md). |
+| Account settings | tszymans | Change your username (case is kept, uniqueness ignores case) or password from a logged-in session; a password change signs out every other device. Registration accepts mixed case under the same rule. Details: [docs/account-settings.md](docs/account-settings.md). |
 
 ---
 
@@ -185,6 +185,7 @@ Product Owner, Public API subsystem, API key security, sliding-window rate limit
 - Made live games survive a backend restart (Issue #76): casual games are restored from move history on startup, AI games are cleanly aborted, and corrupt histories are aborted instead of crashing the boot.
 - Added the ELO progression endpoint for the profile chart, read from frozen per-game rating snapshots.
 - Added account settings: username change with mixed-case names and case-insensitive uniqueness, and password change that rotates every session in one transaction.
+- Allowed mixed-case usernames at registration, matching rename, the API and the DB check, with uniqueness still ignoring case.
 
 ### Challenges
 - Guaranteeing database protection against DoS by enforcing zero-I/O key validation and sliding-window rate limiting before database queries.

@@ -9,7 +9,7 @@ Normalization chooses a canonical identity. Validation accepts/rejects a value. 
 | Field | Normalization | Validation |
 |---|---|---|
 | email | Trim surrounding whitespace, then lowercase ASCII letters. Same function for register and login. | Must already be a string; conventional ASCII email syntax, one address, no display name, no internal whitespace, total length ≤254 and local part ≤64. Use a maintained validator rather than a handwritten email regex. |
-| username | Trim surrounding whitespace, then lowercase ASCII letters. | Registration only: `[a-z0-9_]{3,20}`. Clearly tell users their public handle will be lowercase. |
+| username | Trim surrounding whitespace only; letter case is kept. | `[A-Za-z0-9_]{3,20}` for registration and rename. Unique ignoring case ("Tomek" blocks "tomek"). |
 | password | **None:** no trim, lowercase, Unicode normalization, HTML escaping or character removal. | Registration: 15–128 Unicode code points, max 512 UTF-8 bytes. Allow spaces, punctuation and Unicode; reject malformed Unicode (unpaired surrogate code units) rather than silently changing it. Login: nonempty and same upper bounds; do not reapply a newer registration minimum to existing accounts. |
 
 > **Update 2026-11-10 (migration `20261110120000_username_case`):** usernames keep the case they were typed in (`^[A-Za-z0-9_]{3,20}$`, trimmed only, so ` Chess_Fan ` is stored as `Chess_Fan`); uniqueness ignores case via a unique index on `lower(username)`. Email is still lowercased. See [account-settings.md](account-settings.md).
