@@ -375,7 +375,7 @@ Product Owner, Public API subsystem, API key security, sliding-window rate limit
 - Built test suites covering API security, rate limit headers, match queries, and leaderboard pagination.
 - Built tournament registration and lifecycle (Issue #102): seven `/api/tournaments` routes, a registration-deadline scheduler, and start/cancel transitions that stay consistent under concurrent requests, all tested against real PostgreSQL.
 - Made live games survive a backend restart (Issue #76): casual games are restored from move history on startup, AI games are cleanly aborted, and corrupt histories are aborted instead of crashing the boot.
-- Added the ELO progression endpoint for the profile chart, read from frozen per-game rating snapshots.
+- Added the ELO progression endpoint for the profile chart, read from frozen per game rating snapshots.
 - Added account settings: username change with mixed-case names and case-insensitive uniqueness, and password change that rotates every session in one transaction.
 
 ### Challenges
