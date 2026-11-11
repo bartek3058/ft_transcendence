@@ -25,7 +25,7 @@ export const privacySections: LegalSection[] = [
     "id": "required",
     "title": "Information required to participate",
     "paragraphs": [
-      "An email address, username and password are required for an account; without them, authenticated features cannot be provided. Usernames and emails are normalized to lowercase in this version. AI prompts and friendship requests are optional. Avoid submitting sensitive personal information or information about other people that is not needed to use the service."
+      "An email address, username and password are required for an account; without them, authenticated features cannot be provided. Emails are normalized to lowercase; usernames keep their letter case but are unique regardless of case. AI prompts and friendship requests are optional. Avoid submitting sensitive personal information or information about other people that is not needed to use the service."
     ]
   },
   {

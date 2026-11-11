@@ -3,9 +3,9 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function validate(username: string, password: string, confirm: string) {
-  const u = username.trim().toLowerCase();
-  if (!/^[a-z0-9_]{3,20}$/.test(u))
-    return "Username: 3–20 characters, only a-z, 0-9 and _.";
+  const u = username.trim();
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(u))
+    return "Username: 3–20 characters, only letters, digits and _.";
   if (Array.from(password).length < 15)
     return "Password must be at least 15 characters long.";
   if (Array.from(password).length > 128)
@@ -39,7 +39,7 @@ export function RegisterPage() {
     try {
       await register(
         email.trim().toLowerCase(),
-        username.trim().toLowerCase(),
+        username.trim(),
         password,
       );
       setSuccess("Account created.You can now log in.");
@@ -59,7 +59,7 @@ export function RegisterPage() {
           ♞ <b>ChessHub</b>
         </div>
         <h1>Create account</h1>
-        <p>Your public username will be saved in lowercase.</p>
+        <p>Usernames keep their letter case but must be unique ignoring case ("Tomek" and "tomek" count as the same name).</p>
         <p>Read our <Link to="/privacy-policy">Privacy Policy</Link> and <Link to="/terms-of-service">Terms of Service</Link>.</p>
         <form onSubmit={submit} className="auth-form">
           <label>
@@ -81,6 +81,7 @@ export function RegisterPage() {
               required
               minLength={3}
               maxLength={20}
+              pattern="[A-Za-z0-9_]{3,20}"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
