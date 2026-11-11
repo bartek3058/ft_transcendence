@@ -7,6 +7,7 @@ import { FriendsProvider } from "./context/FriendsContext";
 import "./styles/index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
+  
   <React.StrictMode>
     <BrowserRouter
       future={{
@@ -20,5 +21,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         </FriendsProvider>
       </AuthProvider>
     </BrowserRouter>
-  </React.StrictMode>,
+  </React.StrictMode>
+  ,
 );

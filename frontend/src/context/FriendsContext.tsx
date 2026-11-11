@@ -61,13 +61,19 @@ export function FriendsProvider({ children }: { children: React.ReactNode }) {
     reconnectRef.current = () => {
       if (!socket.connected && !socket.active) socket.connect();
     };
-    socket.connect();
+    // Defer connecting so StrictMode cleanup can cancel
+    // the development-only initial effect cycle.
+    const connectTimer = window.setTimeout(() => {
+      socket.connect();
+    }, 0);
+
     const onFocus = () => {
       schedule();
       if (!socket.connected && !socket.active) socket.connect();
     };
     window.addEventListener("focus", onFocus);
     return () => {
+      window.clearTimeout(connectTimer);
       clearTimeout(timer);
       window.removeEventListener("focus", onFocus);
       socket.removeAllListeners();

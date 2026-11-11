@@ -92,7 +92,9 @@ export function useTournamentInvitationsRealtime(
     );
 
     setStatus("connecting");
-    socket.connect();
+    const connectTimer = window.setTimeout(() => {
+      if (active) socket.connect();
+    }, 0);
 
     const handleFocus = () => {
       scheduleUpdate();
@@ -106,6 +108,7 @@ export function useTournamentInvitationsRealtime(
 
     return () => {
       active = false;
+      window.clearTimeout(connectTimer);
       clearTimeout(updateTimer);
       window.removeEventListener("focus", handleFocus);
       socket.removeAllListeners();
