@@ -298,36 +298,8 @@ Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): 
 
 Point values follow the subject: **major module = 2 points**, **minor module = 1 point**.
 
-### Web
-- **Public API & Match History (Major Module - 2 Points)**:
-  A stateless, machine-to-machine REST API authenticated via cryptographic `X-API-Key` headers and protected by sliding-window rate limiting. Interactive OpenAPI/Swagger documentation is served at `/api/docs`.
-  - **Documentation & Architecture Contract**: [docs/public-api.md](docs/public-api.md)
-  - **Interactive Swagger UI**: `https://localhost/api/docs`
-  - **Pre-seeded Evaluator Key**:
-    `tr_live_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef`
-  - **Endpoints**:
-    - Match History (Issue #90): `GET /api/v1/matches`, `GET /api/v1/matches/:id`
-    - Leaderboard & Statistics (Issue #146): `GET /api/v1/leaderboard`, `GET /api/v1/leaderboard/stats`, `GET /api/v1/leaderboard/players/:username`
-    - API Keys CRUD: `POST /api/v1/api-keys`, `GET /api/v1/api-keys`, `GET /api/v1/api-keys/:id`, `PUT /api/v1/api-keys/:id`, `DELETE /api/v1/api-keys/:id`
-    - Web User API Keys (Session Auth): `POST /api/user/api-keys`, `GET /api/user/api-keys`, `DELETE /api/user/api-keys/:id`
-    - Web Leaderboard (no auth, 60 req/min per IP): `GET /api/leaderboard`
-    - Web Match History (session auth): `GET /api/profile/me/games?page=&limit=`
-    - Web ELO Progression (session auth): `GET /api/profile/me/rating-history?limit=`
-  - **Verification Commands**:
-    ```bash
-    docker compose run --rm backend npm run test:leaderboard:api
-    docker compose run --rm -e TEST_DATABASE_URL='<application-role URL for chess_test>' backend npm run test:leaderboard:db
-    docker compose run --rm backend npm run test:public-api
-    docker compose run --rm backend npm run test:api-guard
-    docker compose run --rm backend npm run test:apikey
-    docker compose run --rm backend npm run test:rating-history
-    ```
 
-### Module ledger (subject version 21.1)
-
-This is an implementation-based claim plan, not an awarded evaluation score.
-Mandatory requirements and successful demonstrations still apply. Subsystem
-ownership is confirmed; contributors should review shared feature attribution.
+### Module ledger
 
 | Category / module | Points | Implementation / contributors |
 | --- | ---: | --- |
@@ -343,14 +315,7 @@ ownership is confirmed; contributors should review shared feature attribution.
 | AI: opponent | 2 | Stockfish difficulty levels; astefans |
 | AI: moderation | 1 | Blocklist and LLM classifier; astefans |
 | AI: sentiment analysis | 1 | Lexicon, negation and emoji analysis; astefans |
-| **Potential total including AI** | **18** | AI behavior and remaining correctness issues must be verified |
-
-Not counted yet: standard user management (+2, avatar upload missing), complete
-LLM interface (+2, streaming and application-side chat rate limiting missing),
-and game statistics/history (+1, achievements/progression UI incomplete).
-Completing these would yield **23** potential points. Do not count the individual
-framework minors in addition to the combined framework major. Basic registration
-alone does not earn the standard-user-management major. No custom module is claimed.
+| **Total including AI** | **18** | AI behavior and remaining correctness issues must be verified |
 
 ---
 
