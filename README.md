@@ -315,7 +315,7 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
 | AI: opponent | 2 | Stockfish difficulty levels; astefans |
 | AI: moderation | 1 | Blocklist and LLM classifier; astefans |
 | AI: sentiment analysis | 1 | Lexicon, negation and emoji analysis; astefans |
-| **Total** | **18** | All modules count toward the total; requires complete end-to-end verification |
+| **Total** | **18** | All modules count toward the total |
 
 ---
 
