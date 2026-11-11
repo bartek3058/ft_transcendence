@@ -53,6 +53,23 @@ test('register → login → me → logout, with safe responses and hashed sessi
   assert.equal((await h.request('logout', { method: 'POST', cookie })).status, 204);
 });
 
+test('session check is 200 with null when logged out and returns the user when logged in', async (t) => {
+  const h = await harness(t);
+  const anonymous = await h.request('session');
+  assert.equal(anonymous.status, 200);
+  assert.deepEqual(await anonymous.json(), { user: null });
+  const malformed = await h.request('session', { cookie: '__Host-session=short' });
+  assert.equal(malformed.status, 200);
+  assert.deepEqual(await malformed.json(), { user: null });
+  await register(h);
+  const cookie = sessionCookie(await login(h));
+  const loggedIn = await h.request('session', { cookie });
+  assert.equal(loggedIn.status, 200);
+  assert.equal((await loggedIn.json()).user.username, 'Chess_Fan');
+  await h.request('logout', { method: 'POST', cookie });
+  assert.deepEqual(await (await h.request('session', { cookie })).json(), { user: null });
+});
+
 test('duplicate identities map to 409, including racing registration requests', async (t) => {
   const h = await harness(t);
   const responses = await Promise.all([registerRequest(), registerRequest()]);

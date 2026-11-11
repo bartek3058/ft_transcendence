@@ -29,6 +29,7 @@ flowchart TD
 | `POST /api/auth/register` | 201 `{user}`; hashes password and creates account; does not log in automatically | 400 invalid input; 409 duplicate email/username; 503 missing/unavailable storage |
 | `POST /api/auth/login` | 200 `{user}`; verifies password; replaces this browser's old session atomically; sets secure cookie after persistence succeeds | Same 401 for unknown email/wrong password; no cookie when persistence fails |
 | `GET /api/auth/me` | 200 `{user}` for an existing unexpired cookie session | 401 absent/invalid/revoked/expired session; 503 storage outage |
+| `GET /api/auth/session` | 200 `{user}` for a valid session, 200 `{user: null}` otherwise (page-load check, no 401 in the console) | 503 storage outage |
 | `POST /api/auth/logout` | 204; deletes current session then clears cookie; repeat/no-cookie logout succeeds | 400 nonempty/invalid body; 503 if an existing token cannot be revoked |
 
 All mutation routes require JSON, exact configured Origin and `X-CSRF-Protection: 1`. Errors follow `{error: {code, message, fields?}}`; credentials, hashes, tokens and raw database errors are not returned. A missing database does not simulate successful registration/login. `/api/health` remains process liveness only, not proof that authentication storage is ready.
@@ -108,7 +109,7 @@ if (!response.ok) {
 }
 ```
 
-The browser supplies Origin; frontend JavaScript must not try to set it manually. Cookies are handled by the browser, not localStorage. Fetch `/api/auth/me` after reload to restore UI state. Logout uses POST, the same headers and body `{}`; its 204 response has no JSON body. Client-side form validation remains required by the subject and is not implemented here.
+The browser supplies Origin; frontend JavaScript must not try to set it manually. Cookies are handled by the browser, not localStorage. After reload, fetch `/api/auth/session` to restore UI state: it returns `{user: null}` instead of 401 when logged out. `/api/auth/me` still returns 401 without a session. Logout uses POST, the same headers and body `{}`; its 204 response has no JSON body. Client-side form validation remains required by the subject and is not implemented here.
 
 ## Verification and remaining work
 

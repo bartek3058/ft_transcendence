@@ -1,4 +1,6 @@
-import { Body, Controller, Get, HttpCode, Patch, Post, Req, Res, UseFilters, UseGuards } from '@nestjs/common';
+import {
+  Body, Controller, Get, HttpCode, Patch, Post, Req, Res, UnauthorizedException, UseFilters, UseGuards,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthExceptionFilter } from './auth-exception.filter';
 import { AuthRequestGuard } from './auth-request.guard';
@@ -40,6 +42,19 @@ export class AuthController {
   @Get('me')
   @UseGuards(SessionGuard)
   me(@Req() request: AuthenticatedRequest) { return { user: request.account }; }
+
+  // Session check for page load: 200 with the user, or { user: null } when logged out,
+  // so a visitor without a session doesn't get a 401 in the console.
+  // Protected routes keep using SessionGuard and still answer 401.
+  @Get('session')
+  async session(@Req() request: Request) {
+    try {
+      return { user: await this.sessions.authenticate(readSessionToken(request)) };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) return { user: null };
+      throw error; // storage failures (503) are not hidden
+    }
+  }
 
   @Patch('me')
   @UseGuards(SessionGuard)
