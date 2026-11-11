@@ -1,6 +1,6 @@
 *This project has been created as part of the 42 curriculum by astefans, brogalsk, tszymans, pjedrycz and pmamala*
 
-# ChessHub — ft_transcendence
+# ChessHub - ft_transcendence
 
 ## Description
 
@@ -14,7 +14,7 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
 - **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
-- **Public API, Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
+- **Public API (partialy implemented), Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
 - **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
 - **Tournament bracket & progression engine** - automated single-elimination tournament generator with balanced seed-fold pairing, Round 1 Bye resolution, match progression to champion, and knockout draw tiebreak handling.
 - **Tournament registration & lifecycle** - create, browse (open / live / past) and join tournaments; the creator or an admin can close registration early or cancel. Registration closes on its own at the deadline, the bracket starts automatically, and tournaments with fewer than 2 players are cancelled.
@@ -22,10 +22,10 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Tournament invitations** - the creator or any registered player can invite friends to an open tournament; the friend accepts (joins) or declines, and can be invited again after declining.
 - **Play against the computer** - a Stockfish-backed AI opponent with easy / medium / hard settings and on-demand move hints. These games show up in your match history but don't touch your ELO.
 - **AI chat companion** - an LLM you can chat with mid-game that plays coach, commentator, rival or just casual, and actually knows the position you're in (it gets the live board). Your messages get a quick sentiment read, and a moderation layer (local blocklist + LLM classifier) keeps abusive stuff out.
-- **Friends and player chat** — friend requests, acceptance/removal, public profiles and online presence; authenticated in-game messages between opponents.
-- **Tournament UI** — creation, invitations, registration, live brackets, check-in, matches and final standings.
-- **Account settings** — username and password changes.
-- **Restart recovery** — casual and active tournament games resume from committed moves under the same game ID.
+- **Friends and player chat** - friend requests, acceptance/removal, public profiles and online presence; authenticated in-game messages between opponents.
+- **Tournament UI** - creation, invitations, registration, live brackets, check-in, matches and final standings.
+- **Account settings** - username and password changes.
+- **Restart recovery** - casual and active tournament games resume from committed moves under the same game ID.
 
 ---
 
@@ -104,15 +104,8 @@ On the host, for example `10.12.5.2`, set:
 APP_ORIGIN=https://10.12.5.2:8443
 ```
 
-Change Nginx's HTTPS host mapping in `docker-compose.yml` from `443:443` to
-`8443:443`, leaving its internal TLS listener on 443. Recreate the services:
 
-```bash
-docker compose up -d --build --force-recreate backend nginx
-docker compose exec backend printenv APP_ORIGIN
-```
-
-Every client, including the host's browser, must use `https://10.12.5.2:8443`.
+Every client, including the host's browser, must use server IP address, for example: `https://10.12.5.2:8443`.
 The origin includes the port and has no path/trailing slash. A shell-exported
 `APP_ORIGIN` overrides `.env`; unset it if it contains an old value. The LAN must
 permit connections to that port. No additional PostgreSQL port exposure is needed.
@@ -185,7 +178,7 @@ Use ordinary `down` and `up --build` for restart testing.
 | tszymans | Product Owner | Public API, tournament lifecycle/recovery, account settings and database ownership/documentation. |
 | pjedrycz | Tech Lead | Architecture/integration reviews, authentication, friends backend, player-chat backend, legal documentation and tournament restart fixes. |
 | brogalsk | Project Manager | Organizing and tracking team tasks and progress; chess engine ownership. |
-| astefans | Developer | Matchmaking, ELO ranking and game statistics |
+| astefans | Developer | Matchmaking, ELO ranking and game statistics, plus the AI side: the Stockfish opponent and the LLM chat companion (sentiment + moderation). |
 | pmamala | Main Frontend Developer | Frontend implementation, UI integration and responsive layouts. |
 
 ### Git aliases and subsystem ownership
@@ -209,11 +202,11 @@ Ownership identifies the lead for a subsystem; individual shared contributions
 are described below.
 
 ## Project Management
-- **GitHub Issues & Projects** - task tracking and board.**GitHub Kanban dashboard
+- **GitHub Issues & Projects** - task tracking and board.
 - **Feature-branch Git workflow** - one feature per pull request, reviewed before merge to `main`.
 - **GitHub Kanban dashboard** - progress tasks tracking.
 - **Slack** - team communication.
-- **Google Meet** - bi weekly team meetings.
+- **Google Meet** - bi-weekly team meetings.
 
 ---
 
@@ -257,12 +250,12 @@ Database setup and roles (full contract in [docs/database-setup.md](docs/databas
 
 Additional tables:
 
-- **friendships** — requester, two user references, relationship status and timestamps.
-- **api_keys** — user owner, hashed key, prefix, expiration/revocation and usage metadata.
-- **tournaments** — creator, title, status, capacity, registration deadline and champion.
-- **tournament_participants** — tournament/user links, seeds, check-in-independent registration and final rank.
-- **tournament_matches** — bracket round/position, players, winner, next-match link and check-in state.
-- **tournament_invitations** — tournament, sender, recipient, response and timestamps.
+- **friendships** - requester, two user references, relationship status and timestamps.
+- **api_keys** - user owner, hashed key, prefix, expiration/revocation and usage metadata.
+- **tournaments** - creator, title, status, capacity, registration deadline and champion.
+- **tournament_participants** - tournament/user links, seeds, check-in-independent registration and final rank.
+- **tournament_matches** - bracket round/position, players, winner, next-match link and check-in state.
+- **tournament_invitations** - tournament, sender, recipient, response and timestamps.
 
 UUID primary/foreign keys connect these tables. Games link to users and optionally
 tournament matches; each game has ordered moves unique by `(game_id, ply)`.
@@ -283,7 +276,7 @@ Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): 
 | Friends | pjedrycz (backend), pmamala (frontend) | Requests, acceptance/removal, public profiles and online presence with browser integration. |
 | Player chat | pjedrycz (backend), pmamala (frontend) | Opponents exchange messages through authenticated game rooms; recent history is held in server RAM. |
 | Chess engine and gameplay | brogalsk (engine), pmamala (frontend) | Server-side move validation, clocks, game state and persistence. |
-| Tournament frontend | pmamala | Create/join, invitations, bracket display, check-in and game navigation. |
+| Tournament frontend | pmamala (frontend), tszymans (backend)| Create/join, invitations, bracket display, check-in and game navigation. |
 | Legal pages | pjedrycz | Public privacy policy and terms pages and operator documentation. |
 | Database foundation | tszymans | PostgreSQL roles, constraints, schema and migrations. |
 | ELO rating system | astefans | Pure ELO engine (expected score + rating update, K-factor 32, rating floor) and a transactional, idempotent service that updates both players' ratings when a game ends. |
@@ -306,7 +299,7 @@ Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): 
 Point values follow the subject: **major module = 2 points**, **minor module = 1 point**.
 
 ### Web
-- **Public API & Match History (Major Module — 2 Points)**:
+- **Public API & Match History (Major Module - 2 Points)**:
   A stateless, machine-to-machine REST API authenticated via cryptographic `X-API-Key` headers and protected by sliding-window rate limiting. Interactive OpenAPI/Swagger documentation is served at `/api/docs`.
   - **Documentation & Architecture Contract**: [docs/public-api.md](docs/public-api.md)
   - **Interactive Swagger UI**: `https://localhost/api/docs`
@@ -365,7 +358,7 @@ alone does not earn the standard-user-management major. No custom module is clai
 
 ## tszymans - Product Owner
 ### Responsibilities
-Product Owner, Public API subsystem, API key security, sliding-window rate limiting, and public statistics.
+Public API subsystem, API key security, sliding-window rate limiting, and public statistics.
 
 ### Main Contributions
 - Designed and built the machine-to-machine Public API under `/api/v1` with cryptographic API keys (`X-API-Key`), sliding-window rate limiting, and automated Swagger UI (`/api/docs`).
@@ -600,43 +593,14 @@ copies aligned with `frontend/src/content/legal/` when updating the documents.
 The following items are planned enhancements, not claims of completed features
 or additional evaluation points:
 
-- **Position advantage bar** — show whether White or Black has the advantage.
+- **Position advantage bar** - show whether White or Black has the advantage.
   Keep engine-assisted evaluation in analysis, spectator or AI modes to avoid
   providing assistance during competitive human matches.
-- **Email invitations** — send invitations by email with links to the relevant
+- **Email invitations** - send invitations by email with links to the relevant
   tournament or invitation page.
-- **Avatars** — let users upload, change and remove a profile avatar, with a
+- **Avatars** - let users upload, change and remove a profile avatar, with a
   default avatar and validation of uploaded files.
-- **Achievements** — award and display persistent milestones with clear rules.
-- **Progression bar** — show progress toward the next level or milestone, with
+- **Achievements** - award and display persistent milestones with clear rules.
+- **Progression bar** - show progress toward the next level or milestone, with
   clearly defined progression rules.
-- **Captured pieces display** — show the pieces each side has lost during a game.
-
-## Information still needed before submission
-
-Roles, Git aliases, subsystem ownership, project management, contribution
-summaries and the documented AI usage have been confirmed by the team. Gemini
-is the runtime provider; astefans manages AI configuration and retention/deletion.
-
-The following will be completed before submission:
-
-- Final selected modules and evaluation commit/branch.
-- Verification results for that version: commands, passes/failures, known
-  limitations, browser versions, devices and multi-user checks.
-- School deployment URL/port and TLS certificate/trust setup.
-
-Two short clarifications are still useful for completeness:
-
-- A specific engine-development difficulty and solution from brogalsk, and a
-  concrete browser-console error/fix from pmamala. Their challenge topics are
-  recorded, but detailed solutions/outcomes have not yet been supplied.
-- The exact deployed Gemini model identifier and API service/account setup.
-  “Gemini” identifies the provider/product family, not the configured model.
-
-Before submission, reconcile legal content with real player chat, preserved
-username case and sessionStorage AI history. Operational ownership does not
-mean retention/deletion automation has been implemented.
-
-The current module ledger deliberately excludes unfinished modules. Complete a
-final review of implementation and known limitations before claiming evaluation
-points; documentation changes do not fix remaining application issues.
+- **Captured pieces display** - show the pieces each side has lost during a game.
