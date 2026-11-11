@@ -1,5 +1,4 @@
 
-/* ChessHub: separate ELO badge next to player nickname */
 .playerElo {
   display: inline-flex;
   align-items: center;
@@ -15,7 +14,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Subtle ELO badge */
 .playerElo {
   color: #a0aaa3;
   background: rgba(140, 160, 145, 0.10);
