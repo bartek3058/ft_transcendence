@@ -33,8 +33,7 @@ export interface StuckMatch {
   black_id: string | null;
 }
 
-/*Fixes tournament matches stuck IN_PROGRESS (#168). On startup, games lost by a restart
-are aborted. Every 30 s, finished games get their result applied again and aborted
+/*Fixes tournament matches stuck IN_PROGRESS (#168). GameService alone restores games at startup; this service must not abort them. Every 30 s, finished games get their result applied again and aborted
 ones send the match back to check-in. Assumes a single backend instance.*/
 @Injectable()
 export class TournamentRecoveryService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -49,12 +48,6 @@ export class TournamentRecoveryService implements OnApplicationBootstrap, OnModu
     private readonly events: TournamentEventsPublisher) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    try {
-      await this.abortOrphanedGames();
-    } catch (error) {
-      // nothing else will fix an orphaned game, so log it and keep booting
-      this.logger.error(`Could not abort orphaned tournament games: ${describe(error)}`);
-    }
     this.timer = setInterval(() => { void this.tick(); }, RECOVERY_INTERVAL_MS);
     this.timer.unref();
   }
@@ -62,16 +55,6 @@ export class TournamentRecoveryService implements OnApplicationBootstrap, OnModu
   onModuleDestroy(): void {
     clearInterval(this.timer);
     this.timer = undefined;
-  }
-
-  // startup only, no session can be in memory yet
-  async abortOrphanedGames(): Promise<number> {
-    const { count } = await this.prisma.game.updateMany({
-      where: { tournamentMatchId: { not: null }, result: 'IN_PROGRESS' },
-      data: { result: 'ABORTED', endReason: SERVER_RESTART_REASON, gameEnd: new Date() },
-    });
-    if (count) this.logger.warn(`Aborted ${count} tournament game(s) interrupted by a restart.`);
-    return count;
   }
 
   async tick(): Promise<RecoveryTickResult> {

@@ -103,23 +103,12 @@ describe('TournamentRecoveryService', () => {
     assert.equal((await broken.tick()).skipped, false);
   });
 
-  it('on bootstrap aborts only live tournament games, then starts an unref()d timer', async () => {
+  it('bootstrap never aborts games owned by GameService recovery', async () => {
     const h = setup([]);
     await h.service.onApplicationBootstrap();
-    assert.deepEqual(h.updates, [{
-      where: { tournamentMatchId: { not: null }, result: 'IN_PROGRESS' },
-      data: { result: 'ABORTED', endReason: SERVER_RESTART_REASON, gameEnd: (h.updates[0] as any).data.gameEnd },
-    }]);
+    assert.deepEqual(h.updates, []);
     const timer = (h.service as unknown as { timer?: NodeJS.Timeout }).timer;
     assert.ok(timer && !timer.hasRef());
     h.service.onModuleDestroy();
-  });
-
-  it('a failing startup abort is logged and does not stop the boot', async () => {
-    const service = new TournamentRecoveryService(
-      { game: { updateMany: async () => { throw new Error('db down'); } } } as unknown as PrismaService,
-      {} as TournamentGameService, {} as TournamentEventsPublisher);
-    await service.onApplicationBootstrap();
-    service.onModuleDestroy();
   });
 });

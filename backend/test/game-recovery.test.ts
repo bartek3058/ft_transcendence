@@ -20,6 +20,9 @@ interface Row {
   result: string;
   endReason?: string | null;
   tournamentMatchId: string | null;
+  matchStatus?: string;
+  tournamentStatus?: string;
+  winnerId?: string | null;
   timeControl: string | null;
   gameStart: Date;
   moves: { ply: number; color: string; uci: string; timeRemainingMs: number | null }[];
@@ -55,6 +58,10 @@ function makeFakePrisma(rows: Row[]) {
     if (where.id !== undefined && r.id !== where.id) return false;
     if (where.result !== undefined && r.result !== where.result) return false;
     if ('tournamentMatchId' in where && r.tournamentMatchId !== where.tournamentMatchId) return false;
+    if (where.tournamentMatch && (!r.tournamentMatchId
+      || (r.matchStatus ?? 'IN_PROGRESS') !== where.tournamentMatch.is.status
+      || (r.tournamentStatus ?? 'IN_PROGRESS') !== where.tournamentMatch.is.tournament.status
+      || (r.winnerId ?? null) !== where.tournamentMatch.is.winnerId)) return false;
     if (where.OR && !where.OR.some((c: any) => matches(r, c))) return false;
     if (where.whiteId !== undefined && r.whiteId !== where.whiteId) return false;
     if (where.blackId !== undefined && r.blackId !== where.blackId) return false;
@@ -159,16 +166,41 @@ describe('GameService.recoverInterruptedGames (#76)', () => {
     }
   });
 
-  it('leaves tournament games and finished games alone', async () => {
-    const tournament = row({ tournamentMatchId: randomUUID(), moves: moves(['e2e4']) });
+  it('restores tournament games with the same identity, position and clocks, leaving finished games alone', async () => {
+    const tournament = row({ tournamentMatchId: randomUUID(), moves: moves(['e2e4', 'e7e5'], [590000, 580000]) });
     const finished = row({ result: 'WHITE_WON' });
     const { service } = setup([tournament, finished]);
 
     const summary = await service.recoverInterruptedGames();
-    assert.deepEqual(summary, { restored: 0, aborted: 0, concluded: 0 });
+    assert.deepEqual(summary, { restored: 1, aborted: 0, concluded: 0 });
+    const state = service.getPublicGameState(tournament.id);
+    assert.deepEqual(state.moves, ['e4', 'e5']);
+    assert.equal(state.whiteTimeRemainingMs, 590000);
+    assert.equal(state.blackTimeRemainingMs, 580000);
+    assert.equal(service.executeMove({ gameId: tournament.id, from: 'g1', to: 'f3' } as any, WHITE).success, true);
     assert.equal(tournament.result, 'IN_PROGRESS');
     assert.equal(finished.result, 'WHITE_WON');
+    assert.equal(service.getActiveGamesCount(), 1);
+  });
+
+  it('does not resurrect cancelled tournaments, resolved matches or matches with a winner', async () => {
+    const games = [
+      row({ tournamentMatchId: randomUUID(), tournamentStatus: 'CANCELLED' }),
+      row({ tournamentMatchId: randomUUID(), matchStatus: 'FINISHED' }),
+      row({ tournamentMatchId: randomUUID(), winnerId: WHITE }),
+    ];
+    const { service } = setup(games);
+    assert.equal((await service.recoverInterruptedGames()).restored, 0);
     assert.equal(service.getActiveGamesCount(), 0);
+  });
+
+  it('aborts an unrestorable tournament history so bracket recovery can reopen check-in', async () => {
+    const game = row({ tournamentMatchId: randomUUID(), moves: moves(['e2e5']) });
+    const { service } = setup([game]);
+    assert.equal((await service.recoverInterruptedGames()).aborted, 1);
+    assert.equal(game.result, 'ABORTED');
+    assert.equal(game.endReason, SERVER_RESTART_REASON);
+    assert.equal(service.hasActiveGame(game.id), false);
   });
 
   it('aborts a game whose move history has a gap', async () => {

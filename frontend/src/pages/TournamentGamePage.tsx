@@ -38,7 +38,9 @@ export function TournamentGamePage() {
       {finished && !joined && (
         <div className="matchmakingLobby">
           <h2>Game finished</h2>
-          <p>{finished.result}</p>
+          <p>{finished.result === "ABORTED"
+            ? "This game could not be restored. Return to the tournament to check in for a replacement game."
+            : finished.result}</p>
           <button
             className="primary"
             onClick={() => navigate(backUrl)}

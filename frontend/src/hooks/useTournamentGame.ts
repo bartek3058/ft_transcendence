@@ -62,6 +62,8 @@ export function useTournamentGame(gameId: string | undefined) {
 
       setState((previous) => ({
         ...previous,
+        joined: null,
+        error: null,
         restoring: false,
         finished,
       }));
