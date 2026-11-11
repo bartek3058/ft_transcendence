@@ -74,3 +74,79 @@ nav button.active {
   border-radius: 50%;
   box-shadow: 0 0 8px #76c950;
 }
+
+
+/* Responsive main navigation */
+.mobileNavToggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #343b34;
+  border-radius: 9px;
+  background: #252a26;
+  color: #edf0ea;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  header {
+    gap: 12px;
+    padding: 0 16px;
+  }
+
+  header .brand {
+    margin-right: auto;
+  }
+
+  .mobileNavToggle {
+    display: flex;
+    order: 3;
+    flex-shrink: 0;
+  }
+
+  header .user {
+    margin-left: 0;
+    flex-shrink: 0;
+  }
+
+  header nav.mainNav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    flex: none;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    background: #1b201c;
+    border: 1px solid #343b34;
+    border-radius: 12px;
+    box-shadow: 0 16px 40px #0009;
+    z-index: 20;
+  }
+
+  header nav.mainNav.mobileNavOpen {
+    display: flex;
+  }
+
+  header nav.mainNav a {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  header .user .profileLink span {
+    display: none;
+  }
+
+  header .brand {
+    font-size: 18px;
+  }
+}
