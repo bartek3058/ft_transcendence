@@ -155,9 +155,12 @@ export function useMatchmaking() {
     gameSocket.on("game:error", onGameError);
     gameSocket.on("connect_error", onConnectError);
 
-    gameSocket.connect();
+    const connectTimer = window.setTimeout(() => {
+      gameSocket.connect();
+    }, 0);
 
     return () => {
+      window.clearTimeout(connectTimer);
       matchmaking.off("matchmaking:ready", onReady);
       matchmaking.off("disconnect", onDisconnect);
       matchmaking.off("queue:joined", onJoined);

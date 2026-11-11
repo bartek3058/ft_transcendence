@@ -37,7 +37,7 @@ export function TournamentInviteFriends({ tournamentId }: Props) {
       } catch (cause) {
         if (active) {
           setError(
-            cause instanceof Error ? cause.message : "Unable to load friends"
+            cause instanceof Error ? cause.message : "Unable to load friends",
           );
         }
       } finally {
@@ -46,7 +46,9 @@ export function TournamentInviteFriends({ tournamentId }: Props) {
     }
 
     void load();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [open]);
 
   async function send() {
@@ -66,7 +68,7 @@ export function TournamentInviteFriends({ tournamentId }: Props) {
       setError(
         /409/.test(message)
           ? "This player is already participating or has a pending invitation."
-          : message
+          : message,
       );
     } finally {
       setBusy(false);

@@ -151,6 +151,19 @@ CREATE UNIQUE INDEX "users_username_lower_key" ON "users" (lower("username"));
 * Opponents or friends with the page already open see the old name until they reload.
 * A freed name can be taken by someone else.
 
+### Registration
+
+Registration uses the same rule as rename. `RegisterPage.tsx` used to lowercase the username
+before validating and sending it, so new accounts were always lowercase even though the API and DB
+accepted mixed case. Now the form only trims the name, checks it against `^[A-Za-z0-9_]{3,20}$`
+(also set as the input `pattern`) and sends it as typed. Email is still lowercased.
+
+* `Tomek` registers as `Tomek`. A later `tomek` or `TOMEK` gets 409 `ACCOUNT_CONFLICT`.
+* Covered by `account-settings.test.cjs` ("a name that differs only in case…", the `BoBbY` register)
+  and the `Chess_Fan` cases in `auth-http` / `auth-flows`.
+* Manual check: register `Tomek_1`, then try `tomek_1` with another email. The form shows the
+  conflict and the profile shows `Tomek_1`.
+
 ---
 
 ## 6. Testing & Verification

@@ -22,9 +22,7 @@ async function readError(response: Response): Promise<Error> {
   let body: ApiErrorBody | undefined;
   try {
     body = await response.json();
-  } catch {
-    /* empty/non-json error */
-  }
+  } catch {}
   const message = body?.error?.message ?? `Server error (${response.status})`;
   const error = new Error(message) as Error & {
     status?: number;
@@ -80,7 +78,6 @@ export async function logout(): Promise<void> {
   });
   if (!response.ok) throw await readError(response);
 }
-
 
 export async function updateUsername(username: string): Promise<AuthUser> {
   const response = await fetch("/api/auth/me", {
