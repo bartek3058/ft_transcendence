@@ -1,3 +1,5 @@
+import * as React from "react";
+import { GameResultOverlay } from "../components/chess/GameResultOverlay";
 import "../styles/bootstrap-game-button.scss";
 import { ChessBoard } from "../components/chess/ChessBoard";
 import { GameSidebar } from "../components/chess/GameSidebar";
@@ -211,18 +213,14 @@ export function OnlineGame({
       )}
 
       {chess.result && (
-        <div className="resultOverlay">
-          <div className="resultDialog">
-            <div className="resultIcon">♛</div>
-            <h2>{chess.result.title}</h2>
-            <p>{chess.result.message}</p>
-            <div className="bootstrapGameButton">
-              <button className="btn btn-primary" onClick={handleNewGame}>
-                {tournamentMode ? "Back to tournament" : "Play again"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <GameResultOverlay
+          title={chess.result.title}
+          message={chess.result.message}
+          onPlayAgain={handleNewGame}
+          playAgainLabel={
+            tournamentMode ? "Back to tournament" : "Play again"
+          }
+        />
       )}
     </>
   );

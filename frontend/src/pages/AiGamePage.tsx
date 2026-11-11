@@ -1,3 +1,4 @@
+import { GameResultOverlay } from "../components/chess/GameResultOverlay";
 import { useEffect, useState } from "react";
 import { getMyProfile } from "../services/profile";
 import { ChessBoard } from "../components/chess/ChessBoard";
@@ -118,16 +119,11 @@ export function AiGamePage() {
       )}
 
       {ai.result && (
-        <div className="resultOverlay">
-          <div className="resultDialog">
-            <div className="resultIcon">♛</div>
-            <h2>{ai.result.title}</h2>
-            <p>{ai.result.message}</p>
-            <button className="primary resultButton" onClick={ai.leave}>
-              Play again
-            </button>
-          </div>
-        </div>
+        <GameResultOverlay
+          title={ai.result.title}
+          message={ai.result.message}
+          onPlayAgain={ai.leave}
+        />
       )}
     </>
   );

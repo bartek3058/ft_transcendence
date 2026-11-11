@@ -601,33 +601,35 @@ sidebar. */
 .resultOverlay {
   position: fixed;
   inset: 0;
-  background: #080a09b8;
-  backdrop-filter: blur(5px);
+  background: rgba(150, 150, 150, 0.08);
+  backdrop-filter: none;
   display: grid;
   place-items: center;
-  z-index: 50;
-  padding: 20px;
+  z-index: 4;
+  padding: 16px;
 }
 .resultDialog {
-  width: min(390px, 100%);
-  background: #1b1f1c;
+  position: relative;
+  width: min(280px, 100%);
+  background: rgba(27, 31, 28, 0.75);
   border: 1px solid #3a423b;
-  border-radius: 16px;
-  padding: 30px;
+  border-radius: 12px;
+  padding: 18px;
   text-align: center;
-  box-shadow: 0 24px 80px #000b;
+  box-shadow: 0 12px 32px #0006;
 }
 .resultIcon {
-  font-size: 48px;
+  font-size: 30px;
   color: #d8b27b;
 }
 .resultDialog h2 {
-  font-size: 28px;
-  margin: 8px 0;
+  font-size: 22px;
+  margin: 6px 0;
 }
 .resultDialog p {
   color: #aab1ab;
-  margin: 8px 0 22px;
+  font-size: 13px;
+  margin: 6px 0 14px;
 }
 .resultButton {
   margin: 0 auto;
@@ -744,4 +746,22 @@ header nav a:hover {
 header nav a.active {
   background: #262b26;
   color: #fff;
+}
+
+/* Result window: dismiss button */
+.resultClose {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: 0;
+  background: transparent;
+  color: #c6cbc6;
+  font-size: 23px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.resultClose:hover {
+  color: #ffffff;
 }
