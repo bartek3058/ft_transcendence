@@ -1,6 +1,7 @@
 import {
   Flag,
   History,
+  Lightbulb,
   MessageCircle,
   RotateCcw,
   Send,
@@ -19,6 +20,9 @@ type Props = {
   onNewGame: () => void;
   newGameLabel?: string;
   onResign: () => void;
+  onHint?: () => void;
+  hintDisabled?: boolean;
+  hintPending?: boolean;
   /* Optional AI-chat controls. When onModeChange is given, a persona selector is
   shown above the chat; 'sending' disables input while the AI is replying.*/
   mode?: string;
@@ -40,6 +44,9 @@ export function GameSidebar({
   onNewGame,
   newGameLabel = "New game",
   onResign,
+  onHint,
+  hintDisabled = false,
+  hintPending = false,
   mode,
   modes,
   onModeChange,
@@ -160,6 +167,19 @@ export function GameSidebar({
           </button>
         </div>
       </div>
+
+      {onHint && (
+        <div className="aiHintActions">
+          <button
+            onClick={onHint}
+            disabled={hintDisabled}
+            title="Suggest a move"
+          >
+            <Lightbulb size={16} />
+            {hintPending ? "Thinking…" : "Hint"}
+          </button>
+        </div>
+      )}
 
       <div className="actions sidebarActions">
         <button onClick={onNewGame}>
