@@ -306,16 +306,16 @@ Point values follow the subject: **major module = 2 points**, **minor module = 1
 | Web: frontend + backend frameworks | 2 | React frontend: pmamala; infrastructure: pjedrycz, astefans |
 | Web: real-time features | 2 | Socket.IO games, presence and tournaments; pjedrycz, astefans, tszymans, brogalsk, pmamala |
 | Web: user interaction | 2 | Real player chat, profiles and friends; pjedrycz, pmamala |
-| Web: public API | 2 | API-key CRUD, limits and Swagger; tszymans |
 | Web: ORM | 1 | Prisma; tszymans |
+| Accessibility and Internationalization: support for additional browsers | 1 | Chrome + Firefox compatibility: cross-browser testing and console-error cleanup; pmamala, tszymans |
 | Gaming: web-based game | 2 | Authoritative chess; brogalsk, pmamala |
 | Gaming: remote players | 2 | Synchronization, matchmaking and reconnect; astefans, tszymans, pjedrycz, brogalsk, pmamala |
 | Gaming: tournaments | 1 | Lifecycle, brackets, check-in and UI; tszymans, pjedrycz, pmamala |
-| **Core candidate subtotal** | **14** | Requires complete end-to-end verification |
+| User management: Game statistics and match history | 1 | Match history, per-user statistics and leaderboard, tracks ELO ratings, achievements; tszymans |
 | AI: opponent | 2 | Stockfish difficulty levels; astefans |
 | AI: moderation | 1 | Blocklist and LLM classifier; astefans |
 | AI: sentiment analysis | 1 | Lexicon, negation and emoji analysis; astefans |
-| **Total including AI** | **18** | AI behavior and remaining correctness issues must be verified |
+| **Total** | **18** | All modules count toward the total; requires complete end-to-end verification |
 
 ---
 
