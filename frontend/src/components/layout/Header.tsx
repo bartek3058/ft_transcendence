@@ -60,7 +60,11 @@ export function Header() {
       </nav>
       <div className="user">
         <span className="dot" />
-        <NavLink className="profileLink" to="/profile" onClick={() => setMenuOpen(false)}>
+        <NavLink
+          className="profileLink"
+          to="/profile"
+          onClick={() => setMenuOpen(false)}
+        >
           <UserRound size={17} />
           <span>{user?.username}</span>
         </NavLink>

@@ -5,7 +5,6 @@ export type ChatMessage = {
   user: string;
   text: string;
   sentiment?: Sentiment;
-  // Set on an AI bubble when the request failed, so the UI can offer a retry.
   error?: boolean;
 };
 export type GameHistoryItem = {

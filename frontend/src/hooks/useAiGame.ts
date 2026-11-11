@@ -24,32 +24,43 @@ export function useAiGame() {
   const [difficulty, setDifficulty] = useState<AiDifficulty>("medium");
   const [selected, setSelected] = useState<Square | null>(null);
   const [moves, setMoves] = useState<string[]>([]);
-  const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null);
+  const [pendingPromotion, setPendingPromotion] =
+    useState<PendingPromotion | null>(null);
   const [hint, setHint] = useState<{ from: Square; to: Square } | null>(null);
   const [hintPending, setHintPending] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<GameResult>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Read by the socket listeners (set up once) without going stale.
   const humanColorRef = useRef<PlayerColor>("w");
   const gameIdRef = useRef<string | null>(null);
-  const pendingStartRef = useRef<{ difficulty: AiDifficulty; color?: PlayerColor } | null>(null);
+  const pendingStartRef = useRef<{
+    difficulty: AiDifficulty;
+    color?: PlayerColor;
+  } | null>(null);
 
-  const describeEnd = useCallback((winner: PlayerColor | null, reason: string | null): GameResult => {
-    const human = humanColorRef.current;
-    const nice = (reason ?? "").toLowerCase().replace(/_/g, " ");
-    if (winner === null) {
-      return { title: "Draw", message: reason ? `Game drawn (${nice}).` : "The game ended in a draw." };
-    }
-    const youWon = winner === human;
-    return {
-      title: youWon ? "You win!" : "You lose",
-      message: youWon
-        ? `You beat Stockfish${reason ? ` by ${nice}` : ""}.`
-        : `Stockfish wins${reason ? ` by ${nice}` : ""}.`,
-    };
-  }, []);
+  const describeEnd = useCallback(
+    (winner: PlayerColor | null, reason: string | null): GameResult => {
+      const human = humanColorRef.current;
+      const nice = (reason ?? "").toLowerCase().replace(/_/g, " ");
+      if (winner === null) {
+        return {
+          title: "Draw",
+          message: reason
+            ? `Game drawn (${nice}).`
+            : "The game ended in a draw.",
+        };
+      }
+      const youWon = winner === human;
+      return {
+        title: youWon ? "You win!" : "You lose",
+        message: youWon
+          ? `You beat Stockfish${reason ? ` by ${nice}` : ""}.`
+          : `Stockfish wins${reason ? ` by ${nice}` : ""}.`,
+      };
+    },
+    [],
+  );
 
   useEffect(() => {
     const socket = getAiGameSocket();
@@ -57,7 +68,10 @@ export function useAiGame() {
     const onReady = () => {
       const start = pendingStartRef.current;
       if (start) {
-        socket.emit("ai:new", { difficulty: start.difficulty, color: start.color });
+        socket.emit("ai:new", {
+          difficulty: start.difficulty,
+          color: start.color,
+        });
       }
     };
 
@@ -89,12 +103,17 @@ export function useAiGame() {
         return next;
       });
       if (payload.gameOver) {
-        setResult(describeEnd(payload.gameOver.winnerColor, payload.gameOver.reason));
+        setResult(
+          describeEnd(payload.gameOver.winnerColor, payload.gameOver.reason),
+        );
         setStatus("gameover");
       }
     };
 
-    const onRejected = (payload: { reason?: string; state: { fen: string } }) => {
+    const onRejected = (payload: {
+      reason?: string;
+      state: { fen: string };
+    }) => {
       // Server refused the move: snap back to its authoritative position.
       setThinking(false);
       setHintPending(false);
@@ -111,7 +130,6 @@ export function useAiGame() {
       setStatus("gameover");
       setThinking(false);
       setHintPending(false);
-      // Resync to the authoritative final position (e.g. on resign/timeout).
       if (payload.state?.fen) setGame(new Chess(payload.state.fen));
     };
 
@@ -123,7 +141,6 @@ export function useAiGame() {
     const onError = (payload?: { code?: string; message?: string }) => {
       pendingStartRef.current = null;
       setError(payload?.message ?? payload?.code ?? "AI game error");
-      // Never leave the board locked: clear the waiting flags on any error.
       setThinking(false);
       setHintPending(false);
       setStatus((s) => (s === "connecting" ? "error" : s));
@@ -157,24 +174,27 @@ export function useAiGame() {
     };
   }, [describeEnd]);
 
-  const start = useCallback((diff: AiDifficulty, color?: PlayerColor | "random") => {
-    const socket = getAiGameSocket();
-    setError(null);
-    setResult(null);
-    setStatus("connecting");
-    pendingStartRef.current = {
-      difficulty: diff,
-      color: color === "random" ? undefined : color,
-    };
-    if (socket.connected) {
-      socket.emit("ai:new", {
+  const start = useCallback(
+    (diff: AiDifficulty, color?: PlayerColor | "random") => {
+      const socket = getAiGameSocket();
+      setError(null);
+      setResult(null);
+      setStatus("connecting");
+      pendingStartRef.current = {
         difficulty: diff,
         color: color === "random" ? undefined : color,
-      });
-    } else {
-      socket.connect();
-    }
-  }, []);
+      };
+      if (socket.connected) {
+        socket.emit("ai:new", {
+          difficulty: diff,
+          color: color === "random" ? undefined : color,
+        });
+      } else {
+        socket.connect();
+      }
+    },
+    [],
+  );
 
   function submitMove(from: Square, to: Square, promotion?: PromotionPiece) {
     const id = gameIdRef.current;
@@ -183,21 +203,18 @@ export function useAiGame() {
       const next = new Chess(game.fen());
       const move = next.move({ from, to, ...(promotion ? { promotion } : {}) });
       if (!move) return;
-      /* Optimistic: show our own move immediately; the server reply reconciles
-      the board (and adds the bot's answer) a moment later.*/
+
       setGame(next);
       setSelected(null);
       setHint(null);
       setThinking(true);
       getAiGameSocket().emit("ai:move", { gameId: id, from, to, promotion });
-    } catch {
-      // illegal move - ignore
-    }
+    } catch {}
   }
 
   function clickSquare(square: Square) {
     if (status !== "playing" || thinking || pendingPromotion || result) return;
-    if (game.turn() !== humanColor) return; // not your turn (bot is to move)
+    if (game.turn() !== humanColor) return;
 
     if (!selected) {
       const piece = game.get(square);
@@ -216,7 +233,9 @@ export function useAiGame() {
         (piece.color === "b" && square.endsWith("1")));
     if (
       promoting &&
-      game.moves({ square: selected, verbose: true }).some((m) => m.to === square && Boolean(m.promotion))
+      game
+        .moves({ square: selected, verbose: true })
+        .some((m) => m.to === square && Boolean(m.promotion))
     ) {
       setPendingPromotion({ from: selected, to: square, color: piece!.color });
       setSelected(null);
@@ -238,7 +257,9 @@ export function useAiGame() {
         (piece.color === "b" && to.endsWith("1")));
     if (
       promoting &&
-      game.moves({ square: from, verbose: true }).some((m) => m.to === to && Boolean(m.promotion))
+      game
+        .moves({ square: from, verbose: true })
+        .some((m) => m.to === to && Boolean(m.promotion))
     ) {
       setPendingPromotion({ from, to, color: piece.color });
       setSelected(null);
@@ -259,7 +280,7 @@ export function useAiGame() {
 
   const requestHint = useCallback(() => {
     const id = gameIdRef.current;
-    if (!id || hintPending) return; // one hint at a time (don't spam the engine)
+    if (!id || hintPending) return;
     setHintPending(true);
     getAiGameSocket().emit("ai:hint", { gameId: id });
   }, [hintPending]);
@@ -271,7 +292,6 @@ export function useAiGame() {
   }, []);
 
   const leave = useCallback(() => {
-    // Tell the server to abandon the game so it isn't left orphaned in RAM/DB.
     const id = gameIdRef.current;
     if (id) getAiGameSocket().emit("ai:leave", { gameId: id });
     pendingStartRef.current = null;
@@ -287,7 +307,8 @@ export function useAiGame() {
     setGame(new Chess(START_FEN));
   }, []);
 
-  const myTurn = status === "playing" && !thinking && game.turn() === humanColor;
+  const myTurn =
+    status === "playing" && !thinking && game.turn() === humanColor;
 
   return {
     status,

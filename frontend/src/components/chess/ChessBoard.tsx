@@ -10,7 +10,6 @@ type Props = {
   onSquareClick: (square: Square) => void;
   onMove: (from: Square, to: Square) => void;
   orientation?: Color;
-  // Two squares to highlight as a suggested move (the AI hint).
   highlight?: { from: Square; to: Square } | null;
 };
 

@@ -23,14 +23,10 @@ type Props = {
   onHint?: () => void;
   hintDisabled?: boolean;
   hintPending?: boolean;
-  /* Optional AI-chat controls. When onModeChange is given, a persona selector is
-  shown above the chat; 'sending' disables input while the AI is replying.*/
   mode?: string;
   modes?: { value: string; label: string }[];
   onModeChange?: (mode: string) => void;
   sending?: boolean;
-  /* Retry for a failed AI reply: 'retryableId' marks the error bubble that
-  should show the button, 'retry' resends that request.*/
   retry?: () => void;
   retryableId?: string | null;
 };
@@ -57,7 +53,6 @@ export function GameSidebar({
   const chatBodyRef = useRef<HTMLDivElement>(null);
   const moveListRef = useRef<HTMLDivElement>(null);
 
-  // Automatically scroll the moves list to the latest move.
   useEffect(() => {
     const el = moveListRef.current;
     if (!el) return;
@@ -68,7 +63,6 @@ export function GameSidebar({
     });
   }, [moves.length]);
 
-  // Keep the chat pinned to the latest message as new ones arrive.
   useEffect(() => {
     const el = chatBodyRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -125,9 +119,7 @@ export function GameSidebar({
               }
             >
               <b>{m.user}</b>
-              {/* AI replies come back as markdown (headings, bold, lists), so
-              render them; the user's own messages and error bubbles stay plain
-              text. */}
+              {}
               {m.user === "You" || m.user === "Ty" || m.error ? (
                 <span>{m.text}</span>
               ) : (

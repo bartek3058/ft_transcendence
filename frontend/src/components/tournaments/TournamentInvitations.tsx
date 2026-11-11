@@ -19,22 +19,25 @@ export function TournamentInvitations() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const refresh = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    try {
-      const page = await listMyTournamentInvitations(offset);
-      setItems(page.items);
-      setTotal(page.total);
-      setLimit(page.limit);
-      setError("");
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to load invitations"
-      );
-    } finally {
-      if (!quiet) setLoading(false);
-    }
-  }, [offset]);
+  const refresh = useCallback(
+    async (quiet = false) => {
+      if (!quiet) setLoading(true);
+      try {
+        const page = await listMyTournamentInvitations(offset);
+        setItems(page.items);
+        setTotal(page.total);
+        setLimit(page.limit);
+        setError("");
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Unable to load invitations",
+        );
+      } finally {
+        if (!quiet) setLoading(false);
+      }
+    },
+    [offset],
+  );
 
   useEffect(() => {
     void refresh();
@@ -43,7 +46,7 @@ export function TournamentInvitations() {
   useTournamentInvitationsRealtime(
     useCallback(() => {
       void refresh(true);
-    }, [refresh])
+    }, [refresh]),
   );
 
   async function respond(id: string, response: "ACCEPT" | "DECLINE") {
@@ -55,13 +58,11 @@ export function TournamentInvitations() {
       setMessage(
         response === "ACCEPT"
           ? "Invitation accepted. You have joined the tournament."
-          : "Invitation declined."
+          : "Invitation declined.",
       );
       await refresh(true);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to respond"
-      );
+      setError(cause instanceof Error ? cause.message : "Unable to respond");
     } finally {
       setBusy(null);
     }
@@ -73,9 +74,7 @@ export function TournamentInvitations() {
         <div>
           <h2>Tournament invitations</h2>
           <p>Invitations from your friends</p>
-
         </div>
-
       </div>
 
       {error && <p role="alert">{error}</p>}

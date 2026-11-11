@@ -25,9 +25,7 @@ export async function getLeaderboard(
     let message = `Server error (${response.status})`;
     try {
       message = (await response.json())?.error?.message ?? message;
-    } catch {
-      // non-json
-    }
+    } catch {}
     throw new Error(message);
   }
 

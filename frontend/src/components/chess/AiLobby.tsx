@@ -39,7 +39,9 @@ export function AiLobby({ status, error, onStart }: Props) {
             <button
               key={d.value}
               type="button"
-              className={difficulty === d.value ? "aiOption selected" : "aiOption"}
+              className={
+                difficulty === d.value ? "aiOption selected" : "aiOption"
+              }
               onClick={() => setDifficulty(d.value)}
               disabled={connecting}
               title={d.hint}
@@ -67,7 +69,9 @@ export function AiLobby({ status, error, onStart }: Props) {
         </div>
       </div>
 
-      {status === "error" && <p className="aiError">{error ?? "Something went wrong."}</p>}
+      {status === "error" && (
+        <p className="aiError">{error ?? "Something went wrong."}</p>
+      )}
 
       <button
         type="button"

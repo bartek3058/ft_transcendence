@@ -215,7 +215,6 @@
   }
 }
 
-/* AI hint above the standard game actions */
 .aiHintActions {
   display: flex;
   width: 100%;
@@ -236,7 +235,6 @@
   white-space: nowrap;
 }
 
-/* AI Hint — match the other sidebar action buttons */
 .gameLayout .aiHintActions button,
 .gameLayout .aiHintActions button:disabled {
   box-sizing: border-box;
@@ -261,7 +259,6 @@
   background: #2b322c;
 }
 
-/* AI game actions — consistent height and spacing */
 .gameLayout aside:has(.aiHintActions) {
   gap: 8px;
 }
