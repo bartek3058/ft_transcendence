@@ -25,8 +25,14 @@ export function TournamentGamePage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <Link to={backUrl}>← Back to tournament</Link>
+      <div style={{ marginBottom: 12 }}>
+        <Link
+          to={backUrl}
+          aria-label="Back to tournament"
+          style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", fontSize: 14, lineHeight: 1.4 }}
+        >
+          ← Tournament
+        </Link>
       </div>
 
       {error && (
@@ -43,9 +49,11 @@ export function TournamentGamePage() {
             : finished.result}</p>
           <button
             className="primary"
+            aria-label="Back to tournament"
+            style={{ padding: "8px 14px", minHeight: 0, fontSize: 14, lineHeight: 1.4 }}
             onClick={() => navigate(backUrl)}
           >
-            Back to tournament
+            ← Tournament
           </button>
         </div>
       )}
