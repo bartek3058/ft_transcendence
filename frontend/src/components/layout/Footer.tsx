@@ -5,6 +5,9 @@ export function Footer() {
       <nav aria-label="Legal information">
         <Link to="/privacy-policy">Privacy Policy</Link>
         <Link to="/terms-of-service">Terms of Service</Link>
+        <a href="/api/docs" target="_blank" rel="noopener noreferrer">
+          API Documentation
+        </a>
       </nav>
       <small>ChessHub · educational project</small>
     </footer>
