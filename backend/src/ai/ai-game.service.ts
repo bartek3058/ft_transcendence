@@ -71,15 +71,12 @@ export interface AiTurnResult {
   state: PublicGameState;
   gameOver: AiGameOver | null;
   /* True when the human move was accepted but the engine failed to reply, so the
-  caller can tell the client instead of leaving it silently stuck on bot's turn.
-  */
+  caller can tell the client instead of leaving it silently stuck on bot's turn.*/
   botError?: boolean;
 }
 
-/*
-Games against the bot are persisted but unrated 
-- RatingService skips them because the bot's role is only "bot".
-*/
+/*Games against the bot are persisted but unrated 
+- RatingService skips them because the bot's role is only "bot".*/
 @Injectable()
 export class AiGameService {
   private readonly logger = new Logger(AiGameService.name);
@@ -152,10 +149,8 @@ export class AiGameService {
     return { ...aiGame, state };
   }
 
-  /*
-  Applies a human move and, if the game is still on and it is now the bot's
-  turn, has the bot reply. Closes the game out when either move ends it.
-  */
+  /*Applies a human move and, if the game is still on and it is now the bot's
+  turn, has the bot reply. Closes the game out when either move ends it.*/
   async submitHumanMove(
     gameId: string,
     humanId: string,
@@ -180,8 +175,7 @@ export class AiGameService {
 
     /* The human move flipped the turn, so the bot is now to move. If the engine
     throws or can't produce a legal move, flag it rather than silently leaving
-    the client stuck waiting for a reply that never comes.
-    */
+    the client stuck waiting for a reply that never comes.*/
     let botMove: MoveExecutionResult | null = null;
     let botError = false;
     try {
@@ -201,12 +195,10 @@ export class AiGameService {
     return { humanMove, botMove, state: this.game.getPublicGameState(gameId), gameOver: null, botError };
   }
 
-  /*
-  If it is the bot's turn in a live AI game, asks Stockfish for a move and
+  /* If it is the bot's turn in a live AI game, asks Stockfish for a move and
   applies it. Returns null when it is not the bot's turn (e.g. nothing to do).
   Used both for the bot's in-game replies and for its opening move when it
-  plays white.
-  */
+  plays white.*/
   async playBotMoveIfDue(gameId: string): Promise<AiBotMove | null> {
     const meta = this.aiGames.get(gameId);
     if (!meta) {
@@ -256,11 +248,9 @@ export class AiGameService {
     return { state: over.state, gameOver: over.info };
   }
 
-  /*
-  Suggests the strongest move for the human to play right now. Full engine
+  /* Suggests the strongest move for the human to play right now. Full engine
   strength regardless of the game's difficulty - a hint should be a good move.
-  Only offered in AI games, and only when it is actually the human's turn.
-  */
+  Only offered in AI games, and only when it is actually the human's turn. */
   async hint(gameId: string, humanId: string): Promise<AiHint> {
     const meta = this.requireHumanGame(gameId, humanId);
     const state = this.game.getPublicGameState(gameId);
@@ -297,11 +287,9 @@ export class AiGameService {
     this.aiGames.delete(gameId);
   }
 
-  /*
-  Abandons a live AI game (player left, disconnected, or started a new one):
+  /* Abandons a live AI game (player left, disconnected, or started a new one):
   closes it out as ABORTED (no winner, never rated) and frees both the
-  in-memory session and the AI metadata.
-  */
+  in-memory session and the AI metadata.*/
   async abort(gameId: string): Promise<void> {
     if (!this.aiGames.has(gameId)) {
       return;
@@ -381,10 +369,8 @@ export class AiGameService {
   }
 }
 
-/*
-How long, in total, the bot should take over a move at each difficulty - stronger play thinks longer,
-which also reads as more considered.
-*/
+/* How long, in total, the bot should take over a move at each difficulty - stronger play thinks longer,
+which also reads as more considered. */
 export const BOT_THINK_PACING: Record<AiDifficulty, { minMs: number; maxMs: number }> = {
   easy: { minMs: 500, maxMs: 1400 },
   medium: { minMs: 800, maxMs: 2200 },
