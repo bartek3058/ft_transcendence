@@ -67,9 +67,6 @@ export class LlmService {
     throw lastError ?? new ServiceUnavailableException('The AI chat service is temporarily unavailable.');
   }
 
-  /* A single call to the provider. Throws RetryableLlmError for transient
-  problems the caller may want to retry, and ServiceUnavailableException for
-  ones it shouldn't (misconfiguration, empty reply, non-retryable HTTP codes). */
   private async attempt(messages: LlmMessage[]): Promise<string> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -84,8 +81,8 @@ export class LlmService {
           model: this.model,
           messages,
           temperature: 0.8,
-          // Headroom for a fuller answer; the brevity prompt keeps most replies
-          // well under this, and tidyTruncated cleans up the rare overshoot.
+          /* Headroom for a fuller answer; the brevity prompt keeps most replies
+          well under this, and tidyTruncated cleans up the rare overshoot.*/
           max_tokens: 500,
         }),
         signal: controller.signal,
@@ -128,8 +125,8 @@ export class LlmService {
       }
       // A network blip is transient (retried below); a timeout is not.
       if ((error as Error).name === 'AbortError') {
-        // A timeout already waited the full budget, so don't retry it - that
-        // would just stack another full wait on something that's clearly stuck.
+        /* A timeout already waited the full budget, so don't retry it - that
+        would just stack another full wait on something that's clearly stuck.*/
         this.logger.error(`LLM request timed out after ${this.timeoutMs}ms.`);
         throw new ServiceUnavailableException('The AI chat service timed out.');
       }
@@ -140,8 +137,6 @@ export class LlmService {
     }
   }
 
-  /* Exponential backoff with jitter. Honors a server-provided Retry-After when
-  it's larger, so we don't hammer a provider that asked us to wait. */
   private backoffDelay(attempt: number, retryAfterMs?: number): number {
     const exponential = this.retryBaseMs * 2 ** attempt;
     const jitter = Math.random() * this.retryBaseMs;
@@ -177,17 +172,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/* The reply was cut off at the token cap, so it likely ends in a broken state:
-either mid-sentence, or - just as common with structured answers - right after a
-section heading whose body never got written. Tidy that tail so the reader gets
-a reply that ends on something complete. */
 function tidyTruncated(text: string): string {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
 
-  /* 1. Drop dangling scaffolding at the very end: blank lines, horizontal
-  rules, and a heading left with no content under it (its body got cut off).
-  A heading reads as a clean sentence end on its own, so without this the trim
-  below would happily keep an empty "### 3. ..." section. */
   const isOrphan = (line: string): boolean => {
     const t = line.trim();
     return t === '' || /^#{1,6}\s/.test(t) || /^[-*_]{3,}$/.test(t);
@@ -196,13 +183,9 @@ function tidyTruncated(text: string): string {
 
   const out = lines.join('\n').trimEnd();
 
-  // 2. If what's left already lands on sentence punctuation, it's clean enough.
-  // (No digit rule here, so a sentence ending on a move like "...1.e4." counts.)
   if (/[.!?]["'”’)\]]?$/.test(out)) return out;
 
-  /* 3. Otherwise it ends mid-sentence - cut back to the last real sentence end.
-  Here we DO ignore a '.' that follows a digit, so we don't mistake a move
-  number ("1.", "15.") for the spot to cut back to. */
+  // Otherwise it ends mid-sentence - cut back to the last real sentence end.
   const sentenceEnd = /(?<![0-9])[.!?]["'”’)\]]?/g;
   let lastEnd = -1;
   for (const m of out.matchAll(sentenceEnd)) {

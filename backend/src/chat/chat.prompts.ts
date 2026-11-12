@@ -1,10 +1,5 @@
 import { ChatMode } from './chat.types';
 
-/* Appended to every persona. The frontend renders the reply as markdown, so a
-little formatting is welcome - but the panel is narrow and the reply has a token
-budget, so this keeps answers short, steers the model away from the long
-multi-section essays it otherwise loves (and can't finish in the budget), and
-tells it to always land its final sentence instead of trailing off. */
 const BREVITY =
   'Keep replies brief and to the point - a short paragraph, or a few bullet points at most, never a long multi-section essay with big headings. ' +
   'Light markdown is fine (bold for emphasis, the odd short list). Always finish your final sentence - never stop mid-thought.';

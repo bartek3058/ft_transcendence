@@ -31,8 +31,7 @@ const INTENSITY = 1.5;
 
 /* Emoji carry a lot of chat sentiment, and the word tokenizer strips them, so we
 score them in a dedicated pass. Single-codepoint emoji only (no variation
-selectors) to keep the matching simple and surrogate-safe.
-*/
+selectors) to keep the matching simple and surrogate-safe.*/
 const POSITIVE_EMOJI = new Set(['🙂', '😀', '😄', '😁', '😍', '🥰', '😎', '🔥', '👍', '🎉', '💪', '😂']);
 const NEGATIVE_EMOJI = new Set(['🙁', '😞', '😡', '😠', '😭', '😢', '👎', '💀', '🤬', '😤', '😒', '😣']);
 
