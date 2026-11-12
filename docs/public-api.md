@@ -191,7 +191,74 @@ Revokes an API key.
 
 ---
 
-## 5. Automated Verification Commands
+## 5. Public API Example
+
+ChessHub provides a REST API secured with API keys, rate limiting, and interactive Swagger documentation.
+
+API Documentation: https://localhost:8443/api/docs
+
+### Generating your first API key
+
+1. Open https://localhost:8443 and log in to your ChessHub account..
+2. Open your browser’s Developer Tools (F12) and select the Console tab..
+3. Run the following JavaScript:.
+
+``` 
+fetch("/api/user/api-keys", {
+  method: "POST",
+  credentials: "same-origin",
+  headers: {
+    "Content-Type": "application/json",
+    "X-CSRF-Protection": "1"
+  },
+  body: JSON.stringify({
+    name: "Evaluator API Key",
+    expiresInDays: 7
+  })
+})
+  .then(async (response) => {
+    const data = await response.json();
+    if (!response.ok) throw new Error(JSON.stringify(data));
+    return data;
+  })
+  .then((data) => console.log(data))
+  .catch(console.error);
+  ```
+
+1. Copy the generated API key from the response. The full key is displayed only once..
+2. Open https://localhost:8443/api/docs..
+3. Click Authorize and enter your API key..
+4. Test an endpoint, for example GET /api/v1/leaderboard..
+
+### API Security
+
+• API requests use the X-API-Key header..
+• API keys are stored as SHA-256 hashes, not plaintext..
+• Requests without a valid API key return 401 Unauthorized..
+• Rate limiting is configured to 60 requests per minute per key..
+• Revoked or expired keys cannot be used..
+
+### Available Endpoints
+
+Method, Endpoint, Description
+GET, /api/v1/matches, List match history
+GET, /api/v1/matches/:id, Get match details
+GET, /api/v1/leaderboard, Get player rankings
+GET, /api/v1/leaderboard/stats, Get leaderboard statistics
+GET, /api/v1/leaderboard/players/:username, Get player statistics
+POST, /api/v1/api-keys, Create an API key
+GET, /api/v1/api-keys, List API keys
+GET, /api/v1/api-keys/:id, Get API key metadata
+PUT, /api/v1/api-keys/:id, Update an API key
+DELETE, /api/v1/api-keys/:id, Revoke an API key
+
+Additional technical documentation is available in docs/public-api.md.
+
+Security note: Never commit API keys to Git or share them publicly.
+
+---
+
+## 6. Automated Verification Commands
 
 All test suites can be executed inside Docker:
 
