@@ -14,7 +14,7 @@ Build a chess app with multiplayer, tournaments, a scoring/ranking system and AI
 - **Real-time chess gameplay** - authoritative server-side engine with move validation and turn ownership.
 - **Matchmaking & ranking** - waiting queue, ELO-based automated opponent matching, player rating.
 - **User profiles & statistics** - per-user profile with win/loss/draw record and recent games.
-- **Public API (partialy implemented), Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
+- **Public API (fully implemented), Match History & Leaderboard** - secured API keys (SHA-256), sliding-window rate limiting (60 req/min), interactive Swagger UI (`/api/docs`), match history queries, global ELO leaderboard, and platform statistics.
 - **Game conclusion & ELO rating trigger** - authoritative match conclusion resolution (checkmate, stalemate, draws, resignation, timeouts), atomic PostgreSQL persistence, and automatic ELO rating updates.
 - **Tournament bracket & progression engine** - automated single-elimination tournament generator with balanced seed-fold pairing, Round 1 Bye resolution, match progression to champion, and knockout draw tiebreak handling.
 - **Tournament registration & lifecycle** - create, browse (open / live / past) and join tournaments; the creator or an admin can close registration early or cancel. Registration closes on its own at the deadline, the bracket starts automatically, and tournaments with fewer than 2 players are cancelled.
@@ -296,28 +296,69 @@ Full diagram of all 10 tables and their relations (Mermaid, renders on GitHub): 
 
 # Modules
 
+An overview of the modules built for the 42 ft_transcendence project, covering their point values, the people behind each one, and how they were implemented.
+
 Point values follow the subject: **major module = 2 points**, **minor module = 1 point**.
 
+## Web
 
-### Module ledger
+| Module | Type | Points | Contributor(s) | Implementation |
+|---|---|---:|---|---|
+| Use a framework for both the frontend and backend | Major | 2 | pjedrycz (backend), pmamala, astefans (frontend) | NestJS 10 backend and React 18 + Vite frontend, both in TypeScript |
+| Implement real-time features using WebSockets or similar technology | Major | 2 | All | Socket.IO gateways for live gameplay and matchmaking, player chat and tournament updates |
+| Allow users to interact with other users | Major | 2 | pjedrycz (backend), pmamala (frontend) | Friends (requests, acceptance/removal, presence) and authenticated in-game player chat |
+| A public API to interact with the database with a secured API key, rate limiting, documentation, and at least 5 endpoints: GET, POST, PUT, DELETE | Major | 2 | tszymans, pmamala | Stateless `/api/v1` with SHA-256 API keys, sliding-window rate limiting, Swagger docs and 5+ CRUD endpoints |
+| Use an ORM for the database | Minor | 1 | tszymans | Prisma with PostgreSQL |
 
-| Category / module | Points | Implementation / contributors |
-| --- | ---: | --- |
-| Web: frontend + backend frameworks | 2 | React frontend: pmamala; infrastructure: pjedrycz, astefans |
-| Web: real-time features | 2 | Socket.IO games, presence and tournaments; pjedrycz, astefans, tszymans, brogalsk, pmamala |
-| Web: user interaction | 2 | Real player chat, profiles and friends; pjedrycz, pmamala |
-| Web: ORM | 1 | Prisma; tszymans |
-| Accessibility and Internationalization: support for additional browsers | 1 | Chrome + Firefox compatibility: cross-browser testing and console-error cleanup; pmamala, tszymans |
-| Gaming: web-based game | 2 | Authoritative chess; brogalsk, pmamala |
-| Gaming: remote players | 2 | Synchronization, matchmaking and reconnect; astefans, tszymans, pjedrycz, brogalsk, pmamala |
-| Gaming: tournaments | 1 | Lifecycle, brackets, check-in and UI; tszymans, pjedrycz, pmamala |
-| User management: Game statistics and match history | 1 | Match history, per-user statistics and leaderboard, tracks ELO ratings, achievements; tszymans |
-| AI: opponent | 2 | Stockfish difficulty levels; astefans |
-| AI: moderation | 1 | Blocklist and LLM classifier; astefans |
-| AI: sentiment analysis | 1 | Lexicon, negation and emoji analysis; astefans |
-| **Total** | **18** | All modules count toward the total |
+**Web subtotal: 9 points**
 
----
+## Accessibility and Internationalization
+
+| Module | Type | Points | Contributor(s) | Implementation |
+|---|---|---:|---|---|
+| Support for additional browsers | Minor | 1 | All | Compatibility testing across modern browsers |
+
+**Accessibility & Internationalization subtotal: 1 points**
+
+## User Management
+
+| Module | Type | Points | Contributor(s) | Implementation |
+|---|---|---:|---|---|
+| Game statistics and match history (requires a game module) | Minor | 1 | astefans, tszymans, pmamala | Per-user profile with win/loss/draw record, recent games and ELO history |
+
+**User Management subtotal: 1 points**
+
+## Artificial Intelligence
+
+| Module | Type | Points | Contributor(s) | Implementation |
+|---|---|---:|---|---|
+| Introduce an AI Opponent for games | Major | 2 | astefans | Stockfish opponent over Socket.IO with easy/medium/hard and move hints; seeded bot user kept out of ELO |
+| Content moderation AI | Minor | 1 | astefans | Deterministic blocklist plus an LLM classifier that blocks flagged chat before the reply |
+| Sentiment analysis for user-generated content | Minor | 1 | astefans | Local lexicon tags each message's mood (words + emoji, handles negation/intensifiers) |
+
+**Artificial Intelligence subtotal: 4 points**
+
+## Gaming and user experience
+
+| Module | Type | Points | Contributor(s) | Implementation |
+|---|---|---:|---|---|
+| Implement a complete web-based game where users can play against each other | Major | 2 | brogalsk (engine), pmamala (frontend) | Authoritative server-side chess (chess.js) with move validation, clocks and persistence |
+| Remote players | Major | 2 | brogalsk, pmamala | Two networked players matched and kept in sync in real time over Socket.IO |
+| Implement a tournament system | Minor | 1 | tszymans (backend), pmamala (frontend) | Single-elimination brackets, registration/lifecycle, invitations and live updates |
+
+**Gaming and user experience subtotal: 5 points**
+
+## Total
+
+| Category | Points |
+|---|---:|
+| Web | 9 |
+| Accessibility & Internationalization | 1 |
+| User Management | 1 |
+| Artificial Intelligence | 4 |
+| Gaming and user experience | 5 |
+| **Total** | **20** |
+
 
 # Individual Contributions
 
